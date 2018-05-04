@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,12 +58,14 @@ protected:
 	static void OnBtn_InactiveCursorBlink(HWND hDlg, WORD CB, BYTE uCheck, AppSettings* pApp);
 	static void OnBtn_InactiveCursorColor(HWND hDlg, WORD CB, BYTE uCheck, AppSettings* pApp);
 	static void OnBtn_InactiveCursorIgnoreSize(HWND hDlg, WORD CB, BYTE uCheck, AppSettings* pApp);
+	static void OnBtn_InactiveCursorSubstHidden(HWND hDlg, WORD CB, BYTE uCheck, AppSettings* pApp);
 	static void OnBtn_InactiveCursorX(HWND hDlg, WORD CB, BYTE uCheck, AppSettings* pApp);
 
 protected:
 	static void OnBtn_CmdTasksFlags(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_CmdTasksAdd(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_CmdTasksDel(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_CmdTasksDup(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_CmdTasksUpDown(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_CmdGroupKey(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_CmdGroupApp(HWND hDlg, WORD CB, BYTE uCheck);
@@ -127,7 +129,9 @@ protected:
 	static void OnBtn_TryToCenter(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_IntegralSize(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_Restore2ActiveMonitor(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_RestoreInactive(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ScrollbarStyle(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_ScrollbarDynamic(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_FarHourglass(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ExtendUCharMap(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_FixAltOnAltTab(HWND hDlg, WORD CB, BYTE uCheck);
@@ -186,7 +190,6 @@ protected:
 	static void OnBtn_DisableAllFlashing(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ShowWasHiddenMsg(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ShowWasSetOnTopMsg(HWND hDlg, WORD CB, BYTE uCheck);
-	static void OnBtn_TabsInCaption(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_NumberInCaption(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_AdminSuffixOrShield(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_HideInactiveConTabs(HWND hDlg, WORD CB, BYTE uCheck);
@@ -215,8 +218,6 @@ protected:
 	static void OnBtn_ActivitySaveAs(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_DebugActivityRadio(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ColorFormat(HWND hDlg, WORD CB, BYTE uCheck);
-	static void OnBtn_ExtendColors(HWND hDlg, WORD CB, BYTE uCheck);
-	static void OnBtn_ColorResetExt(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ColorSchemeSaveDelete(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_TrueColorer(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_VividColors(HWND hDlg, WORD CB, BYTE uCheck);
@@ -244,6 +245,7 @@ protected:
 	static void OnBtn_FarGotoEditor(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_HighlightMouseRow(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_HighlightMouseCol(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_UpdateCheckFast(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_UpdateCheckOnStartup(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_UpdateCheckHourly(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_UpdateConfirmDownload(HWND hDlg, WORD CB, BYTE uCheck);
@@ -264,4 +266,5 @@ protected:
 	static void OnBtn_StatusVertPad(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_StatusSystemColors(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_StatusAddDel(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_MinMaxKey(HWND hDlg, WORD CB, BYTE uCheck);
 };

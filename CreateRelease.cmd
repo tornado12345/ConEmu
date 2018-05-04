@@ -50,20 +50,19 @@ pause
 call "%~dp0\src\ConEmu\gen_version.cmd" %BUILD_NO% %BUILD_STAGE%
 if errorlevel 1 goto err
 
-if /I "%~2" == "-build" goto do_build
-if /I "%~2" == "-deploy" goto do_deploy
-
-echo on
-
-rem Update versions in all release files (msi, portableapps, nuget, etc.)
-powershell -noprofile -command "%~dp0Deploy\UpdateDeployVersions.ps1" %BUILD_NO%
-if errorlevel 1 goto err
-
-
 rem This will create ".daily.md"
 call "%~dp0Deploy\git2log.cmd" -skip_upd
 farrun -new_console:b -e5 "%~dp0..\ConEmu-GitHub-io\ConEmu.github.io\_posts\.daily.md"
 farrun -new_console:b -e23 "%~dp0Release\ConEmu\WhatsNew-ConEmu.txt"
+
+if /I "%~2" == "-build" goto do_build
+if /I "%~2" == "-deploy" goto do_deploy
+
+rem echo on
+
+rem Update versions in all release files (msi, portableapps, nuget, etc.)
+powershell -noprofile -command "%~dp0Deploy\UpdateDeployVersions.ps1" %BUILD_NO%
+if errorlevel 1 goto err
 
 
 rem set ConEmuHooks=OFF
@@ -88,6 +87,11 @@ rem echo .
 rem echo Press Enter to continue if version is OK: "%BUILD_NO%"
 rem pause>nul
 
+rem Give a time to editors to be started
+rem timeout /t 15
+echo Press Enter to start build
+pause > nul
+
 :do_build
 cd /d "%~dp0src"
 
@@ -103,15 +107,26 @@ rem call :tch ConEmuLn *.cpp *.h
 rem call :tch ConEmuPlugin *.cpp *.h
 rem call :tch ConEmuTh *.cpp *.h
 
-rem Compile x86
-call "%~dp0src\vc.build.release.cmd" 9 x86 nosign
-if errorlevel 1 goto err
-rem Compile x64
-call "%~dp0src\vc.build.release.cmd" 14 x64 nosign noclean
+echo Removing intermediate files...
+rd /S /Q "%~dp0src\_VCBUILD\Release"
+
+rem Compile x86/x64
+call "%~dp0src\ms.build.release.cmd"
 if errorlevel 1 goto err
 rem Sign code
 call "%~dp0src\vc.build.release.cmd" dosign
 if errorlevel 1 goto err
+
+if exist "%~dp0..\..\Google\Check-VirusTotal.cmd" (
+	pushd "%~dp0Release"
+	echo Starting Check-VirusTotal
+	call cmd /c "%~dp0..\..\Google\Check-VirusTotal.cmd" -new_console:bc
+	popd
+) else (
+	echo Check-VirusTotal script not found
+)
+
+if exist "%~dp0Release\UnitTests.cmd" call "%~dp0Release\UnitTests.cmd"
 
 :do_deploy
 cd /d "%~dp0"

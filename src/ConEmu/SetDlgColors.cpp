@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "VConGroup.h"
 #include "VirtualConsole.h"
 
-const int CSetDlgColors::MAX_COLOR_EDT_ID = c31;
+const int CSetDlgColors::MAX_COLOR_EDT_ID = c15;
 
 BOOL CSetDlgColors::gbLastColorsOk = FALSE;
 ColorPalette CSetDlgColors::gLastColors = {};
@@ -75,7 +75,7 @@ bool CSetDlgColors::GetColorById(WORD nID, COLORREF* color)
 		break;
 
 	default:
-		if (nID <= c31)
+		if (nID <= c15)
 			*color = gpSet->Colors[nID - c0];
 		else
 			return false;
@@ -115,7 +115,7 @@ bool CSetDlgColors::SetColorById(WORD nID, COLORREF color)
 		break;
 
 	default:
-		if (nID <= c31)
+		if (nID <= c15)
 		{
 			gpSet->Colors[nID - c0] = color;
 			gpSet->mb_FadeInitialized = false;
@@ -237,13 +237,13 @@ void CSetDlgColors::ColorSetEdit(HWND hWnd2, WORD c)
 	switch (gpSetCls->m_ColorFormat)
 	{
 	case CSettings::eRgbHex:
-		_wsprintf(temp, SKIPLEN(countof(temp)) L"#%02x%02x%02x", getR(cr), getG(cr), getB(cr));
+		swprintf_c(temp, L"#%02x%02x%02x", getR(cr), getG(cr), getB(cr));
 		break;
 	case CSettings::eBgrHex:
-		_wsprintf(temp, SKIPLEN(countof(temp)) L"0x%02x%02x%02x", getB(cr), getG(cr), getR(cr));
+		swprintf_c(temp, L"0x%02x%02x%02x", getB(cr), getG(cr), getR(cr));
 		break;
 	default:
-		_wsprintf(temp, SKIPLEN(countof(temp)) L"%i %i %i", getR(cr), getG(cr), getB(cr));
+		swprintf_c(temp, L"%i %i %i", getR(cr), getG(cr), getB(cr));
 	}
 	SetDlgItemText(hWnd2, tc, temp);
 }
@@ -260,7 +260,7 @@ bool CSetDlgColors::ColorEditDialog(HWND hWnd2, WORD c)
 	if (ShowColorDialog(ghOpWnd, &colornew) && colornew != color)
 	{
 		SetColorById(c, colornew);
-		//_wsprintf(temp, SKIPLEN(countof(temp)) L"%i %i %i", getR(colornew), getG(colornew), getB(colornew));
+		//swprintf_c(temp, L"%i %i %i", getR(colornew), getG(colornew), getB(colornew));
 		//SetDlgItemText(hWnd2, c + (tc0-c0), temp);
 		ColorSetEdit(hWnd2, c);
 		CSettings::InvalidateCtrl(GetDlgItem(hWnd2, c), TRUE);
@@ -290,7 +290,7 @@ void CSetDlgColors::FillBgImageColors(HWND hWnd2)
 				*pszTemp = 0;
 			}
 
-			_wsprintf(pszTemp, SKIPLEN(countof(tmp)-(pszTemp-tmp)) L"#%i", idx);
+			swprintf_c(pszTemp, countof(tmp)-(pszTemp-tmp)/*#SECURELEN*/, L"#%i", idx);
 			pszTemp += _tcslen(pszTemp);
 		}
 
@@ -391,10 +391,10 @@ bool CSetDlgColors::GetColorRef(HWND hDlg, WORD TB, COLORREF* pCR)
 	return ::GetColorRef(temp, pCR);
 }
 
-void CSetDlgColors::OnSettingsLoaded(const COLORREF (&Colors)[32])
+void CSetDlgColors::OnSettingsLoaded(const COLORREF (&Colors)[0x10])
 {
 	// Init custom palette for ColorSelection dialog
-	memmove(acrCustClr, gpSet->Colors, sizeof(COLORREF)*16);
+	memmove(acrCustClr, gpSet->Colors, sizeof(Colors));
 }
 
 void CSetDlgColors::ReleaseHandles()

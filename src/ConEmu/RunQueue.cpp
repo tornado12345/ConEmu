@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -69,7 +69,7 @@ CRunQueue::~CRunQueue()
 
 void CRunQueue::StartQueue()
 {
-	_ASSERTE(gpConEmu->mn_StartupFinished >= CConEmuMain::ss_CreateQueueReady);
+	_ASSERTE(gpConEmu->GetStartupStage() >= CConEmuMain::ss_CreateQueueReady);
 
 	if (mh_Thread)
 	{
@@ -268,14 +268,14 @@ void CRunQueue::ProcessRunQueue()
 void CRunQueue::AdvanceQueue()
 {
 	// If Startup was not completed yet - just do nothing
-	if (gpConEmu->mn_StartupFinished < CConEmuMain::ss_CreateQueueReady)
+	if (gpConEmu->GetStartupStage() < CConEmuMain::ss_CreateQueueReady)
 		return;
 
 	// Nothing to do?
 	if (m_RunQueue.empty())
 		return;
 
-	// Execution will starts after group (task or -cmdlist) creates all RCon's
+	// Execution will start after group (task or -cmdlist) creates all RCon's
 	// AdvanceQueue will be called from CVConGroup::OnCreateGroupEnd()
 	if (CVConGroup::InCreateGroup())
 		return;

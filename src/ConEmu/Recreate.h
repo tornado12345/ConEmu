@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ class CRecreateDlg
 protected:
 	HWND   mh_Dlg;
 	int    mn_DlgRc;
-	RConStartArgs* mp_Args;
+	RConStartArgsEx* mp_Args;
 	HWND   mh_Parent;
 	bool   mb_DontAutoSelCmd;
 	// Defaults
@@ -47,7 +47,7 @@ protected:
 	CEStr ms_RConStartDir;
 	CEStr ms_RConCurDir;
 	// dpi support
-	CDpiForDialog* mp_DpiAware;
+	CDpiForDialog* mp_DpiAware = nullptr;
 	// Buffer
 	wchar_t ms_CurUser[MAX_PATH*2+1];
 protected:
@@ -68,7 +68,7 @@ public:
 	CRecreateDlg();
 	~CRecreateDlg();
 
-	int RecreateDlg(RConStartArgs* apArgs, bool abDontAutoSelCmd = false);
+	int RecreateDlg(RConStartArgsEx* apArgs, bool abDontAutoSelCmd = false);
 	HWND GetHWND();
 	void Close();
 

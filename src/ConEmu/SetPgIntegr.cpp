@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -210,7 +210,7 @@ struct SwitchParser
 	//			-lngfile C:\Tools\ConEmu\ConEmu.l10n -lng ru  -dir "%1" -run {cmd} -cur_console:n
 	// Strip switches which match current instance startup arguments
 	// No sense to show them (e.g. "-lng ru") in the Integration dialog page
-	void StripDupSwitches(LPCWSTR pszFull)
+	void LoadCommand(LPCWSTR pszFull)
 	{
 		bCmdList = false;
 		szCmd = L"";
@@ -302,6 +302,7 @@ struct SwitchParser
 
 		if (!rsReady.IsEmpty() || bCmdList)
 		{
+			// Add "-run" without command to depict we run ConEmu "as default"
 			lstrmerge(&rsReady.ms_Val,
 				bCmdList ? L"-runlist " : L"-run ", szCmd);
 		}
@@ -338,7 +339,7 @@ LRESULT CSetPgIntegr::OnInitDialog(HWND hDlg, bool abInitial)
 	_ASSERTE((pszCurHere==NULL) || (*pszCurHere!=0));
 
 	wchar_t szIcon[MAX_PATH+32];
-	_wsprintf(szIcon, SKIPLEN(countof(szIcon)) L"%s,0", gpConEmu->ms_ConEmuExe);
+	swprintf_c(szIcon, L"%s,0", gpConEmu->ms_ConEmuExe);
 
 	if ((iInside > 0) && pszCurInside)
 	{
@@ -494,6 +495,24 @@ void CSetPgIntegr::RegisterShell(LPCWSTR asName, LPCWSTR asMode, LPCWSTR asConfi
 	if (!pszCmd)
 		return;
 
+	// Allow to run ConEmu as default, e.g. "ConEmu.exe -here -nosingle"
+	// where the "-nosingle" comes via asCmd
+	// ref: https://twitter.com/soekali/status/951338035374784512
+	bool bAddRunSwitch = false;
+	if (*asCmd == L'/' || *asCmd == L'-')
+	{
+		CEStr lsArg;
+		LPCWSTR pszTemp = asCmd;
+		if (0 == NextArg(&pszTemp, lsArg))
+		{
+			bAddRunSwitch = !lsArg.IsPossibleSwitch();
+		}
+	}
+	else
+	{
+		bAddRunSwitch = true;
+	}
+
 	//[HKEY_CURRENT_USER\Software\Classes\*\shell\ConEmu inside]
 	//"Icon"="C:\\Program Files\\ConEmu\\ConEmu.exe,1"
 
@@ -575,23 +594,7 @@ void CSetPgIntegr::RegisterShell(LPCWSTR asName, LPCWSTR asMode, LPCWSTR asConfi
 			//break;
 		}
 
-		bool bCmdKeyExist = false;
-
-		if (*asCmd == L'/')
-		{
-			CEStr lsArg;
-			LPCWSTR pszTemp = asCmd;
-			while (0 == NextArg(&pszTemp, lsArg))
-			{
-				if (lsArg.OneOfSwitches(L"-run",L"-runlist",L"-cmd",L"-cmdlist"))
-				{
-					bCmdKeyExist = true; break;
-				}
-			}
-
-		}
-
-		if (!bCmdKeyExist)
+		if (bAddRunSwitch)
 			_wcscat_c(pszCmd, cchMax, L"-run ");
 		_wcscat_c(pszCmd, cchMax, asCmd);
 
@@ -601,13 +604,16 @@ void CSetPgIntegr::RegisterShell(LPCWSTR asName, LPCWSTR asMode, LPCWSTR asConfi
 			HKEY hkConEmu;
 			if (0 == RegCreateKeyEx(hkRoot, asName, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hkConEmu, NULL))
 			{
-				// Если задана "иконка"
+				// gh-1395: Force Explorer to use hotkey if specified
+				RegSetValueEx(hkConEmu, NULL, 0, REG_SZ, (LPBYTE)asName, (lstrlen(asName)+1)*sizeof(*asName));
+
+				// The icon, if it was set
 				if (asIcon)
 					RegSetValueEx(hkConEmu, L"Icon", 0, REG_SZ, (LPBYTE)asIcon, (lstrlen(asIcon)+1)*sizeof(*asIcon));
 				else
 					RegDeleteValue(hkConEmu, L"Icon");
 
-				// Команда
+				// The command
 				HKEY hkCmd;
 				if (0 == RegCreateKeyEx(hkConEmu, L"command", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hkCmd, NULL))
 				{
@@ -686,6 +692,7 @@ void CSetPgIntegr::UnregisterShellInvalids()
 		while (lsNames.pop_back(pszName))
 		{
 			RegDeleteKeyRecursive(HKEY_CURRENT_USER, L"Software\\Classes\\LibraryFolder\\shell", pszName);
+			SafeFree(pszName);
 		}
 
 		// If there is no other "commands" - try to delete "shell" subkey.
@@ -723,7 +730,7 @@ void CSetPgIntegr::ShellIntegration(HWND hDlg, CSetPgIntegr::ShellIntegrType iMo
 					}
 				}
 
-				//_wsprintf(szIcon, SKIPLEN(countof(szIcon)) L"%s,0", gpConEmu->ms_ConEmuExe);
+				//swprintf_c(szIcon, L"%s,0", gpConEmu->ms_ConEmuExe);
 				GetDlgItemText(hDlg, tInsideIcon, szIcon, countof(szIcon));
 				RegisterShell(szName, szOpt[0] ? szOpt : L"-inside", SkipNonPrintable(szConfig), SkipNonPrintable(szShell), szIcon);
 			}
@@ -743,7 +750,7 @@ void CSetPgIntegr::ShellIntegration(HWND hDlg, CSetPgIntegr::ShellIntegrType iMo
 				wchar_t szConfig[MAX_PATH] = {}, szShell[MAX_PATH] = {}, szIcon[MAX_PATH+16];
 				GetDlgItemText(hDlg, tHereConfig, szConfig, countof(szConfig));
 				GetDlgItemText(hDlg, tHereShell, szShell, countof(szShell));
-				//_wsprintf(szIcon, SKIPLEN(countof(szIcon)) L"%s,0", gpConEmu->ms_ConEmuExe);
+				//swprintf_c(szIcon, L"%s,0", gpConEmu->ms_ConEmuExe);
 				GetDlgItemText(hDlg, tHereIcon, szIcon, countof(szIcon));
 				RegisterShell(szName, L"-here", SkipNonPrintable(szConfig), SkipNonPrintable(szShell), szIcon);
 			}
@@ -897,7 +904,7 @@ void CSetPgIntegr::FillHereValues(WORD CB)
 					}
 					else
 					{
-						Switches.StripDupSwitches(pszFull);
+						Switches.LoadCommand(pszFull);
 					}
 					RegCloseKey(hkCmd);
 				}

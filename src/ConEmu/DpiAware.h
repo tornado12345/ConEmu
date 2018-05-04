@@ -1,6 +1,6 @@
 
 /*
-Copyright (c) 2014-2015 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -53,15 +53,15 @@ enum MonitorDpiType
 struct DpiValue
 {
 public:
-	int Ydpi;
-	int Xdpi;
+	int Ydpi = 96;
+	int Xdpi = 96;
 
 public:
 	DpiValue();
-
-	DpiValue(WPARAM wParam);
-
+	DpiValue(int xdpi, int ydpi);
 	DpiValue(const DpiValue& dpi);
+
+	static DpiValue FromWParam(WPARAM wParam);
 
 public:
 	operator int() const;
@@ -122,8 +122,9 @@ protected:
 	};
 	MMap<int, MArray<DlgItem>*> m_Items;
 
-public:
 	CDpiForDialog();
+public:
+	static bool Create(CDpiForDialog*& pHelper);
 
 	~CDpiForDialog();
 

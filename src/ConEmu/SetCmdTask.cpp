@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -57,7 +57,7 @@ void CommandTasks::SetName(LPCWSTR asName, int anCmdIndex)
 	}
 	else if (!asName || !*asName)
 	{
-		_wsprintf(szCmd, SKIPLEN(countof(szCmd)) L"Group%i", (anCmdIndex+1));
+		swprintf_c(szCmd, L"Group%i", (anCmdIndex+1));
 		asName = szCmd;
 	}
 
@@ -139,7 +139,7 @@ void CommandTasks::SetCommands(LPCWSTR asCommands)
 	_wcscpy_c(pszCommands, cchCmdMax, asCommands);
 }
 
-void CommandTasks::ParseGuiArgs(RConStartArgs* pArgs) const
+void CommandTasks::ParseGuiArgs(RConStartArgsEx* pArgs) const
 {
 	if (!pArgs)
 	{
@@ -290,7 +290,7 @@ bool CommandTasks::LoadCmdTask(SettingsBase* reg, int iIndex)
 
 		for (int j = 0; j < iCmdMax; j++)
 		{
-			_wsprintf(szVal, SKIPLEN(countof(szVal)) L"Cmd%i", j+1); // 1-based
+			swprintf_c(szVal, L"Cmd%i", j+1); // 1-based
 
 			if (reg->Load(szVal, &(pszCommands[j])) && pszCommands[j] && *pszCommands[j])
 			{
@@ -343,9 +343,11 @@ wrap:
 bool CommandTasks::SaveCmdTask(SettingsBase* reg, bool isStartup)
 {
 	bool lbRc = true;
-	int iCmdCount = 0;
+	int iCmdCount = 0, iOldCount = 0;
 	int nActive = 0; // 1-based
 	wchar_t szVal[32];
+
+	reg->Load(L"Count", iOldCount);
 
 	if (!isStartup)
 	{
@@ -356,6 +358,7 @@ bool CommandTasks::SaveCmdTask(SettingsBase* reg, bool isStartup)
 
 	reg->Save(L"GuiArgs", this->pszGuiArgs);
 
+	MArray<wchar_t*> save_items;
 	if (this->pszCommands)
 	{
 		wchar_t* pszCmd = this->pszCommands;
@@ -376,15 +379,13 @@ bool CommandTasks::SaveCmdTask(SettingsBase* reg, bool isStartup)
 				*pszEnd = 0;
 			}
 
-			_wsprintf(szVal, SKIPLEN(countof(szVal)) L"Cmd%i", iCmdCount); // 1-based
-
 			if (*pszCmd == L'>')
 			{
 				//pszCmd++;
 				nActive = iCmdCount; // 1-based
 			}
 
-			reg->Save(szVal, pszCmd);
+			save_items.push_back(lstrdup(pszCmd));
 
 			if (pszEnd)
 				*pszEnd = chSave;
@@ -400,6 +401,19 @@ bool CommandTasks::SaveCmdTask(SettingsBase* reg, bool isStartup)
 	}
 
 	reg->Save(L"Count", iCmdCount);
+
+	for (INT_PTR i = 0; i < save_items.size(); ++i)
+	{
+		wchar_t* pszData = save_items[i];
+		swprintf_c(szVal, L"Cmd%i", i+1); // 1-based
+		reg->Save(szVal, pszData);
+		free(pszData);
+	}
+	for (INT_PTR i = save_items.size(); i < iOldCount; ++i)
+	{
+		swprintf_c(szVal, L"Cmd%i", i+1); // 1-based
+		reg->Delete(szVal);
+	}
 
 	return lbRc;
 }

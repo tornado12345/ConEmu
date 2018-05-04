@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -153,7 +153,7 @@ COORD FixupReadStartCursorPos(DWORD nNumberOfCharsToRead, CONSOLE_SCREEN_BUFFER_
 			int nNewY = (int)crStartCursorPos.Y;
 			if (nNewX < 0)
 			{
-				int nRows = klMin(nNewY, (int)((-nNewX) / csbi.dwSize.X));
+				int nRows = std::min(nNewY, (int)((-nNewX) / csbi.dwSize.X));
 				if ((nRows < nNewY) && ((nNewX + (nRows * csbi.dwSize.X)) < 0))
 					nRows++;
 				_ASSERTE(((nNewY - nRows) >= 0) && ((nNewX + (nRows * csbi.dwSize.X)) >= 0));
@@ -267,7 +267,7 @@ void OnReadConsoleEnd(BOOL bSucceeded, bool bUnicode, HANDLE hConsoleInput, LPVO
 }
 
 // Helper function: Notification ‘Debug’ setting page in ConEmu
-void OnPeekReadConsoleInput(char acPeekRead/*'P'/'R'*/, char acUnicode/*'A'/'W'*/, HANDLE hConsoleInput, PINPUT_RECORD lpBuffer, DWORD nRead)
+void OnPeekReadConsoleInput(char acPeekRead/*'P'/'R'*/, char acUnicode/*'A'/'W'*/, HANDLE hConsoleInput, PINPUT_RECORD lpBuffer, DWORD& nRead)
 {
 #ifdef TRAP_ON_MOUSE_0x0
 	if (lpBuffer && nRead)
@@ -303,32 +303,63 @@ void OnPeekReadConsoleInput(char acPeekRead/*'P'/'R'*/, char acUnicode/*'A'/'W'*
 		GetConsoleScreenBufferInfoCached(NULL, NULL);
 	}
 
-	if (!gFarMode.bFarHookMode || !gFarMode.bMonitorConsoleInput || !nRead || !lpBuffer)
+	if (!nRead || !lpBuffer)
 		return;
 
-	//// Пока - только Read. Peek игнорируем
-	//if (acPeekRead != 'R')
-	//	return;
-
-	CESERVER_REQ *pIn = ExecuteNewCmd(CECMD_PEEKREADINFO, sizeof(CESERVER_REQ_HDR) //-V119
-		+sizeof(CESERVER_REQ_PEEKREADINFO)+(nRead-1)*sizeof(INPUT_RECORD));
-	if (pIn)
+	if (gFarMode.bFarHookMode && gFarMode.bMonitorConsoleInput)
 	{
-		pIn->PeekReadInfo.nCount = (WORD)nRead;
-		pIn->PeekReadInfo.cPeekRead = acPeekRead;
-		pIn->PeekReadInfo.cUnicode = acUnicode;
-		pIn->PeekReadInfo.h = hConsoleInput;
-		pIn->PeekReadInfo.nTID = nCurrentTID;
-		pIn->PeekReadInfo.nPID = GetCurrentProcessId();
-		pIn->PeekReadInfo.bMainThread = (pIn->PeekReadInfo.nTID == gnHookMainThreadId);
-		memmove(pIn->PeekReadInfo.Buffer, lpBuffer, nRead*sizeof(INPUT_RECORD));
+		CESERVER_REQ *pIn = ExecuteNewCmd(CECMD_PEEKREADINFO, sizeof(CESERVER_REQ_HDR) //-V119
+			+sizeof(CESERVER_REQ_PEEKREADINFO)+(nRead-1)*sizeof(INPUT_RECORD));
+		if (pIn)
+		{
+			pIn->PeekReadInfo.nCount = (WORD)nRead;
+			pIn->PeekReadInfo.cPeekRead = acPeekRead;
+			pIn->PeekReadInfo.cUnicode = acUnicode;
+			pIn->PeekReadInfo.h = hConsoleInput;
+			pIn->PeekReadInfo.nTID = nCurrentTID;
+			pIn->PeekReadInfo.nPID = GetCurrentProcessId();
+			pIn->PeekReadInfo.bMainThread = (pIn->PeekReadInfo.nTID == gnHookMainThreadId);
+			memmove(pIn->PeekReadInfo.Buffer, lpBuffer, nRead*sizeof(INPUT_RECORD));
 
-		CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd);
-		if (pOut) ExecuteFreeResult(pOut);
-		ExecuteFreeResult(pIn);
+			CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd);
+			if (pOut) ExecuteFreeResult(pOut);
+			ExecuteFreeResult(pIn);
+		}
 	}
 
+	// Temp bugfix for unexpected WINDOW_BUFFER_SIZE_EVENT
+	if (gFarMode.bFarHookMode && (acPeekRead == 'R') && IsWin10())
+	{
+		static WINDOW_BUFFER_SIZE_RECORD last_size = {};
+		INPUT_RECORD *src = lpBuffer, *dst = lpBuffer, *buf_end = lpBuffer + nRead;
+		while (src < buf_end)
+		{
+			if (src != dst)
+			{
+				*dst = *src;
+			}
 
+			if (src->EventType != WINDOW_BUFFER_SIZE_EVENT)
+			{
+				++src; ++dst;
+				continue;
+			}
+
+			// OK, reported size was changed since last call
+			if (last_size.dwSize != src->Event.WindowBufferSizeEvent.dwSize)
+			{
+				last_size = src->Event.WindowBufferSizeEvent;
+				++src; ++dst;
+				continue;
+			}
+
+			// Size was not changed
+			_ASSERTE(nRead > 0);
+			--nRead;
+			++src;
+			dst->EventType = 0;
+		}
+	}
 }
 
 #ifdef _DEBUG
@@ -385,7 +416,7 @@ BOOL WINAPI OnReadConsoleA(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberO
 
 	// gh#465: For consistence with OnReadConsoleW
 	if (lbRc && lpBuffer && lpNumberOfCharsRead && *lpNumberOfCharsRead
-		// pInputControl has no evvect on ANSI version
+		// pInputControl has no effect on ANSI version
 		&& (*lpNumberOfCharsRead <= 3))
 	{
 		// To avoid checking of the mapping, we check result first
@@ -917,7 +948,7 @@ BOOL WINAPI OnWriteConsoleInputW(HANDLE hConsoleInput, const INPUT_RECORD *lpBuf
 	{
 		#ifdef _DEBUG
 		memset(gir_Written, 0, sizeof(gir_Written));
-		memmove(gir_Written, lpBuffer, min(countof(gir_Written),nLength)*sizeof(*lpBuffer));
+		memmove(gir_Written, lpBuffer, std::min<size_t>(countof(gir_Written), nLength) * sizeof(*lpBuffer));
 		#endif
 		lbRc = gInQueue.WriteInputQueue(lpBuffer, FALSE, nLength);
 	}

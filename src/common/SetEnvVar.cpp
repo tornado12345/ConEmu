@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "Common.h"
 #include "CmdLine.h"
 #include "MStrSafe.h"

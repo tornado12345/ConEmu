@@ -33,9 +33,9 @@ $md_img_path = "/img/"
 $linedelta = 7
 
 $script:ignore_ctrls = @(
-  "tAppDistinctHolder", "tDefTermWikiLink",
+  "tAppDistinctHolder", "tDefTermWikiLink", "stPalettePreviewFast",
   "stConEmuUrl", "tvSetupCategories", "stSetCommands2", "stHomePage", "stDisableConImeFast3", "stDisableConImeFast2",
-  "lbActivityLog", "lbConEmuHotKeys", "IDI_ICON1", "IDI_ICON2", "IDI_ICON3", "stConEmuAbout"
+  "lbActivityLog", "lbConEmuHotKeys", "IDI_ICON1", "IDI_ICON2", "IDI_ICON3", "stConEmuAbout", "IDD_RESTART"
 )
 
 $last_gen_ids_note = "// last auto-gen identifier"
@@ -282,7 +282,9 @@ function ParseDialogData($rcln, $dlgid, $name)
   }
   if ($ln -ne "") {
     $h = ParseLine $ln
-    $items_arg += $h
+    if (-Not ($script:ignore_ctrls.Contains($h.Id))) {
+      $items_arg += $h
+    }
   }
 
   return $items_arg
@@ -564,7 +566,8 @@ function InitDialogList()
   $script:dialogs += @{ id = "IDD_HOTKEY";          name = "Choose hotkey"; file = $null; }
   $script:dialogs += @{ id = "IDD_AFFINITY";        name = "Set active console processes affinity and priority"; file = $null; }
 
-  $script:dialogs += @{ id = "IDD_SPG_FONTS";       name = "Main"; file = "Settings-Main"; }
+  $script:dialogs += @{ id = "IDD_SPG_GENERAL";     name = "General"; file = "Settings-Fast"; }
+  $script:dialogs += @{ id = "IDD_SPG_FONTS";       name = " Fonts"; file = "Settings-Main"; }
   $script:dialogs += @{ id = "IDD_SPG_SIZEPOS";     name = " Size & Pos"; file = "Settings-SizePos"; }
   $script:dialogs += @{ id = "IDD_SPG_APPEAR";      name = " Appearance"; file = "Settings-Appearance"; }
   $script:dialogs += @{ id = "IDD_SPG_QUAKE";       name = " Quake style"; file = "Settings-Quake"; } # NEW
@@ -1289,7 +1292,7 @@ function WriteWiki($items_arg, $hints, $hotkeys, $dlgid, $name, $flname)
         $desc = $script:ctrl_desc
 
         if (($script:ctrl_type.Contains("TEXT")) -And ($desc -eq ""))  {
-          $desc = $script:ctrl_type
+          $desc = $script:ctrl_alt
         }
         elseif ($script:ctrl_name -ne "") {
           $label = ReplaceRN $script:ctrl_name

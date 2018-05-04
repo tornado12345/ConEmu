@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "LngRc.h"
 #include "Options.h"
 #include "OptionsClass.h"
+#include "OptionsHelp.h"
 #include "RealConsole.h"
 #include "SearchCtrl.h"
 #include "SetDlgColors.h"
@@ -51,14 +52,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 bool CSetPgBase::mb_IgnoreEditChanged = false;
 
 CSetPgBase::CSetPgBase()
-	: mh_Dlg(NULL)
-	, mh_Parent(NULL)
-	, mb_SkipSelChange(false)
-	, mn_ActivateTabMsg(WM_APP)
-	, mp_DpiAware(NULL)
-	, mp_DynDialog(NULL)
-	, mp_ParentDpi(NULL)
-	, mp_InfoPtr(NULL)
 {
 	mb_IgnoreEditChanged = false;
 }
@@ -75,7 +68,7 @@ CSetPgBase::~CSetPgBase()
 
 HWND CSetPgBase::CreatePage(ConEmuSetupPages* p, HWND ahParent, UINT anActivateTabMsg, const CDpiForDialog* apParentDpi)
 {
-	wchar_t szLog[80]; _wsprintf(szLog, SKIPCOUNT(szLog) L"Creating child dialog ID=%u", p->DialogID);
+	wchar_t szLog[80]; swprintf_c(szLog, L"Creating child dialog ID=%u", p->DialogID);
 	LogString(szLog);
 
 	SafeDelete(p->pPage);
@@ -98,8 +91,7 @@ void CSetPgBase::InitObject(HWND ahParent, UINT anActivateTabMsg, const CDpiForD
 
 	if (apParentDpi)
 	{
-		if (!mp_DpiAware)
-			mp_DpiAware = new CDpiForDialog();
+		CDpiForDialog::Create(mp_DpiAware);
 		mb_DpiChanged = false;
 	}
 	else
@@ -238,9 +230,9 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 			pObj = (CSetPgBase*)lParam;
 		}
 
-		if (!pObj || (pObj->GetPageType() < thi_Fonts) || (pObj->GetPageType() >= thi_Last))
+		if (!pObj || (pObj->GetPageType() < thi_General) || (pObj->GetPageType() >= thi_Last))
 		{
-			_ASSERTE(pObj && (pObj->GetPageType() >= thi_Fonts && pObj->GetPageType() < thi_Last));
+			_ASSERTE(pObj && (pObj->GetPageType() >= thi_General && pObj->GetPageType() < thi_Last));
 			return 0;
 		}
 		_ASSERTE(pObj->Dlg() == NULL || pObj->Dlg() == hDlg);
@@ -292,7 +284,16 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 	else if ((messg == WM_HELP) || (messg == HELP_WM_HELP))
 	{
 		_ASSERTE(messg == WM_HELP);
-		return gpSetCls->wndOpProc(hDlg, messg, wParam, lParam);
+		if ((wParam == 0) && (lParam != 0))
+		{
+			// Open wiki page
+			HELPINFO* hi = (HELPINFO*)lParam;
+			if (hi->cbSize >= sizeof(HELPINFO))
+			{
+				CEHelpPopup::OpenSettingsWiki(hDlg, hi->iCtrlId);
+			}
+		}
+		return TRUE;
 	}
 	else if (pgId == thi_Apps)
 	{
@@ -393,7 +394,7 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 
 					//gpSet->bgImageDarker = newV;
 					//TCHAR tmp[10];
-					//_wsprintf(tmp, SKIPLEN(countof(tmp)) L"%i", gpSet->bgImageDarker);
+					//swprintf_c(tmp, L"%i", gpSet->bgImageDarker);
 					//SetDlgItemText(hDlg, tDarker, tmp);
 
 					//// Картинку может установить и плагин
@@ -489,21 +490,7 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 			else if (messg == DBGMSG_LOG_ID && pgId == thi_Debug)
 			{
 				MSetter lockSelChange(&pObj->mb_SkipSelChange);
-				if (wParam == DBGMSG_LOG_SHELL_MAGIC)
-				{
-					CSetPgDebug::DebugLogShellActivity *pShl = (CSetPgDebug::DebugLogShellActivity*)lParam;
-					((CSetPgDebug*)pObj)->debugLogShell(pShl);
-				} // DBGMSG_LOG_SHELL_MAGIC
-				else if (wParam == DBGMSG_LOG_INPUT_MAGIC)
-				{
-					CESERVER_REQ_PEEKREADINFO* pInfo = (CESERVER_REQ_PEEKREADINFO*)lParam;
-					((CSetPgDebug*)pObj)->debugLogInfo(pInfo);
-				} // DBGMSG_LOG_INPUT_MAGIC
-				else if (wParam == DBGMSG_LOG_CMD_MAGIC)
-				{
-					CSetPgDebug::LogCommandsData* pCmd = (CSetPgDebug::LogCommandsData*)lParam;
-					((CSetPgDebug*)pObj)->debugLogCommand(pCmd);
-				} // DBGMSG_LOG_CMD_MAGIC
+				((CSetPgDebug*)pObj)->debugLog(wParam, lParam);
 			} // if (messg == DBGMSG_LOG_ID && hDlg == gpSetCls->hDebug)
 			else
 			{

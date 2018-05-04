@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -66,6 +66,7 @@ extern MFileMapping<CESERVER_CONSOLE_APP_MAPPING> *gpAppMap;
 CESERVER_CONSOLE_MAPPING_HDR* GetConMap(BOOL abForceRecreate=FALSE);
 CESERVER_CONSOLE_APP_MAPPING* GetAppMapPtr();
 CESERVER_CONSOLE_APP_MAPPING* UpdateAppMapFlags(DWORD nFlags/*enum CEReadConsoleInputFlags*/);
+CESERVER_CONSOLE_APP_MAPPING* UpdateAppMapRows(LONG anLastConsoleRow, bool abForce);
 void OnConWndChanged(HWND ahNewConWnd);
 bool AttachServerConsole();
 void CheckAnsiConVar(LPCWSTR asName);
@@ -137,7 +138,6 @@ struct ReadConsoleInfo
 extern struct ReadConsoleInfo gReadConsoleInfo;
 BOOL OnReadConsoleClick(SHORT xPos, SHORT yPos, bool bForce, bool bBashMargin);
 BOOL OnPromptBsDeleteWord(bool bForce, bool bBashMargin);
-BOOL OnExecutePromptCmd(LPCWSTR asCmd);
 
 void CheckHookServer();
 extern bool gbHookServerForcedTermination;
@@ -213,6 +213,7 @@ extern bool gbSkipVirtualAllocErr;
 extern bool gbPrepareDefaultTerminal;
 extern bool gbIsNetVsHost;
 extern bool gbIsVStudio;
+extern bool gbIsVSDebug; // msvsmon.exe
 extern bool gbIsVsCode;
 extern int  gnVsHostStartConsole;
 extern bool gbIsGdbHost;
@@ -271,7 +272,7 @@ void DoDllStop(bool bFinal, ConEmuHkDllState bFromTerminate = ds_Undefined);
 		static const int CRITICAL_BUFFER_SIZE = 256;
 		struct CritInfo
 		{
-			u64 total;
+			uint64_t total;
 			DWORD count;
 			
 			#ifdef _WIN64

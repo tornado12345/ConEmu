@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -70,25 +70,26 @@ const DWORD CSetDlgLists::ExtendFonts[] = {lbExtendFontBoldIdx, lbExtendFontItal
 
 const ListBoxItem CSetDlgLists::TabBtnDblClickActions[] =
 {// gpSet->nTabBtnDblClickAction
-	{ 0, L"No action" },
-	{ 1, L"Max/restore window" },
-	{ 5, L"Max/restore pane" },
-	{ 2, L"Close tab" },
-	{ 3, L"Restart tab" },
-	{ 4, L"Duplicate tab" },
+	{ TabBtnDblClick::NoAction,         L"No action"          },
+	{ TabBtnDblClick::MaxRestoreWindow, L"Max/restore window" },
+	{ TabBtnDblClick::MaxRestorePane,   L"Max/restore pane"   },
+	{ TabBtnDblClick::CloseTab,         L"Close tab"          },
+	{ TabBtnDblClick::RestartTab,       L"Restart tab"        },
+	{ TabBtnDblClick::DuplicateTab,     L"Duplicate tab"      },
+	{ TabBtnDblClick::RenameTab,        L"Rename tab"         },
 };
 const ListBoxItem CSetDlgLists::TabBarDblClickActions[] =
 {// gpSet->nTabBarDblClickAction
-	{ 0, L"No action" },
-	{ 1, L"Auto" },
-	{ 2, L"Max/restore window" },
-	{ 3, L"Open new shell" },
+	{ TabBarDblClick::NoAction,         L"No action"          },
+	{ TabBarDblClick::Auto,             L"Auto"               },
+	{ TabBarDblClick::MaxRestoreWindow, L"Max/restore window" },
+	{ TabBarDblClick::OpenNewShell,     L"Open new shell"     },
 };
 
 
-uint CSetDlgLists::GetListItems(eFillListBoxItems eWhat, const ListBoxItem*& pItems)
+unsigned CSetDlgLists::GetListItems(eFillListBoxItems eWhat, const ListBoxItem*& pItems)
 {
-	uint nCount = 0;
+	unsigned nCount = 0;
 
 	#undef  LST_ENUM
 	#define LST_ENUM(x) case e##x: pItems = x; nCount = LOWORD(countof(x)); break;
@@ -121,9 +122,9 @@ uint CSetDlgLists::GetListItems(eFillListBoxItems eWhat, const ListBoxItem*& pIt
 	return nCount;
 }
 
-uint CSetDlgLists::GetListItems(eWordItems eWhat, const DWORD*& pItems)
+unsigned CSetDlgLists::GetListItems(eWordItems eWhat, const DWORD*& pItems)
 {
-	uint nCount = 0;
+	unsigned nCount = 0;
 
 	#undef  LST_ENUM
 	#define LST_ENUM(x) case e##x: pItems = x; nCount = LOWORD(countof(x)); break;
@@ -150,11 +151,11 @@ uint CSetDlgLists::GetListItems(eWordItems eWhat, const DWORD*& pItems)
 void CSetDlgLists::FillListBox(HWND hList, WORD nCtrlId, eFillListBoxItems eWhat)
 {
 	const ListBoxItem* Items;
-	uint nItems = GetListItems(eWhat, Items);
+	unsigned nItems = GetListItems(eWhat, Items);
 
 	SendMessage(hList, CB_RESETCONTENT, 0, 0);
 
-	for (uint i = 0; i < nItems; i++)
+	for (unsigned i = 0; i < nItems; i++)
 	{
 		SendMessage(hList, CB_ADDSTRING, 0, (LPARAM)Items[i].sValue); //-V108
 	}
@@ -163,7 +164,7 @@ void CSetDlgLists::FillListBox(HWND hList, WORD nCtrlId, eFillListBoxItems eWhat
 void CSetDlgLists::FillListBoxItems(HWND hList, eFillListBoxItems eWhat, UINT& nValue, bool abExact)
 {
 	const ListBoxItem* Items;
-	uint nItems = GetListItems(eWhat, Items);
+	unsigned nItems = GetListItems(eWhat, Items);
 
 	_ASSERTE(hList!=NULL);
 	int num = -1;
@@ -171,7 +172,7 @@ void CSetDlgLists::FillListBoxItems(HWND hList, eFillListBoxItems eWhat, UINT& n
 
 	SendMessage(hList, CB_RESETCONTENT, 0, 0);
 
-	for (uint i = 0; i < nItems; i++)
+	for (unsigned i = 0; i < nItems; i++)
 	{
 		SendMessage(hList, CB_ADDSTRING, 0, (LPARAM) Items[i].sValue); //-V108
 
@@ -190,7 +191,7 @@ void CSetDlgLists::FillListBoxItems(HWND hList, eFillListBoxItems eWhat, UINT& n
 	}
 	else
 	{
-		_wsprintf(szNumber, SKIPLEN(countof(szNumber)) L"%i", nValue);
+		swprintf_c(szNumber, L"%i", nValue);
 		SelectStringExact(hList, 0, szNumber);
 	}
 }
@@ -222,17 +223,17 @@ void CSetDlgLists::FillListBoxItems(HWND hList, eFillListBoxItems eWhat, const U
 void CSetDlgLists::FillListBoxItems(HWND hList, eWordItems eWhat, UINT& nValue, bool abExact)
 {
 	const DWORD* pnValues;
-	uint nItems = GetListItems(eWhat, pnValues);
+	unsigned nItems = GetListItems(eWhat, pnValues);
 
 	_ASSERTE(hList!=NULL);
-	uint num = 0;
+	unsigned num = 0;
 	wchar_t szNumber[32];
 
 	SendMessage(hList, CB_RESETCONTENT, 0, 0);
 
-	for (uint i = 0; i < nItems; i++)
+	for (unsigned i = 0; i < nItems; i++)
 	{
-		_wsprintf(szNumber, SKIPLEN(countof(szNumber)) L"%u", pnValues[i]);
+		swprintf_c(szNumber, L"%u", pnValues[i]);
 		SendMessage(hList, CB_ADDSTRING, 0, (LPARAM)szNumber);
 
 		if (pnValues[i] == nValue)
@@ -241,7 +242,7 @@ void CSetDlgLists::FillListBoxItems(HWND hList, eWordItems eWhat, UINT& nValue, 
 
 	if (abExact)
 	{
-		_wsprintf(szNumber, SKIPLEN(countof(szNumber)) L"%u", nValue);
+		swprintf_c(szNumber, L"%u", nValue);
 		SelectStringExact(hList, 0, szNumber);
 	}
 	else
@@ -256,7 +257,7 @@ bool CSetDlgLists::GetListBoxItem(HWND hWnd, WORD nCtrlId, eFillListBoxItems eWh
 {
 	bool bFound = false;
 	const ListBoxItem* Items;
-	uint nItems = GetListItems(eWhat, Items);
+	unsigned nItems = GetListItems(eWhat, Items);
 
 	HWND hList = nCtrlId ? GetDlgItem(hWnd, nCtrlId) : hWnd;
 	_ASSERTE(hList!=NULL);
@@ -293,7 +294,7 @@ bool CSetDlgLists::GetListBoxItem(HWND hWnd, WORD nCtrlId, eWordItems eWhat, UIN
 {
 	bool bFound = false;
 	const DWORD* pnValues;
-	uint nItems = GetListItems(eWhat, pnValues);
+	unsigned nItems = GetListItems(eWhat, pnValues);
 
 	HWND hList = nCtrlId ? GetDlgItem(hWnd, nCtrlId) : hWnd;
 	_ASSERTE(hList!=NULL);
@@ -326,50 +327,44 @@ bool CSetDlgLists::GetListBoxItem(HWND hWnd, WORD nCtrlId, eWordItems eWhat, BYT
 	return bFound;
 }
 
-INT_PTR CSetDlgLists::GetSelectedString(HWND hParent, WORD nListCtrlId, wchar_t** ppszStr)
+// The return value is the length of the string, in TCHARs, excluding the terminating null character
+// -1 on errors
+INT_PTR CSetDlgLists::GetSelectedString(HWND hParent, WORD nListCtrlId, CEStr& szStr)
 {
 	INT_PTR nCur = SendDlgItemMessage(hParent, nListCtrlId, CB_GETCURSEL, 0, 0);
 	INT_PTR nLen = (nCur >= 0) ? SendDlgItemMessage(hParent, nListCtrlId, CB_GETLBTEXTLEN, nCur, 0) : -1;
-	if (!ppszStr)
-		return nLen;
 
-	if (nLen<=0)
+	if (nLen > 0)
 	{
-		if (*ppszStr) {free(*ppszStr); *ppszStr = NULL;}
-	}
-	else
-	{
-		wchar_t* pszNew = (TCHAR*)calloc(nLen+1, sizeof(TCHAR));
+		CEStr szNew;
+		wchar_t* pszNew = szNew.GetBuffer(nLen);
 		if (!pszNew)
 		{
 			_ASSERTE(pszNew!=NULL);
 		}
 		else
 		{
-			SendDlgItemMessage(hParent, nListCtrlId, CB_GETLBTEXT, nCur, (LPARAM)pszNew);
-
-			if (*ppszStr)
+			nLen = SendDlgItemMessage(hParent, nListCtrlId, CB_GETLBTEXT, nCur, (LPARAM)pszNew);
+			if (nLen > 0)
 			{
-				if (lstrcmp(*ppszStr, pszNew) == 0)
+				if (!szStr.IsEmpty())
 				{
-					free(pszNew);
-					return nLen; // Изменений не было
+					if (lstrcmp(szStr, szNew) == 0)
+					{
+						goto wrap; // There were no changes
+					}
 				}
-			}
 
-			if (nLen > (*ppszStr ? (INT_PTR)_tcslen(*ppszStr) : 0))
-			{
-				if (*ppszStr) free(*ppszStr);
-				*ppszStr = pszNew; pszNew = NULL;
-			}
-			else
-			{
-				_wcscpy_c(*ppszStr, nLen+1, pszNew);
-				SafeFree(pszNew);
+				szStr.Attach(szNew.Detach());
 			}
 		}
 	}
 
+	if (nLen <= 0)
+	{
+		szStr.Clear();
+	}
+wrap:
 	return nLen;
 }
 
@@ -455,7 +450,7 @@ void CSetDlgLists::EnableDlgItems(HWND hParent, const DWORD* pnCtrlIds, size_t n
 void CSetDlgLists::EnableDlgItems(HWND hParent, eWordItems eWhat, bool bEnabled)
 {
 	const DWORD* pnValues;
-	uint nItems = GetListItems(eWhat, pnValues);
+	unsigned nItems = GetListItems(eWhat, pnValues);
 	EnableDlgItems(hParent, pnValues, nItems, bEnabled);
 }
 
@@ -494,7 +489,7 @@ void CSetDlgLists::EnableDlgItems(HWND hParent, eWordItems eWhat, bool bEnabled)
 
 //void CSetDlgLists::FillListBoxCharSet(hDlg,nDlgID,Value)
 //{ \
-//	u8 num = 4; /*индекс DEFAULT_CHARSET*/ \
+//	uint8_t num = 4; /*индекс DEFAULT_CHARSET*/ \
 //	for (size_t i = 0; i < countof(SettingsNS::CharSets); i++) \
 //	{ \
 //		SendDlgItemMessageW(hDlg, nDlgID, CB_ADDSTRING, 0, (LPARAM)SettingsNS::CharSets[i].sValue); \
@@ -505,7 +500,7 @@ void CSetDlgLists::EnableDlgItems(HWND hParent, eWordItems eWhat, bool bEnabled)
 
 //void CSetDlgLists::FillListBoxTabDefaultClickAction(tt,hDlg,nDlgID,Value)
 //{ \
-//	u8 num = Value;  \
+//	uint8_t num = Value;  \
 //	for (size_t i = 0; i < countof(SettingsNS::tt##DblClickActions); i++) \
 //	{ \
 //	SendDlgItemMessageW(hDlg, nDlgID, CB_ADDSTRING, 0, (LPARAM)SettingsNS::tt##DblClickActions[i].name); \

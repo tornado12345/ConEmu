@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -109,11 +109,11 @@ LRESULT CSetPgMarkCopy::MarkCopyPreviewProc(HWND hCtrl, UINT uMsg, WPARAM wParam
 	HBRUSH hbr;
 	HDC hdc;
 
-	uint idxCon = gpSet->AppStd.nBackColorIdx;
+	unsigned idxCon = gpSet->AppStd.nBackColorIdx;
 	if (idxCon > 15)
 		idxCon = 0;
-	uint idxBack = CONBACKCOLOR(gpSet->isCTSColorIndex);
-	uint idxFore = CONFORECOLOR(gpSet->isCTSColorIndex);
+	unsigned idxBack = CONBACKCOLOR(gpSet->isCTSColorIndex);
+	unsigned idxFore = CONFORECOLOR(gpSet->isCTSColorIndex);
 	RECT rcClient = {};
 	CSetPgMarkCopy* pPage = NULL;
 
@@ -147,7 +147,7 @@ LRESULT CSetPgMarkCopy::MarkCopyPreviewProc(HWND hCtrl, UINT uMsg, WPARAM wParam
 			SIZE sz = {};
 			GetTextExtentPoint32(hdc, szText, lstrlen(szText), &sz);
 			RECT rcText = {sz.cx, sz.cy};
-			OffsetRect(&rcText, max(0,(rcClient.right-rcClient.left-sz.cx)/2), max(0,(rcClient.bottom-rcClient.top-sz.cy)/2));
+			OffsetRect(&rcText, std::max<int>(0,(rcClient.right-rcClient.left-sz.cx)/2), std::max<int>(0,(rcClient.bottom-rcClient.top-sz.cy)/2));
 			DrawText(hdc, szText, -1, &rcText, DT_VCENTER|DT_CENTER|DT_SINGLELINE);
 			if (hOld)
 				SelectObject(hdc, hOld);

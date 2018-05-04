@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ConEmu.h"
 #include "ConEmuPipe.h"
+#include "OleInitializer.h"
 #include "RealConsole.h"
 #include "ScreenDump.h"
 #include "Update.h"
@@ -796,7 +797,7 @@ BOOL CDragDropData::PrepareDrag(BOOL abClickNeed, COORD crMouseDC, DWORD* pdwAll
 
 	if (size <= 0 || nFilesCount == 0)
 	{
-		wchar_t szInfo[128]; _wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"DnD: RetrieveDragFromInfo, Code=%i, nFilesCount=%i!", size, nFilesCount);
+		wchar_t szInfo[128]; swprintf_c(szInfo, L"DnD: RetrieveDragFromInfo, Code=%i, nFilesCount=%i!", size, nFilesCount);
 		gpConEmu->DebugStep(szInfo, TRUE);
 		goto wrap;
 	}
@@ -886,11 +887,11 @@ template <class T> void PidlDump(
 
 	while(p && p->mkid.cb)
 	{
-		_wsprintfA(szDump, SKIPLEN(countof(szDump)) "%i: ", nLevel+1);
+		sprintf_c(szDump, "%i: ", nLevel+1);
 		int i = lstrlenA(szDump);
 		//for (int j=0; j < nLevel; j++) { szDump[i++] = ' '; szDump[i++] = ' '; }
 		//szDump[i] = 0;
-		nLen = min(255,p->mkid.cb);
+		nLen = std::min<USHORT>(255, p->mkid.cb);
 
 		for(int j = 0; j < nLen; j++)
 		{
@@ -962,7 +963,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 
 		if (hDumpFile)
 		{
-			_wsprintf(szNames[0].str, SKIPLEN(countof(szNames[0].str)) L"Drag object contains %i formats\n\n", nCnt);
+			swprintf_c(szNames[0].str, L"Drag object contains %i formats\n\n", nCnt);
 			WriteFile(hDumpFile, szNames[0].str, (DWORD)_tcslen(szNames[0].str)*2, &nWritten, NULL);
 		}
 
@@ -1002,12 +1003,12 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 					case 0x0082: wcscpy_c(szNames[i].str, L"CF_DSPBITMAP"); break;
 					case 0x0083: wcscpy_c(szNames[i].str, L"CF_DSPMETAFILEPICT"); break;
 					case 0x008E: wcscpy_c(szNames[i].str, L"CF_DSPENHMETAFILE"); break;
-					default: _wsprintf(szNames[i].str, SKIPCOUNT(szNames[i].str) L"ClipFormatID=%i", fmt[i].cfFormat);
+					default: swprintf_c(szNames[i].str, L"ClipFormatID=%i", fmt[i].cfFormat);
 				}
 			}
 
 			INT_PTR nCurLen = _tcslen(szNames[i].str);
-			_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", tymed=0x%02X", fmt[i].tymed);
+			swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", tymed=0x%02X", fmt[i].tymed);
 			fmt[i].tymed = TYMED_HGLOBAL;
 			stg[i].tymed = 0; //TYMED_HGLOBAL;
 			size_t nDataSize = 0;
@@ -1026,22 +1027,22 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 						{
 							memsize[i] = GlobalSize(stg[i].hGlobal);
 							nCurLen = _tcslen(szNames[i].str);
-							_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", DataSize=%i", (DWORD)(memsize[i]));
+							swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", DataSize=%i", (DWORD)(memsize[i]));
 
 							if (memsize[i] == 1)
 							{
 								nCurLen = _tcslen(szNames[i].str);
-								_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", Data=0x%02X", (DWORD)*((LPBYTE)(psz[i])));
+								swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", Data=0x%02X", (DWORD)*((LPBYTE)(psz[i])));
 							}
 							else if (memsize[i] == sizeof(DWORD))
 							{
 								nCurLen = _tcslen(szNames[i].str);
-								_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", Data=0x%08X", (DWORD)*((LPDWORD)(psz[i])));
+								swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", Data=0x%08X", (DWORD)*((LPDWORD)(psz[i])));
 							}
-							else if (memsize[i] == sizeof(u64))
+							else if (memsize[i] == sizeof(uint64_t))
 							{
 								nCurLen = _tcslen(szNames[i].str);
-								_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", Data=0x%08X%08X", (DWORD)((LPDWORD)(psz[i]))[0], (DWORD)((LPDWORD)psz[i])[1]);
+								swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", Data=0x%08X%08X", (DWORD)((LPDWORD)(psz[i]))[0], (DWORD)((LPDWORD)psz[i])[1]);
 							}
 							else
 							{
@@ -1058,7 +1059,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 									//{
 									MultiByteToWideChar(CP_ACP, 0, pasz, memsize[i], pszData[i], memsize[i]);
 									//} else {
-									//	int nMaxLen = min(200,memsize[i]);
+									//	int nMaxLen = std::min(200,memsize[i]);
 									//	wchar_t* pwszDst = szNames[i].str+_tcslen(szNames[i].str);
 									//	MultiByteToWideChar(CP_ACP, 0, pasz, nMaxLen, pwszDst, nMaxLen);
 									//	pwszDst[nMaxLen] = 0;
@@ -1071,7 +1072,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 									StringCbCopy(pszData[i], nDataSize, pwsz);
 									nDataSize = ((memsize[i]>>1)+1)<<1; // было больше, с учетом возможного MultiByteToWideChar
 									//} else {
-									//	int nMaxLen = min(200,memsize[i]/2);
+									//	int nMaxLen = std::min(200,memsize[i]/2);
 									//	lstrcpyn(szNames[i].str+_tcslen(szNames[i].str), pwsz, nMaxLen);
 									//}
 								}
@@ -1123,7 +1124,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 				else
 				{
 					nCurLen = _tcslen(szNames[i].str);
-					_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", Error in source! TYMED_HGLOBAL was requested, but got (%i)", stg[i].tymed);
+					swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", Error in source! TYMED_HGLOBAL was requested, but got (%i)", stg[i].tymed);
 					ReleaseStgMedium(stg+i);
 					stg[i].hGlobal = NULL;
 				}
@@ -1131,7 +1132,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 			else
 			{
 				nCurLen = _tcslen(szNames[i].str);
-				_wsprintf(szNames[i].str+nCurLen, SKIPLEN(countof(szNames[i].str)-nCurLen) L", Can't get TYMED_HGLOBAL, rc=0x%08X", (DWORD)hr);
+				swprintf_c(szNames[i].str+nCurLen, countof(szNames[i].str)-nCurLen/*#SECURELEN*/, L", Can't get TYMED_HGLOBAL, rc=0x%08X", (DWORD)hr);
 				ReleaseStgMedium(stg+i);
 				stg[i].hGlobal = NULL;
 			}
@@ -1265,7 +1266,7 @@ bool CDragDropData::NeedRefreshToInfo(POINTL ptScreen)
 
 	#ifdef _DEBUG
 	static int nLastX, nLastY;
-	wchar_t szDbgInfo[128]; _wsprintf(szDbgInfo, SKIPLEN(countof(szDbgInfo)) L"CDragDropData::NeedRefreshToInfo(%i,%i)\n", ptScreen.x, ptScreen.y);
+	wchar_t szDbgInfo[128]; swprintf_c(szDbgInfo, L"CDragDropData::NeedRefreshToInfo(%i,%i)\n", ptScreen.x, ptScreen.y);
 	bool bShow = (nLastX != ptScreen.x || nLastY != ptScreen.y);
 	if (bShow)
 	{
@@ -1599,7 +1600,7 @@ BOOL CDragDropData::PaintDragImageBits(wchar_t* pszFiles, HDC& hDrawDC, HBITMAP&
 		nFilesCol ++;
 	}
 
-	nMaxX = min((OVERLAY_TEXT_SHIFT + nMaxX),nWidth);
+	nMaxX = std::min((OVERLAY_TEXT_SHIFT + nMaxX),nWidth);
 	// Если тащат много файлов/папок - можно попробовать разместить их в несколько колонок
 	int nColCount = 1;
 	// Win8 bug.
@@ -1742,7 +1743,7 @@ BOOL CDragDropData::PaintDragImageBits(wchar_t* pszFiles, HDC& hDrawDC, HBITMAP&
 	//				pDst->nRes1 = GetTickCount(); // что-то непонятное. Random?
 	//				pDst->nRes2 = (DWORD)-1;
 
-	//				const u32 nCurBlend = OVERLAY_ALPHA, nAllBlend = OVERLAY_ALPHA;
+	//				const uint32_t nCurBlend = OVERLAY_ALPHA, nAllBlend = OVERLAY_ALPHA;
 
 	//				INT_PTR PixCount = nMaxY * nLineX;
 	//				Assert(PixCount>0);
@@ -1886,6 +1887,12 @@ DragImageBits* CDragDropData::CreateDragImageBits(wchar_t* pszFiles)
 	DestroyDragImageWindow();
 	#endif
 
+	auto klMulDivU32 = [](const uint32_t& a, const uint32_t& b, const uint32_t& c) -> uint32_t
+	{
+		return (a * b / c);
+	};
+
+
 #if 0
 	if (abForceToTop)
 	{
@@ -1936,7 +1943,7 @@ DragImageBits* CDragDropData::CreateDragImageBits(wchar_t* pszFiles)
 		//	nFilesCol ++;
 		//}
 
-		//nMaxX = min((OVERLAY_TEXT_SHIFT + nMaxX),MAX_OVERLAY_WIDTH);
+		//nMaxX = std::min((OVERLAY_TEXT_SHIFT + nMaxX),MAX_OVERLAY_WIDTH);
 		//// Если тащат много файлов/папок - можно попробовать разместить их в несколько колонок
 		//int nColCount = 1;
 
@@ -2069,7 +2076,7 @@ DragImageBits* CDragDropData::CreateDragImageBits(wchar_t* pszFiles)
 						pDst->nRes1 = GetTickCount(); // что-то непонятное. Random?
 						pDst->nRes2 = (DWORD)-1;
 
-						const u32 nCurBlend = OVERLAY_ALPHA, nAllBlend = OVERLAY_ALPHA;
+						const uint32_t nCurBlend = OVERLAY_ALPHA, nAllBlend = OVERLAY_ALPHA;
 
 						INT_PTR PixCount = nMaxY * nMaxX;
 						Assert(PixCount>0);
@@ -2237,13 +2244,13 @@ BOOL CDragDropData::DrawImageBits(HDC hDrawDC, wchar_t* pszFile, int *nMaxX, int
 
 	// А теперь - имя файла/папки
 	RECT rcText = {nX+OVERLAY_TEXT_SHIFT, *nMaxY+1, 0, (*nMaxY + 16)};
-	rcText.right = min(MAX_OVERLAY_WIDTH, (rcText.left + *nMaxX));
+	rcText.right = std::min<int>(MAX_OVERLAY_WIDTH, (rcText.left + *nMaxX));
 	wchar_t szText[MAX_PATH+1]; lstrcpyn(szText, pszText, MAX_PATH); szText[MAX_PATH] = 0;
 	nDrawRC = DrawTextEx(hDrawDC, szText, _tcslen(szText), &rcText,
 	                     DT_LEFT|DT_TOP|DT_NOPREFIX|DT_END_ELLIPSIS|DT_SINGLELINE|DT_MODIFYSTRING, NULL);
 
 	if (*nMaxY < (rcText.bottom+1))
-		*nMaxY = min(rcText.bottom+1,300);
+		*nMaxY = std::min<int>(rcText.bottom+1, 300);
 
 	if (sfi.hIcon)
 	{
@@ -2346,7 +2353,7 @@ BOOL CDragDropData::LoadDragImageBits(IDataObject * pDataObject)
 		if (!IsDebuggerPresent())
 		{
 			_ASSERT(nInfoSize == nReqSize); // Неизвестный формат?
-			wchar_t szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"DragImageBits unknown format? (nInfoSize=%u) != (nReqSize=%u)", (DWORD)nInfoSize, (DWORD)nReqSize);
+			wchar_t szDbg[128]; swprintf_c(szDbg, L"DragImageBits unknown format? (nInfoSize=%u) != (nReqSize=%u)", (DWORD)nInfoSize, (DWORD)nReqSize);
 			gpConEmu->DebugStep(szDbg, TRUE);
 		}
 		#endif
@@ -2775,7 +2782,7 @@ void CDragDropData::DragFeedBack(DWORD dwEffect)
 {
 	HRESULT hrHelper = 0;
 #ifdef _DEBUG
-	wchar_t szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"DragFeedBack(%i)\n", (int)dwEffect);
+	wchar_t szDbg[128]; swprintf_c(szDbg, L"DragFeedBack(%i)\n", (int)dwEffect);
 	DEBUGSTRBACK(szDbg);
 #endif
 
@@ -2985,10 +2992,10 @@ LRESULT CDragDropData::DragProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lPa
 			MoveWindowRect(hWnd, rcWnd);
 			pds->bInDrag = TRUE;
 			pds->pDrag->mb_DragStarting = TRUE;
-			wchar_t szStep[255]; _wsprintf(szStep, SKIPLEN(countof(szStep)) L"DoDragDrop.Thread(Eff=0x%X, DataObject=0x%08X, DropSource=0x%08X)", dwAllowedEffects, LODWORD(pds->pDrag->mp_DataObject), LODWORD(pDropSource));
+			wchar_t szStep[255]; swprintf_c(szStep, L"DoDragDrop.Thread(Eff=0x%X, DataObject=0x%08X, DropSource=0x%08X)", dwAllowedEffects, LODWORD(pds->pDrag->mp_DataObject), LODWORD(pDropSource));
 			gpConEmu->DebugStep(szStep);
 			dwResult = DoDragDrop(pds->pDrag->mp_DataObject, pDropSource, dwAllowedEffects, &dwEffect);
-			_wsprintf(szStep, SKIPLEN(countof(szStep)) L"DoDragDrop finished, Code=0x%08X", dwResult);
+			swprintf_c(szStep, L"DoDragDrop finished, Code=0x%08X", dwResult);
 
 			switch(dwResult)
 			{
@@ -3021,8 +3028,11 @@ DWORD CDragDropData::DragThread(LPVOID lpParameter)
 {
 	DWORD nResult = 0;
 	CEDragSource* pds = (CEDragSource*)lpParameter;
-	//CoInitialize();
-	OleInitialize(NULL);
+
+	// OleInitialize calls CoInitializeEx internally to initialize the COM library on the current apartment.
+	// Because OLE operations are not thread-safe, OleInitialize specifies the concurrency model as single-thread apartment.
+	OleInitializer ole(true);
+
 	pds->hWnd = CreateWindowEx(WS_EX_TOOLWINDOW, pds->pDrag->ms_SourceClass, L"ConEmu Drag Source",
 	                           WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 	                           NULL, NULL, (HINSTANCE)g_hInstance, pds);

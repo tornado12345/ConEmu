@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@ extern LONG gnInReadConsoleOutput;
 
 BOOL AreCpInfoLeads(DWORD nCP, UINT* pnMaxCharSize);
 BOOL ReadConsoleOutputEx(HANDLE hOut, CHAR_INFO *pData, COORD bufSize, SMALL_RECT rgn, COORD* lpCursor = NULL);
+bool IsConsoleLineEmpty(HANDLE hOut, SHORT row, SHORT len = -1);
 
 bool IsConsoleDoubleCellCP();
-
+bool IsWin10LegacyConsole();

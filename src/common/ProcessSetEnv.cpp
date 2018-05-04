@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -127,7 +127,7 @@ CProcessEnvCmd::~CProcessEnvCmd()
 	m_Commands.clear();
 }
 
-// May comes from Task or ConEmu's -run switch
+// May come from Task or ConEmu's -run switch
 // or from Setting\Environment page where one line is a single command (bAlone == true)
 bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/, bool bAlone /*= false*/, INT_PTR anBefore /*= -1*/)
 {
@@ -144,7 +144,7 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 		bool bTokenOk = false;
 		wchar_t* lsNameVal = NULL;
 
-		// It may contains only "set" or "alias" if was not quoted
+		// It may contain only "set" or "alias" if was not quoted
 		if ((lstrcmpi(lsSet, L"set") == 0) || (lstrcmpi(lsSet, L"alias") == 0))
 		{
 			lsCmd.Set(lsSet);

@@ -7,8 +7,8 @@ if exist "%~dp0*.obj" del /Q "%~dp0*.obj" > nul
 if exist "%~dp0tests.fail" del /Q "%~dp0tests.fail" > nul
 
 set commons=../common/CEStr.cpp ../common/Memory.cpp ../common/WObjects.cpp ../common/WUser.cpp ../common/CmdLine.cpp ^
-            ../common/MStrSafe.cpp ../common/MStrDup.cpp ../common/MAssert.cpp ../common/WThreads.cpp ../common/RConStartArgs.cpp ^
-            ../common/MProcess.cpp
+            ../common/MStrSafe.cpp ../common/MStrDup.cpp ../common/MAssert.cpp ../common/WThreads.cpp ^
+            ../common/MProcess.cpp ../common/RConStartArgs.cpp ../common/RConStartArgsEx.cpp ../common/MModule.cpp
 
 set colorcmn=../ConEmu/ColorFix.cpp
 
@@ -52,11 +52,11 @@ goto :EOF
 
 
 :fail1
-call :test_cl_fail_9 fail1.cpp
+rem call :test_cl_fail_9 fail1.cpp
 call :test_cl_fail_14 fail1.cpp
 goto :EOF
 :fail2
-call :test_cl_fail_9 fail2.cpp
+rem call :test_cl_fail_9 fail2.cpp
 call :test_cl_fail_14 fail2.cpp
 goto :EOF
 :fail3
@@ -69,11 +69,11 @@ goto :EOF
 call :test_cl_fail_14 fail5.cpp
 goto :EOF
 :test1
-call :test_cl_luck_9 test1.cpp %commons% %lnk_def%
+rem call :test_cl_luck_9 test1.cpp %commons% %lnk_def%
 call :test_cl_luck_14 test1.cpp %commons% %lnk_def%
 goto :EOF
 :test2
-call :test_cl_luck_9 test2.cpp %colorcmn% %lnk_def%
+rem call :test_cl_luck_9 test2.cpp %colorcmn% %lnk_def%
 call :test_cl_luck_14 test2.cpp %colorcmn% %lnk_def%
 goto :EOF
 
@@ -82,7 +82,7 @@ goto :EOF
 call cecho /yellow "  VC9  cl test %~1"
 setlocal
 call "%~dp0..\vc.build.set.x32.cmd" 9 > nul
-if errorlevel 1 goto err
+if errorlevel 1 goto vars_err
 set VS_VERSION > "build-out.log"
 call :build_std /Fe"vc-test-9.exe" %*
 if errorlevel 1 (
@@ -97,19 +97,19 @@ endlocal
 goto :EOF
 
 :test_cl_luck_14
-call cecho /yellow "  VC14 cl test %~1"
+call cecho /yellow "  VC15 cl test %~1"
 setlocal
-call "%~dp0..\vc.build.set.x32.cmd" 14 > nul
-if errorlevel 1 goto err
+call "%~dp0..\vc.build.set.x32.cmd" 15 > nul
+if errorlevel 1 goto vars_err
 set VS_VERSION > "build-out.log"
-call :build_std /Fe"vc-test-14.exe" %*
+call :build_std /Fe"vc-test-15.exe" %*
 if errorlevel 1 (
   echo VC%VS_VERSION%: %* 1>> "tests.fail"
   type "build-out.log" >> "tests.fail"
   echo/ >> "tests.fail"
   call cecho /red "  CL FAILED, NOT EXPECTED"
 ) else (
-  call :run_test vc-test-14.exe
+  call :run_test vc-test-15.exe
 )
 endlocal
 goto :EOF
@@ -133,7 +133,7 @@ goto :EOF
 call cecho /yellow "  VC9  cl test %~1"
 setlocal
 call "%~dp0..\vc.build.set.x32.cmd" 9 > nul
-if errorlevel 1 goto err
+if errorlevel 1 goto vars_err
 set VS_VERSION > "build-out.log"
 call :build_err %*
 if errorlevel 1 (
@@ -148,10 +148,10 @@ endlocal
 goto :EOF
 
 :test_cl_fail_14
-call cecho /yellow "  VC14 cl test %~1"
+call cecho /yellow "  VC15 cl test %~1"
 setlocal
-call "%~dp0..\vc.build.set.x32.cmd" 14 > nul
-if errorlevel 1 goto err
+call "%~dp0..\vc.build.set.x32.cmd" 15 > nul
+if errorlevel 1 goto vars_err
 set VS_VERSION > "build-out.log"
 call :build_err %*
 if errorlevel 1 (
@@ -176,6 +176,11 @@ goto :EOF
 :build_err
 if exist *.obj del /Q *.obj > nul
 cl /c %cpp_def% %* 1>> "build-out.log"
+goto :EOF
+
+:vars_err
+call cecho "Failed to set up VC environment"
+echo Failed to set up VC environment >> "tests.fail"
 goto :EOF
 
 :end

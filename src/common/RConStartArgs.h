@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -44,10 +44,24 @@ enum RConBoolArg
 };
 
 #define DefaultSplitValue 500
-#define DefaultPtyFlags (1|4)
+
+typedef UINT PtyFlags;
+const PtyFlags
+	pty_XTerm    = 1,
+	pty_BrPaste  = 2,
+	pty_AppKeys  = 4,
+	pty_Default  = pty_XTerm;
 
 struct RConStartArgs
 {
+public:
+	RConStartArgs();
+	virtual ~RConStartArgs();
+
+	int  ProcessNewConArg(bool bForceCurConsole = false);
+	void AppendServerArgs(wchar_t* rsServerCmdLine, INT_PTR cchMax);
+
+public:
 	RConBoolArg     Detached; // internal use
 	RConBoolArg     NewConsole; // TRUE==-new_console, FALSE==-cur_console
 	RConBoolArg     BackgroundTab;      // -new_console:b
@@ -64,10 +78,13 @@ struct RConStartArgs
 	wchar_t* pszIconFile;   // "-new_console:C:<icon>"
 	wchar_t* pszPalette;    // "-new_console:P:<palette>"
 	wchar_t* pszWallpaper;  // "-new_console:W:<wallpaper>"
+	wchar_t* pszMntRoot;    // "-new_console:m:<mntroot>" - explicit prefix for mount root: /cygdrive or /mnt
+	wchar_t* pszAnsiLog;    // "-new_console:L:<AnsiLogDir>
 	
 	RConBoolArg     RunAsAdministrator; // -new_console:a
 	RConBoolArg     RunAsSystem;        // -new_console:A
 	RConBoolArg     RunAsRestricted;    // -new_console:r
+	RConBoolArg     RunAsNetOnly;       // -new_console:e
 	wchar_t* pszUserName, *pszDomain, szUserPassword[MAX_PATH]; // "-new_console:u:<user>:<pwd>"
 	RConBoolArg     UseEmptyPassword;   // для GUI
 	RConBoolArg     ForceUserDialog;    // -new_console:u
@@ -76,7 +93,7 @@ struct RConStartArgs
 
 	RConBoolArg     OverwriteMode;      // -new_console:w - enable "Overwrite" mode in console prompt
 
-	UINT     		nPTY;               // -new_console:p[N] - change pty modes, N is bitmask: 1 - xterm keyboard, 2 - bracketed paste, 4 - app cursor keys
+	PtyFlags		nPTY;               // -new_console:p[N] - change pty modes, N is bitmask: 1 - xterm keyboard, 2 - bracketed paste, 4 - app cursor keys
 	
 	RConBoolArg     BufHeight;          // -new_console:h<lines>
 	UINT     		nBufHeight;         //
@@ -118,33 +135,4 @@ struct RConStartArgs
 	wchar_t* pszTaskName;
 	#endif
 
-	RConStartArgs();
-	~RConStartArgs();
-
-	int ProcessNewConArg(bool bForceCurConsole = false);
-
-	void AppendServerArgs(wchar_t* rsServerCmdLine, INT_PTR cchMax);
-
-
-	// Hide unused (in dll's) methods
-#ifndef CONEMU_MINIMAL
-	bool CheckUserToken(HWND hPwd);
-	HANDLE CheckUserToken();
-	wchar_t* CreateCommandLine(bool abForTasks = false) const;
-	bool AssignFrom(const struct RConStartArgs* args, bool abConcat = false);
-	bool AssignUserArgs(const struct RConStartArgs* args, bool abConcat = false);
-	bool HasInheritedArgs() const;
-	bool AssignInheritedArgs(const struct RConStartArgs* args, bool abConcat = false);
-#endif
-
-	#if 0
-	// Case insensitive search
-	HMODULE hShlwapi;
-	typedef LPWSTR (WINAPI* StrStrI_t)(LPWSTR pszFirst, LPCWSTR pszSrch);
-	StrStrI_t WcsStrI;
-	#endif
-
-#ifdef _DEBUG
-	static void RunArgTests();
-#endif
 };

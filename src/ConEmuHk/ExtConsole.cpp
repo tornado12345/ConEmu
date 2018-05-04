@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define HIDE_USE_EXCEPTION_INFO
 
-#include <windows.h>
 #include "../common/defines.h"
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
@@ -40,6 +39,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/ConEmuColors3.h"
 #include "../common/WObjects.h"
 
+#include "Ansi.h"
 #include "SetHook.h"
 #include "hkConsoleOutput.h"
 #include "hkWindow.h"
@@ -287,16 +287,16 @@ static void ExtPrepareColor(const ConEmuColor& Attributes, AnnotationInfo& t, WO
 	//-- zeroing must be done by calling function
 	//memset(&t, 0, sizeof(t)); n = 0;
 
-	WORD f = 0;
-	CECOLORFLAGS Flags = Attributes.Flags;
-
+	const CECOLORFLAGS& Flags = Attributes.Flags;
+	t.style = 0;
 	if (Flags & CECF_FG_BOLD)
-		f |= AI_STYLE_BOLD;
+		t.style |= AI_STYLE_BOLD;
 	if (Flags & CECF_FG_ITALIC)
-		f |= AI_STYLE_ITALIC;
+		t.style |= AI_STYLE_ITALIC;
 	if (Flags & CECF_FG_UNDERLINE)
-		f |= AI_STYLE_UNDERLINE;
-	t.style = f;
+		t.style |= AI_STYLE_UNDERLINE;
+	if (Flags & CECF_REVERSE)
+		t.style |= AI_STYLE_REVERSE;
 
 	DWORD nForeColor, nBackColor;
 	if (Flags & CECF_FG_24BIT)
@@ -326,6 +326,11 @@ static void ExtPrepareColor(const ConEmuColor& Attributes, AnnotationInfo& t, WO
 		n |= (WORD)(CONCOLORINDEX(Attributes.BackgroundColor)<<4);
 		t.bk_valid = FALSE;
 	}
+
+	if (Flags & CECF_FG_UNDERLINE)
+		n |= COMMON_LVB_UNDERSCORE;
+	if (Flags & CECF_REVERSE)
+		n |= COMMON_LVB_REVERSE_VIDEO;
 }
 
 // Это это "цвет по умолчанию".
@@ -358,6 +363,7 @@ BOOL ExtSetAttributes(const ExtAttributesParm* Info)
 	WORD n = 0;
 	ExtPrepareColor(Info->Attributes, t, n);
 
+	CEAnsi::WriteAnsiLogFormat("ExtSetAttributes(0x%02X)", n);
 	SetConsoleTextAttribute(h, n);
 
 	TODO("По хорошему, gExtCurrentAttr нада ветвить по разным h");
@@ -945,7 +951,7 @@ static BOOL IntWriteText(HANDLE h, SHORT x, SHORT ForceDumpX,
 			case 7: // bell
 				continue; // non-spacing
 			case 8: // bs
-				pTrueColor = max(pTrueColorLine, pTrueColor-1);
+				pTrueColor = std::max(pTrueColorLine, pTrueColor-1);
 				continue;
 			case 9: // tab
 				TODO("Fill and mark affected console cells?");
@@ -1023,12 +1029,13 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 
 	// "Working lines" may be defined (Vim and others)
 	LONG  ScrollTop, ScrollBottom;
-	bool  ScrollRegion = ((Info->Flags & ewtf_Region) != 0);
+	bool  bScrollRegion = ((Info->Flags & ewtf_Region) != 0);
+	RECT  rcScrollRegion = Info->Region;
 	COORD crScrollCursor;
-	if (ScrollRegion)
+	if (bScrollRegion)
 	{
 		_ASSERTEX(Info->Region.left==-1 && Info->Region.right==-1); // Not used yet
-		Info->Region.left = 0; Info->Region.right = (csbi.dwSize.X - 1);
+		rcScrollRegion.left = 0; rcScrollRegion.right = (csbi.dwSize.X - 1);
 		_ASSERTEX(Info->Region.top>=0 && Info->Region.bottom>=Info->Region.top);
 		ScrollTop = Info->Region.top;
 		ScrollBottom = Info->Region.bottom+1;
@@ -1115,6 +1122,9 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 	}
 	#endif
 
+	bool bAutoLfNl = ((Info->Flags & ewtf_NoLfNl) == 0);
+	bool bNonAutoLfNl = false;
+
 	const wchar_t *pCur = pFrom;
 	SHORT x = csbi.dwCursorPosition.X, y = csbi.dwCursorPosition.Y; // 0-based
 	SHORT x2 = x, y2 = y;
@@ -1143,6 +1153,8 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 		bool bForceDumpScroll = false;
 		bool bSkipBELL = false;
 
+		WARNING("Refactoring required: use an object to cache symbols and write them on request");
+
 		// Обработка символов, которые двигают курсор
 		switch (*pCur)
 		{
@@ -1151,13 +1163,14 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 			// like normal char...
 			if (x2 >= WrapAtCol)
 			{
-				ForceDumpX = min(x2, WrapAtCol)-1;
+				ForceDumpX = std::min(x2, WrapAtCol)-1;
 			}
 			break;
 		case L'\r':
 			if (x2 > 0)
 				ForceDumpX = x2-1;
 			x2 = 0;
+			bNonAutoLfNl = false;
 			BSRN = true;
 			// "\r\n"? Do not break in two physical writes
 			if (((pCur+1) < pEnd) && (*(pCur+1) == L'\n'))
@@ -1169,7 +1182,11 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 		case L'\n':
 			if (x2 > 0)
 				ForceDumpX = x2-1;
-			x2 = 0; y2++;
+			if (bAutoLfNl)
+				x2 = 0;
+			else if (x2)
+				bNonAutoLfNl = true;
+			y2++;
 			if (y2 >= ScrollBottom)
 				bForceDumpScroll = true;
 			_ASSERTE(bWrap);
@@ -1204,7 +1221,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 			if ((x2 >= WrapAtCol)
 				&& (!bRevertMode || ((pCur+1) < pEnd)))
 			{
-				ForceDumpX = min(x2, WrapAtCol)-1;
+				ForceDumpX = std::min(x2, WrapAtCol)-1;
 				x2 = 0; y2++;
 			}
 		}
@@ -1248,10 +1265,10 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 				// расширенный буфер - прокрутить
 				_ASSERTE((y-y2) == -1); // Должен быть сдвиг на одну строку
 				ExtScrollScreenParm Shift = {sizeof(Shift), essf_None, h, y-y2, DefClr.Attributes, L' '};
-				if (ScrollRegion)
+				if (bScrollRegion)
 				{
 					Shift.Flags |= essf_Region;
-					Shift.Region = Info->Region;
+					Shift.Region = rcScrollRegion;
 					//Shift.Region.top += (y2-y);
 					if (ScrollBottom >= csbi.dwSize.Y)
 						Shift.Flags |= essf_ExtOnly;
@@ -1265,7 +1282,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 				Info->ScrolledRowsUp++;
 
 				// координату - "отмотать" (она как бы не изменилась)
-				if (ScrollRegion && (ScrollBottom < csbi.dwSize.Y))
+				if (bScrollRegion && (ScrollBottom < csbi.dwSize.Y))
 				{
 					y2 = LOSHORT(ScrollBottom) - 1;
 					_ASSERTEX((int)y2 == (int)(ScrollBottom - 1));
@@ -1274,6 +1291,8 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 					crScrollCursor.Y = y2;
 
 					SetConsoleCursorPosition(Info->ConsoleOutput, crScrollCursor);
+
+					bNonAutoLfNl = false; // already processed
 				}
 				else
 				{
@@ -1288,15 +1307,48 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 			}
 			y = y2;
 		}
+
+		// xterm-compatible '\n': just move cursor downward, don't do CR
+		if (bNonAutoLfNl)
+		{
+			_ASSERTE(x2>0);
+			_ASSERTE(pCur < pEnd && *pCur == L'\n' && (pFrom == pCur || pFrom == pCur+1));
+			bNonAutoLfNl = false;
+			crScrollCursor.X = x2;
+			crScrollCursor.Y = y2;
+			SetConsoleCursorPosition(Info->ConsoleOutput, crScrollCursor);
+			pFrom = pCur + 1;
+		}
 	}
 
 	if (pCur > pFrom)
 	{
+		_ASSERTE(!bNonAutoLfNl && "bNonAutoLfNl must be processed already");
+
 		// Printing (NOT including pCur) using extended attributes
-		SHORT ForceDumpX = (x2 > x) ? (min(x2, WrapAtCol)-1) : -1;
-		lbRc = IntWriteText(h, x, ForceDumpX, pFrom, (DWORD)(pCur - pFrom),
+		SHORT ForceDumpX = (x2 > x) ? (std::min(x2, WrapAtCol)-1) : -1;
+		DWORD nSplit1 = 0;
+		DWORD toWrite = (DWORD)(pCur - pFrom);
+		if (bRevertMode && (toWrite > 1))
+		{
+			// Win-8.1 bug: When cursor is on cell 1 (0-based) and we write {Width-1} spaces
+			//              the cursor after write operation goes to wrong position.
+			//              For example, when Width=110, CursorX becomes 101.
+			if ((toWrite + x) == (DWORD)csbi.dwSize.X)
+			{
+				toWrite--; nSplit1++;
+			}
+		}
+		lbRc = IntWriteText(h, x, ForceDumpX, pFrom, toWrite,
 					 (pTrueColorStart && (nLinePosition >= 0)) ? (pTrueColorStart + nLinePosition) : NULL,
 					 (pTrueColorEnd), AIColor, csbi, (WriteConsoleW_t)Info->Private);
+		if (nSplit1)
+		{
+
+			lbRc |= IntWriteText(h, x+toWrite, ForceDumpX, pFrom+toWrite, nSplit1,
+					 (pTrueColorStart && (nLinePosition >= 0)) ? (pTrueColorStart + nLinePosition) : NULL,
+					 (pTrueColorEnd), AIColor, csbi, (WriteConsoleW_t)Info->Private);
+		}
 	}
 
 	if (bRevertMode)
@@ -1390,7 +1442,7 @@ BOOL ExtFillOutput(ExtFillOutputParm* Info)
 				X2 = nWindowWidth;
 			}
 
-			for (SHORT y = max(Y1, srWork.Top); y <= Y2; y++)
+			for (SHORT y = std::max(Y1, srWork.Top); y <= Y2; y++)
 			{
 				SHORT xMax = (y == Y2) ? X2 : nWindowWidth;
 				SHORT xMin = (y == Y1) ? Info->Coord.X : 0;
@@ -1458,7 +1510,7 @@ BOOL ExtScrollLine(ExtScrollScreenParm* Info)
 	SHORT nWindowWidth  = srWork.Right - srWork.Left + 1;
 	SHORT nWindowHeight = srWork.Bottom - srWork.Top + 1;
 
-	int nMaxCell = min(nWindowWidth * nWindowHeight, gpTrueColor->bufferSize);
+	int nMaxCell = std::min(nWindowWidth * nWindowHeight, gpTrueColor->bufferSize);
 	int nMaxRows = nMaxCell / nWindowWidth;
 	int nY1 = (csbi.dwCursorPosition.Y - srWork.Top);
 
@@ -1598,7 +1650,7 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 
 	if (Info->Flags & essf_Region)
 	{
-		_ASSERTEX(Info->Region.left==0 && Info->Region.right==(csbi.dwSize.X-1)); // Not used yet!
+		_ASSERTEX(Info->Region.left==0 && (Info->Region.right==0 || Info->Region.right==(csbi.dwSize.X-1))); // Not used yet!
 		if ((Info->Region.top < 0) || (Info->Region.bottom < Info->Region.top))
 		{
 			_ASSERTEX(Info->Region.top>=0 && Info->Region.bottom>=Info->Region.top); // Invalid scroll region was requested?
@@ -1696,12 +1748,12 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 		// Scroll whole page up by n (default 1) lines. New lines are added at the bottom.
 		if (gpTrueColor)
 		{
-			int nMaxCell = min(nWindowWidth * nWindowHeight,gpTrueColor->bufferSize);
+			int nMaxCell = std::min(nWindowWidth * nWindowHeight,gpTrueColor->bufferSize);
 			int nMaxRows = nMaxCell / nWindowWidth;
 			//_ASSERTEX(SrcLineTop >= srWork.Top); That will be if visible region is ABOVE our TrueColor region
 			int nShiftRows = -nDir; // 1
-			int nY1 = min(max((SrcLineTop - srWork.Top),nShiftRows),nMaxRows);    // 2
-			int nY2 = min(max((SrcLineBottom - srWork.Top),nShiftRows),nMaxRows); // 6
+			int nY1 = std::min(std::max((SrcLineTop - srWork.Top),nShiftRows),nMaxRows);    // 2
+			int nY2 = std::min(std::max((SrcLineBottom - srWork.Top),nShiftRows),nMaxRows); // 6
 			int nRows = nY2 - nY1 + 1; // 5
 
 			if (nRows > 0)
@@ -1730,7 +1782,7 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 					}
 					#else
 					_ASSERTE(FALSE && "Continue to fill");
-					cr0.Y = max(0,(nWindowHeight+nDir));
+					cr0.Y = std::max(0,(nWindowHeight+nDir));
 					int nLines = (-nDir);
 					ExtFillOutputParm f = {sizeof(f), efof_Attribute|efof_Character, Info->ConsoleOutput,
 						Info->FillAttr, Info->FillChar, cr0, csbi.dwSize.X * nLines};
@@ -1756,7 +1808,7 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 
 			if (nDir < 0)
 			{
-				cr0.Y = max(0,(SrcLineBottom + nDir + 1));
+				cr0.Y = std::max(0,(SrcLineBottom + nDir + 1));
 				int nLines = SrcLineBottom - cr0.Y + 1;
 				ExtFillOutputParm f = {sizeof(f), efof_Attribute|efof_Character, Info->ConsoleOutput,
 					Info->FillAttr, Info->FillChar, cr0, csbi.dwSize.X * nLines};
@@ -1769,13 +1821,13 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 		// Scroll whole page down by n (default 1) lines. New lines are added at the top.
 		if (gpTrueColor)
 		{
-			int nMaxCell = min(nWindowWidth * nWindowHeight,gpTrueColor->bufferSize);
+			int nMaxCell = std::min(nWindowWidth * nWindowHeight,gpTrueColor->bufferSize);
 			int nMaxRows = nMaxCell / nWindowWidth;
 			//_ASSERTEX(SrcLineTop >= srWork.Top); That will be if visible region is ABOVE our TrueColor region
 			int nShiftRows = nDir;
 			int nMaxRowsShift = nMaxRows - nShiftRows;
-			int nY1 = min(max((SrcLineTop - srWork.Top),0),nMaxRowsShift);
-			int nY2 = min(max((SrcLineBottom - srWork.Top),0),nMaxRowsShift);
+			int nY1 = std::min(std::max((SrcLineTop - srWork.Top),0),nMaxRowsShift);
+			int nY2 = std::min(std::max((SrcLineBottom - srWork.Top),0),nMaxRowsShift);
 			int nRows = nY2 - nY1 + 1;
 
 			if (nRows > 0)

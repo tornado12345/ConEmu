@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -60,7 +60,7 @@ CConEmuInside::CConEmuInside()
 	mb_InsideSynchronizeCurDir = false;
 	ms_InsideSynchronizeCurDir = NULL;
 	mb_InsidePaneWasForced = false;
-	mh_InsideParentWND = mh_InsideParentRel = NULL;
+	mh_InsideParentWND = mh_InitialRoot = mh_InsideParentRel = NULL;
 	mh_InsideParentPath = mh_InsideParentCD = NULL; ms_InsideParentPath[0] = 0;
 	mb_TipPaneWasShown = false;
 	mh_TipPaneWndPost = NULL;
@@ -486,7 +486,7 @@ RepeatCheck:
 			}
 		}
 
-		_wsprintf(szMsg, SKIPLEN(countof(szMsg)) L"%sCan't find appropriate shell window!\nUnrecognized layout of the Explorer.\n\nContinue in normal mode?", szAddMsg);
+		swprintf_c(szMsg, L"%sCan't find appropriate shell window!\nUnrecognized layout of the Explorer.\n\nContinue in normal mode?", szAddMsg);
 		int nBtn = MsgBox(szMsg, MB_ICONSTOP|MB_YESNO|MB_DEFBUTTON2);
 
 		if (nBtn != IDYES)
@@ -624,7 +624,7 @@ bool CConEmuInside::TurnExplorerTipPane(wchar_t (&szAddMsg)[128])
 		}
 
 		// Last chance - try to post key sequence "F10 Left Left Down Down Down Left"
-		// This will opens popup menu containing "Tip of the day" menuitem
+		// This will open popup menu containing "Tip of the day" menuitem
 		// "Esc Esc Esc" it and post {WM_COMMAND,EMID_TIPOFDAY} again
 		WORD vkPostKeys[] = {VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_RIGHT, VK_RIGHT, VK_RIGHT, VK_DOWN, VK_DOWN, VK_DOWN, VK_RIGHT, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, 0};
 
@@ -1005,7 +1005,7 @@ HWND CConEmuInside::CheckInsideFocus()
 
 	if (!GetGUIThreadInfo(nTID, &tif))
 	{
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"GetGUIThreadInfo(%u) failed, code=%u", nTID, GetLastError());
+		swprintf_c(szInfo, L"GetGUIThreadInfo(%u) failed, code=%u", nTID, GetLastError());
 		LogString(szInfo);
 		return NULL;
 	}
@@ -1015,7 +1015,7 @@ HWND CConEmuInside::CheckInsideFocus()
 	{
 		last_tif = tif;
 
-		_wsprintf(szInfo, SKIPCOUNT(szInfo)
+		swprintf_c(szInfo,
 			L"ParentInputInfo: flags=x%X Active=x%X Focus=x%X Capture=x%X Menu=x%X MoveSize=x%X Caret=x%X (%i,%i)-(%i,%i)",
 			tif.flags, LODWORD(tif.hwndActive), LODWORD(tif.hwndFocus), LODWORD(tif.hwndCapture), LODWORD(tif.hwndMenuOwner),
 			LODWORD(tif.hwndMoveSize), LODWORD(tif.hwndCaret), LOGRECTCOORDS(tif.rcCaret));

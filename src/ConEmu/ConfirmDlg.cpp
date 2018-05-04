@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -153,7 +153,7 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 		else
 			wcscpy_c(szMessage, L"Confirm closing?");
 
-		wchar_t szWWW[MAX_PATH]; _wsprintf(szWWW, SKIPLEN(countof(szWWW)) L"<a href=\"%s\">%s</a>", gsHomePage, gsHomePage);
+		wchar_t szWWW[MAX_PATH]; swprintf_c(szWWW, L"<a href=\"%s\">%s</a>", gsHomePage, gsHomePage);
 
 		wchar_t szCloseAll[MAX_PATH*2]; wchar_t *pszText;
 		if (Parm.asSingleConsole)
@@ -163,13 +163,13 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 			int iLen = lstrlen(Parm.asSingleTitle);
 			const int iCozyLen = 40;
 			int cchMax = (countof(szCloseAll) - (pszText - szCloseAll));
-			if (iLen <= min(iCozyLen, cchMax))
+			if (iLen <= std::min(iCozyLen, cchMax))
 			{
 				lstrcpyn(pszText, Parm.asSingleTitle, cchMax);
 			}
 			else
 			{
-				int iMax = min(iCozyLen, cchMax)-3;
+				int iMax = std::min(iCozyLen, cchMax)-3;
 				lstrcpyn(pszText, Parm.asSingleTitle, iMax);
 				if ((iMax + 4) < cchMax)
 					_wcscat_c(pszText, cchMax, L"...");
@@ -178,7 +178,7 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 		}
 		else
 		{
-			_wsprintf(szCloseAll, SKIPLEN(countof(szCloseAll))
+			swprintf_c(szCloseAll,
 				(Parm.bGroup && (Parm.nConsoles>1))
 					? ((Parm.bGroup == ConfirmCloseParam::eGroup)
 						? L"Close group (%u consoles)"
@@ -193,12 +193,12 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 		{
 			//if (nOperations)
 			{
-				_wsprintf(pszText, SKIPLEN(countof(szCloseAll)-(pszText-szCloseAll)) L"\nIncomplete operations: %i", Parm.nOperations);
+				swprintf_c(pszText, countof(szCloseAll)-(pszText-szCloseAll)/*#SECURELEN*/, L"\nIncomplete operations: %i", Parm.nOperations);
 				pszText += _tcslen(pszText);
 			}
 			//if (nUnsavedEditors)
 			{
-				_wsprintf(pszText, SKIPLEN(countof(szCloseAll)-(pszText-szCloseAll)) L"\nUnsaved editor windows: %i", Parm.nUnsavedEditors);
+				swprintf_c(pszText, countof(szCloseAll)-(pszText-szCloseAll)/*#SECURELEN*/, L"\nUnsaved editor windows: %i", Parm.nUnsavedEditors);
 				pszText += _tcslen(pszText);
 			}
 		}
@@ -212,7 +212,7 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 			if (iCon >= 0)
 			{
 				pszText = szCloseOne + _tcslen(szCloseOne);
-				_wsprintf(pszText, SKIPLEN(countof(szCloseOne)-(pszText-szCloseOne)) L"\n#%u: ", (iCon+1));
+				swprintf_c(pszText, countof(szCloseOne)-(pszText-szCloseOne)/*#SECURELEN*/, L"\n#%u: ", (iCon+1));
 				pszText += _tcslen(pszText);
 				lstrcpyn(pszText, VCon->RCon()->GetTitle(true), countof(szCloseOne)-(pszText-szCloseOne));
 			}
@@ -278,14 +278,14 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 	{
 		lstrcpyn(szText,
 			Parm.asSingleConsole ? Parm.asSingleConsole : Parm.bForceKill ? L"Confirm killing?" : L"Confirm closing?",
-			min(128,countof(szText)));
+			std::min<int>(128, countof(szText)));
 		wcscat_c(szText, L"\r\n\r\n");
 		int nLen = lstrlen(szText);
 		lstrcpyn(szText+nLen, Parm.asSingleTitle, countof(szText)-nLen);
 	}
 	else
 	{
-		_wsprintf(szText, SKIPLEN(countof(szText)) L"About to close %u console%s.\r\n", Parm.nConsoles, (Parm.nConsoles>1)?L"s":L"");
+		swprintf_c(szText, L"About to close %u console%s.\r\n", Parm.nConsoles, (Parm.nConsoles>1)?L"s":L"");
 	}
 	pszText = szText+_tcslen(szText);
 
@@ -295,12 +295,12 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm)
 
 		if (Parm.nOperations)
 		{
-			_wsprintf(pszText, SKIPLEN(countof(szText)-(pszText-szText)) L"Incomplete operations: %i\r\n", Parm.nOperations);
+			swprintf_c(pszText, countof(szText)-(pszText-szText)/*#SECURELEN*/, L"Incomplete operations: %i\r\n", Parm.nOperations);
 			pszText += _tcslen(pszText);
 		}
 		if (Parm.nUnsavedEditors)
 		{
-			_wsprintf(pszText, SKIPLEN(countof(szText)-(pszText-szText)) L"Unsaved editor windows: %i\r\n", Parm.nUnsavedEditors);
+			swprintf_c(pszText, countof(szText)-(pszText-szText)/*#SECURELEN*/, L"Unsaved editor windows: %i\r\n", Parm.nUnsavedEditors);
 			pszText += _tcslen(pszText);
 		}
 	}
@@ -327,7 +327,7 @@ wrap:
 
 // uType - flags from MsgBox, i.e. MB_YESNOCANCEL
 int ConfirmDialog(LPCWSTR asMessage,
-	LPCWSTR asMainLabel, LPCWSTR asCaption, LPCWSTR asUrl, UINT uType,
+	LPCWSTR asMainLabel, LPCWSTR asCaption, LPCWSTR asUrl, UINT uType, HWND ahParent,
 	LPCWSTR asBtn1Name /*= NULL*/, LPCWSTR asBtn1Hint /*= NULL*/,
 	LPCWSTR asBtn2Name /*= NULL*/, LPCWSTR asBtn2Hint /*= NULL*/,
 	LPCWSTR asBtn3Name /*= NULL*/, LPCWSTR asBtn3Hint /*= NULL*/)
@@ -428,7 +428,7 @@ int ConfirmDialog(LPCWSTR asMessage,
 			buttons[2].pszButtonText = lsBtn3.ms_Val;
 		}
 
-		config.hwndParent                   = ghWnd;
+		config.hwndParent                   = ahParent;
 		config.dwFlags                      = /*TDF_USE_HICON_MAIN|*/TDF_USE_COMMAND_LINKS|TDF_ALLOW_DIALOG_CANCELLATION
 		                                      |TDF_ENABLE_HYPERLINKS; //|TDIF_SIZE_TO_CONTENT|TDF_CAN_BE_MINIMIZED;
 		config.pszWindowTitle               = asCaption ? asCaption : gpConEmu->GetDefaultTitle();
@@ -495,7 +495,7 @@ int ConfirmDialog(LPCWSTR asMessage,
 	}
 
 	// Show dialog
-	nBtn = MsgBox(szText, uType, asCaption, ghWnd);
+	nBtn = MsgBox(szText, uType, asCaption, ahParent);
 wrap:
 	InterlockedDecrement(&lCounter);
 	return nBtn;

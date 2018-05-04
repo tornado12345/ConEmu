@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2015 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,9 +29,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
-#define CEDEF_ExtendColorIdx   14
 #define CEDEF_BackColorAuto    16
 #define CEDEF_FontNormalColor  1
 #define CEDEF_FontBoldColor    12
@@ -41,11 +40,6 @@ struct ColorPalette
 {
 	wchar_t* pszName;
 	bool bPredefined;
-
-	//reg->Load(L"ExtendColors", isExtendColors);
-	bool isExtendColors;
-	//reg->Load(L"ExtendColorIdx", nExtendColorIdx);
-	BYTE nExtendColorIdx; // 0..15
 
 	//reg->Load(L"TextColorIdx", nTextColorIdx);
 	BYTE nTextColorIdx; // 0..15,16
@@ -57,10 +51,10 @@ struct ColorPalette
 	BYTE nPopBackColorIdx; // 0..15,16
 
 	// Loaded
-	COLORREF Colors[0x20];
+	COLORREF Colors[0x10];
 
 	// Computed
-	COLORREF ColorsFade[0x20];
+	COLORREF ColorsFade[0x10];
 	bool FadeInitialized;
 
 	COLORREF* GetColors(bool abFade);

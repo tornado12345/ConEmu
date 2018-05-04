@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -48,7 +48,7 @@ bool CDlgItemHelper::checkDlgButton(HWND hParent, WORD nCtrlId, UINT uCheck)
 		if (!hCheckBox)
 		{
 			//_ASSERTE(hCheckBox!=NULL && "Checkbox not found in hParent dlg");
-			wchar_t szErr[128]; _wsprintf(szErr, SKIPLEN(countof(szErr)) L"checkDlgButton failed\nControlID %u not found in hParent dlg", nCtrlId);
+			wchar_t szErr[128]; swprintf_c(szErr, L"checkDlgButton failed\nControlID %u not found in hParent dlg", nCtrlId);
 			MsgBox(szErr, MB_SYSTEMMODAL | MB_ICONSTOP, L"ConEmu settings", ghOpWnd);
 		}
 		else
@@ -75,7 +75,7 @@ bool CDlgItemHelper::checkRadioButton(HWND hParent, int nIDFirstButton, int nIDL
 		//_ASSERTE(GetDlgItem(hParent, nIDFirstButton) && "Checkbox not found in hParent dlg");
 		//_ASSERTE(GetDlgItem(hParent, nIDLastButton) && "Checkbox not found in hParent dlg");
 		//_ASSERTE(GetDlgItem(hParent, nIDCheckButton) && "Checkbox not found in hParent dlg");
-		wchar_t szErr[128]; _wsprintf(szErr, SKIPLEN(countof(szErr)) L"checkRadioButton failed\nControlIDs %u,%u,%u not found in hParent dlg", nIDFirstButton, nIDLastButton, nIDCheckButton);
+		wchar_t szErr[128]; swprintf_c(szErr, L"checkRadioButton failed\nControlIDs %u,%u,%u not found in hParent dlg", nIDFirstButton, nIDLastButton, nIDCheckButton);
 		MsgBox(szErr, MB_SYSTEMMODAL | MB_ICONSTOP, L"ConEmu settings", ghOpWnd);
 	}
 #endif
@@ -108,7 +108,7 @@ void CDlgItemHelper::enableDlgItems(HWND hParent, UINT* pnCtrlID, INT_PTR nCount
 			#if defined(_DEBUG)
 			//_ASSERTE(GetDlgItem(hParent, pnCtrlID[i]) != NULL);
 			#endif
-			wchar_t szErr[128]; _wsprintf(szErr, SKIPLEN(countof(szErr)) L"enableDlgItems failed\nControlID %u not found in hParent dlg", pnCtrlID[i]);
+			wchar_t szErr[128]; swprintf_c(szErr, L"enableDlgItems failed\nControlID %u not found in hParent dlg", pnCtrlID[i]);
 			MsgBox(szErr, MB_SYSTEMMODAL | MB_ICONSTOP, L"ConEmu settings", ghOpWnd);
 			continue;
 		}
@@ -129,7 +129,7 @@ BYTE CDlgItemHelper::isChecked(HWND hParent, WORD nCtrlId)
 	else if ((nCtrlId != IDCANCEL) && !GetDlgItem(hParent, nCtrlId))
 	{
 		//_ASSERTE(hCheckBox!=NULL && "Checkbox not found in hParent dlg");
-		wchar_t szErr[128]; _wsprintf(szErr, SKIPLEN(countof(szErr)) L"IsChecked failed\nControlID %u not found in hParent dlg", nCtrlId);
+		wchar_t szErr[128]; swprintf_c(szErr, L"IsChecked failed\nControlID %u not found in hParent dlg", nCtrlId);
 		MsgBox(szErr, MB_SYSTEMMODAL | MB_ICONSTOP, L"ConEmu settings", ghOpWnd);
 	}
 #endif
@@ -171,7 +171,7 @@ int CDlgItemHelper::GetNumber(HWND hParent, WORD nCtrlId, int nMin /*= 0*/, int 
 			nValue = _wtoi((szNumber[0]==L' ') ? (szNumber+1) : szNumber);
 		// Validation?
 		if (nMin < nMax)
-			nValue = min(nMax,max(nMin,nValue));
+			nValue = std::min(nMax,std::max(nMin,nValue));
 	}
 
 	return nValue;
@@ -251,7 +251,7 @@ bool CDlgItemHelper::isHyperlinkCtrl(WORD nCtrlId)
 	switch (nCtrlId)
 	{
 	case stHomePage:
-	case stDefTermWikiLink:
+	case stSetPgWikiLink:
 	case stConEmuUrl:
 	case stAnsiSecureExecUrl:
 		return true;
@@ -284,7 +284,12 @@ bool CDlgItemHelper::ProcessHyperlinkCtrl(HWND hDlg, WORD nCtrlId)
 			) return false;
 	}
 
-	DWORD shellRc = (DWORD)(INT_PTR)ShellExecute(ghWnd, L"open", lsUrl, NULL, NULL, SW_SHOWNORMAL);
+	return OpenHyperlink(lsUrl, hDlg);
+}
+
+bool CDlgItemHelper::OpenHyperlink(CEStr& url, HWND hParent)
+{
+	DWORD shellRc = (DWORD)(INT_PTR)ShellExecute(hParent, L"open", url, NULL, NULL, SW_SHOWNORMAL);
 	if (shellRc <= 32)
 	{
 		DisplayLastError(L"ShellExecute failed", shellRc);

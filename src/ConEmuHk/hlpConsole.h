@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,17 +28,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 BOOL MyGetConsoleFontSize(COORD& crFontSize);
 BOOL IsVisibleRectLocked(COORD& crLocked);
 void LockServerReadingThread(bool bLock, COORD dwSize, CESERVER_REQ*& pIn, CESERVER_REQ*& pOut);
 BOOL GetConsoleScreenBufferInfoCached(HANDLE hConsoleOutput, PCONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo, BOOL bForced = FALSE);
 BOOL GetConsoleModeCached(HANDLE hConsoleHandle, LPDWORD lpMode, BOOL bForced = FALSE);
-bool IsPromptActionAllowed(bool bForce, bool bBashMargin, HANDLE* phConIn);
-BOOL OnPromptBsDeleteWord(bool bForce, bool bBashMargin);
-BOOL OnReadConsoleClick(SHORT xPos, SHORT yPos, bool bForce, bool bBashMargin);
-BOOL OnExecutePromptCmd(LPCWSTR asCmd);
+
+bool IsConsoleActive();
 
 // Function AttachConsole exists in WinXP and above, need dynamic link
 typedef BOOL (WINAPI* AttachConsole_t)(DWORD dwProcessId);

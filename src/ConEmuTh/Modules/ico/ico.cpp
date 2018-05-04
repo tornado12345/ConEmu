@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2010-2011 Maximus5
+Copyright (c) 2010-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,16 +26,16 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
+#include "../../../common/defines.h"
 #include <shellapi.h>
-//#include <vector>
+using namespace std;
 #include <GdiPlus.h>
 #include <crtdbg.h>
 #include "../../../common/MStrSafe.h"
 #include "../../../common/Defines.h"
 #include "../../../common/Memory.h"
 #include "../ThumbSDK.h"
-#include "MStream.h"
+#include "../MStream.h"
 
 #pragma comment(lib, "gdiplus.lib")
 
@@ -1077,7 +1077,7 @@ struct ICOImage
 		pLoadPreview->crSize.X = lWidth;
 		pLoadPreview->crSize.Y = lHeight;
 		pLoadPreview->cbPixelsSize = pLoadPreview->cbStride * lHeight;
-		_wsprintf(szComments, SKIPLEN(countof(szComments)) L"%i x %i x %ibpp [%i] %s%s", lWidth, lHeight, nIconBPP, pIcon->Icon.idCount,
+		swprintf_c(szComments, L"%i x %i x %ibpp [%i] %s%s", lWidth, lHeight, nIconBPP, pIcon->Icon.idCount,
 		          pIcon->Icon.idType!=2 ? L"ICO" : L"CUR", bPNG ? L" [PNG]" : L"");
 		pLoadPreview->pszComments = szComments;
 		return TRUE;

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -85,8 +85,7 @@ void CLngRc::Reload(bool bForce /*= false*/)
 	bool bExists = false;
 	CEStr lsNewLng, lsNewFile;
 
-	// TODO: There would be gpSet member in future
-	lsNewLng.Set(gpConEmu->opt.Language.GetStr());
+	lsNewLng.Set(gpConEmu->opt.Language.Exists ? gpConEmu->opt.Language.GetStr() : gpSet->Language);
 
 	// Language was requested?
 	if (!lsNewLng.IsEmpty())
@@ -108,12 +107,14 @@ void CLngRc::Reload(bool bForce /*= false*/)
 		}
 		else
 		{
-			lsNewFile = JoinPath(gpConEmu->ms_ConEmuExeDir, gsResourceFileName);
-			if (!(bExists = FileExists(lsNewFile)))
-			{
-				lsNewFile = JoinPath(gpConEmu->ms_ConEmuBaseDir, gsResourceFileName);
-				bExists = FileExists(lsNewFile);
-			}
+			if (!bExists)
+				bExists = FileExists(lsNewFile = JoinPath(gpConEmu->ms_ConEmuExeDir, gsResourceFileName));
+			if (!bExists)
+				bExists = FileExists(lsNewFile = JoinPath(gpConEmu->ms_ConEmuBaseDir, gsResourceFileName));
+			#ifdef _DEBUG
+			if (!bExists)
+				bExists = FileExists(lsNewFile = JoinPath(gpConEmu->ms_ConEmuExeDir, L"..\\Release\\ConEmu", gsResourceFileName));
+			#endif
 		}
 
 		// File name was changed?
@@ -141,11 +142,24 @@ void CLngRc::Reload(bool bForce /*= false*/)
 			ms_Lng.Empty();
 			ms_l10n.Empty();
 
+			Clear(m_Languages);
 			Clean(m_CmnHints);
 			Clean(m_MnuHints);
 			Clean(m_Controls);
 		}
 	}
+}
+
+void CLngRc::Clear(MArray<CLngRc::LngDefinition>& arr)
+{
+	for (INT_PTR i = arr.size()-1; i >= 0; --i)
+	{
+		LngDefinition& l = arr[i];
+		SafeFree(l.id);
+		SafeFree(l.name);
+		SafeFree(l.descr);
+	}
+	arr.clear();
 }
 
 void CLngRc::Clean(MArray<CLngRc::LngRcItem>& arr)
@@ -215,6 +229,9 @@ bool CLngRc::LoadResources(LPCWSTR asLanguage, LPCWSTR asFile)
 	m_Controls.alloc(4096);
 	m_Strings.alloc(lng_NextId);
 
+	if (jsonFile->getItem(L"languages", jsonSection) && (jsonSection.getType() == MJsonValue::json_Array))
+		LoadLanguages(&jsonSection);
+
 	// Process sections
 	for (size_t i = 0; i < countof(sections); i++)
 	{
@@ -232,10 +249,45 @@ wrap:
 	if (bOk)
 	{
 		wchar_t szLog[120];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Loading resources: duration (ms): Parse: %u; Internal: %u; Delete: %u", (nLoadTick - nStartTick), (nFinTick - nLoadTick), (nDelTick - nFinTick));
+		swprintf_c(szLog, L"Loading resources: duration (ms): Parse: %u; Internal: %u; Delete: %u", (nLoadTick - nStartTick), (nFinTick - nLoadTick), (nDelTick - nFinTick));
 		gpConEmu->LogString(szLog);
 	}
 	return bOk;
+}
+
+bool CLngRc::LoadLanguages(MJsonValue* pJson)
+{
+	bool bRc = false;
+	MJsonValue jRes, jItem;
+
+	Clear(m_Languages);
+
+	size_t iCount = pJson->getLength();
+
+	for (size_t i = 0; i < iCount; i++)
+	{
+		if (!pJson->getItem(i, jRes) || (jRes.getType() != MJsonValue::json_Object))
+			continue;
+
+		// Now, jRes contains something like this:
+	    // {"id": "en", "name": "English" }
+		CEStr lsId, lsName;
+		if (jRes.getItem(L"id", jItem) && (jItem.getType() == MJsonValue::json_String))
+			lsId.Set(jItem.getString());
+		if (jRes.getItem(L"name", jItem) && (jItem.getType() == MJsonValue::json_String))
+			lsName.Set(jItem.getString());
+
+		if (!lsId.IsEmpty() && !lsName.IsEmpty())
+		{
+			LngDefinition lng = {};
+			lng.id = lsId.Detach();
+			lng.name = lsName.Detach();
+			lng.descr = lstrmerge(lng.id, L": ", lng.name);
+			m_Languages.push_back(lng);
+		}
+	} // for (size_t i = 0; i < iCount; i++)
+
+	return bRc;
 }
 
 bool CLngRc::LoadSection(MJsonValue* pJson, MArray<LngRcItem>& arr, int idDiff)
@@ -266,7 +318,7 @@ bool CLngRc::LoadSection(MJsonValue* pJson, MArray<LngRcItem>& arr, int idDiff)
 	    //  "id": 2046
 		// }
 		LPCWSTR lsLoc = NULL;
-		i64 id = -1;
+		int64_t id = -1;
 		size_t childCount = jRes.getLength();
 
 		for (INT_PTR c = (childCount - 1); c >= 0; --c)
@@ -381,16 +433,16 @@ bool CLngRc::SetResource(MArray<LngRcItem>& arr, int idx, LPCWSTR asValue, bool 
 	}
 
 	size_t iLen = wcslen(asValue);
-	if (iLen >= (u16)-1)
+	if (iLen >= (uint16_t)-1)
 	{
 		// Too long string?
-		_ASSERTE(iLen < (u16)-1);
+		_ASSERTE(iLen < (uint16_t)-1);
 	}
 	else
 	{
 		if (item.Str && (item.MaxLen >= iLen))
 		{
-			_wcscpy_c(item.Str, item.MaxLen, asValue);
+			_wcscpy_c(item.Str, item.MaxLen+1, asValue);
 		}
 		else
 		{
@@ -443,21 +495,18 @@ LPCWSTR CLngRc::getControl(LONG id, CEStr& lsText, LPCWSTR asDefault /*= NULL*/)
 		_ASSERTE(gpLng != NULL);
 		return asDefault;
 	}
-	if (!id || (id > (u16)-1))
+	if (!id || (id > (uint16_t)-1))
 	{
 		_ASSERTE(FALSE && "Control ID out of range");
 		return asDefault;
 	}
 
-	if (gpLng->GetResource(gpLng->m_Controls, id, lsText))
-	{
-		return lsText.ms_Val;
-	}
+	gpLng->GetResource(gpLng->m_Controls, id, lsText, asDefault);
 
-	return asDefault;
+	return lsText.ms_Val;
 }
 
-bool CLngRc::GetResource(MArray<LngRcItem>& arr, int idx, CEStr& lsText)
+bool CLngRc::GetResource(MArray<LngRcItem>& arr, int idx, CEStr& lsText, LPCWSTR asDefault)
 {
 	bool bFound = false;
 
@@ -472,7 +521,33 @@ bool CLngRc::GetResource(MArray<LngRcItem>& arr, int idx, CEStr& lsText)
 		}
 	}
 
+	if (!bFound)
+		lsText.Set(asDefault);
+
 	return bFound;
+}
+
+LPCWSTR CLngRc::getLanguage()
+{
+	return (gpLng && !gpLng->ms_Lng.IsEmpty()) ? gpLng->ms_Lng.c_str() : L"en";
+}
+
+bool CLngRc::getLanguages(MArray<const wchar_t*>& languages)
+{
+	languages.clear();
+
+	if (gpLng)
+	{
+		for (INT_PTR i = 0; i < gpLng->m_Languages.size(); ++i)
+		{
+			languages.push_back(gpLng->m_Languages[i].descr);
+		}
+	}
+
+	if (languages.empty())
+		languages.push_back(L"en: English");
+
+	return (!languages.empty());
 }
 
 bool CLngRc::getHint(UINT id, LPWSTR lpBuffer, size_t nBufferMax)

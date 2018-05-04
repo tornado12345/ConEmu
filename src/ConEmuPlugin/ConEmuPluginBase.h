@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
 #include "../common/Common.h"
 #include "../common/MStrDup.h"
 
@@ -134,7 +133,7 @@ public:
 	bool isModalEditorViewer();
 	void ShowConsoleInfo();
 	bool StartDebugger();
-	bool Attach2Gui();
+	bool Attach2Gui(bool bLeaveOpened = false);
 	bool FindServerCmd(DWORD nServerCmd, DWORD &dwServerPID, bool bFromAttach = false);
 	int ShowMessage(int aiMsg, int aiButtons);
 	bool UpdateConEmuTabs(bool abSendChanges);

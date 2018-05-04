@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,6 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/SetEnvVar.h"
 #include "ConEmu.h"
 #include "VConChild.h"
+#include "GdiObjects.h"
 #include "Options.h"
 #include "OptionsClass.h"
 #include "Status.h"
@@ -53,9 +54,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRCONS(s) //DEBUGSTR(s)
 #define DEBUGSTRPAINTGAPS(s) //DEBUGSTR(s)
 #define DEBUGSTRPAINTVCON(s) //DEBUGSTR(s)
-#define DEBUGSTRSIZE(s) //DEBUGSTR(s)
-#define DEBUGSTRDESTROY(s) DEBUGSTR(s)
-#define DEBUGSTRTEXTSEL(s) DEBUGSTR(s)
+#define DEBUGSTRSIZE(s) DEBUGSTR(s)
+#define DEBUGSTRDESTROY(s) //DEBUGSTR(s)
+#define DEBUGSTRTEXTSEL(s) //DEBUGSTR(s)
 
 //#define SCROLLHIDE_TIMER_ID 1726
 #define TIMER_SCROLL_SHOW         3201
@@ -313,10 +314,10 @@ bool CConEmuChild::ShowView(int nShowCmd)
 	if (gpSet->isLogging())
 	{
 		if (hChildGUI != NULL)
-			_wsprintf(sInfo, SKIPLEN(countof(sInfo)) L"ShowView: Back=x%08X, DC=x%08X, ChildGUI=x%08X, ShowCMD=%u, ChildVisible=%u",
+			swprintf_c(sInfo, L"ShowView: Back=x%08X, DC=x%08X, ChildGUI=x%08X, ShowCMD=%u, ChildVisible=%u",
 				LODWORD(mh_WndBack), LODWORD(mh_WndDC), LODWORD(hChildGUI), nShowCmd, bGuiVisible);
 		else
-			_wsprintf(sInfo, SKIPLEN(countof(sInfo)) L"ShowView: Back=x%08X, DC=x%08X, ShowCMD=%u",
+			swprintf_c(sInfo, L"ShowView: Back=x%08X, DC=x%08X, ShowCMD=%u",
 				LODWORD(mh_WndBack), LODWORD(mh_WndDC), nShowCmd);
 		gpConEmu->LogString(sInfo);
 	}
@@ -381,9 +382,6 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 
 			pVCon->m_TScrollShow.Init(hWnd, TIMER_SCROLL_SHOW, TIMER_SCROLL_SHOW_DELAY);
 			pVCon->m_TScrollHide.Init(hWnd, TIMER_SCROLL_HIDE, TIMER_SCROLL_HIDE_DELAY);
-			#ifndef SKIP_HIDE_TIMER
-			pVCon->m_TScrollCheck.Init(hWnd, TIMER_SCROLL_CHECK, TIMER_SCROLL_CHECK_DELAY);
-			#endif
 		}
 	}
 	else if (hWnd != ghDcInDestroing)
@@ -447,14 +445,14 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 			if (gpSet->isLogging(2))
 			{
 				wchar_t szInfo[80];
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"VCon[%i] WM_PAINT %u times, %u pending", pVCon->Index(), pVCon->mn_WmPaintCounter, pVCon->mn_InvalidateViewPending);
+				swprintf_c(szInfo, L"VCon[%i] WM_PAINT %u times, %u pending", pVCon->Index(), pVCon->mn_WmPaintCounter, pVCon->mn_InvalidateViewPending);
 				LogString(szInfo);
 			}
 			pVCon->mn_InvalidateViewPending = 0;
 			#ifdef _DEBUG
 			{
 				wchar_t szPos[80]; RECT rcScreen = {}; GetWindowRect(hWnd, &rcScreen);
-				_wsprintf(szPos, SKIPCOUNT(szPos) L"PaintClient VCon[%i] at {%i,%i}-{%i,%i} screen coords", pVCon->Index(), LOGRECTCOORDS(rcScreen));
+				swprintf_c(szPos, L"PaintClient VCon[%i] at {%i,%i}-{%i,%i} screen coords", pVCon->Index(), LOGRECTCOORDS(rcScreen));
 				DEBUGSTRPAINTVCON(szPos);
 			}
 			#endif
@@ -466,7 +464,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 				#ifdef _DEBUG
 				{
 					wchar_t szPos[80]; RECT rcScreen = {}; GetWindowRect(hWnd, &rcScreen);
-					_wsprintf(szPos, SKIPCOUNT(szPos) L"PrintClient VCon[%i] at {%i,%i}-{%i,%i} screen coords", pVCon->Index(), LOGRECTCOORDS(rcScreen));
+					swprintf_c(szPos, L"PrintClient VCon[%i] at {%i,%i}-{%i,%i} screen coords", pVCon->Index(), LOGRECTCOORDS(rcScreen));
 					DEBUGSTRPAINTVCON(szPos);
 				}
 				#endif
@@ -585,7 +583,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 				if (IsDebuggerPresent())
 				{
 					WCHAR szMsg[128];
-					_wsprintf(szMsg, SKIPLEN(countof(szMsg)) L"InChild %s(CP:%i, HKL:0x%08X)\n",
+					swprintf_c(szMsg, L"InChild %s(CP:%i, HKL:0x%08X)\n",
 							  (messg == WM_INPUTLANGCHANGE) ? L"WM_INPUTLANGCHANGE" : L"WM_INPUTLANGCHANGEREQUEST",
 							  (DWORD)wParam, (DWORD)lParam);
 					DEBUGSTRLANG(szMsg);
@@ -608,12 +606,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 			} break;
 
 		case WM_SETCURSOR:
-			{
-				gpConEmu->WndProc(hWnd, messg, wParam, lParam);
-
-				//if (!result)
-				//	result = DefWindowProc(hWnd, messg, wParam, lParam);
-			}
+			result = gpConEmu->OnSetCursor();
 			// If an application processes this message, it should return TRUE to halt further processing or FALSE to continue.
 			break;
 
@@ -636,20 +629,6 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 			{
 				switch(wParam)
 				{
-				#ifndef SKIP_HIDE_TIMER // Не будем прятать по таймеру - только по движению мышки
-				case TIMER_SCROLL_CHECK:
-
-					if (pVCon->mb_Scroll2Visible)
-					{
-						if (!pVCon->CheckMouseOverScroll())
-						{
-							pVCon->HideScroll(FALSE/*abImmediate*/);
-						}
-					}
-
-					break;
-				#endif
-
 				case TIMER_SCROLL_SHOW:
 
 					if (pVCon->CheckMouseOverScroll() || pVCon->CheckScrollAutoPopup())
@@ -701,7 +680,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 				{
 					//изменились табы, их нужно перечитать
 #ifdef MSGLOGGER
-					WCHAR szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Tabs:Notified(%i)\n", (DWORD)wParam);
+					WCHAR szDbg[128]; swprintf_c(szDbg, L"Tabs:Notified(%i)\n", (DWORD)wParam);
 					DEBUGSTRTABS(szDbg);
 #endif
 					TODO("здесь хорошо бы вместо OnTimer реально обновить mn_TopProcessID")
@@ -722,7 +701,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 			}
 			else if (messg == pVCon->mn_MsgDetachPosted)
 			{
-				pVCon->RCon()->Detach(true, (lParam == 1));
+				pVCon->RCon()->DetachRCon(true, (lParam == 1));
 			}
 			else if (messg == gn_MsgVConTerminated)
 			{
@@ -795,6 +774,8 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 	// Logger
 	MSG msgStr = {hWnd, messg, wParam, lParam};
 	ConEmuMsgLogger::Log(msgStr, ConEmuMsgLogger::msgBack);
+
+	gpConEmu->mp_HandleMonitor->DoCheck();
 
 	if (gpSet->isLogging(4))
 	{
@@ -938,7 +919,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 				if (IsDebuggerPresent())
 				{
 					WCHAR szMsg[128];
-					_wsprintf(szMsg, SKIPLEN(countof(szMsg)) L"InChild %s(CP:%i, HKL:0x%08X)\n",
+					swprintf_c(szMsg, L"InChild %s(CP:%i, HKL:0x%08X)\n",
 							  (messg == WM_INPUTLANGCHANGE) ? L"WM_INPUTLANGCHANGE" : L"WM_INPUTLANGCHANGEREQUEST",
 							  (DWORD)wParam, (DWORD)lParam);
 					DEBUGSTRLANG(szMsg);
@@ -951,7 +932,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 		case WM_WINDOWPOSCHANGING:
 			{
 				WINDOWPOS* p = (WINDOWPOS*)lParam;
-				wchar_t szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"WM_WINDOWPOSCHANGED.BACK ({%i,%i}x{%i,%i} Flags=0x%08X)\n", p->x, p->y, p->cx, p->cy, p->flags);
+				wchar_t szDbg[128]; swprintf_c(szDbg, L"WM_WINDOWPOSCHANGED.BACK ({%i,%i}x{%i,%i} Flags=0x%08X)\n", p->x, p->y, p->cx, p->cy, p->flags);
 				DEBUGSTRSIZE(szDbg);
 				result = DefWindowProc(hWnd, messg, wParam, lParam);
 			}
@@ -959,19 +940,14 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 		case WM_WINDOWPOSCHANGED:
 			{
 				WINDOWPOS* p = (WINDOWPOS*)lParam;
-				wchar_t szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"WM_WINDOWPOSCHANGED.BACK ({%i,%i}x{%i,%i} Flags=0x%08X)\n", p->x, p->y, p->cx, p->cy, p->flags);
+				wchar_t szDbg[128]; swprintf_c(szDbg, L"WM_WINDOWPOSCHANGED.BACK ({%i,%i}x{%i,%i} Flags=0x%08X)\n", p->x, p->y, p->cx, p->cy, p->flags);
 				DEBUGSTRSIZE(szDbg);
 				result = DefWindowProc(hWnd, messg, wParam, lParam);
 			}
 			break;
 #endif
 		case WM_SETCURSOR:
-			{
-				gpConEmu->WndProc(hWnd, messg, wParam, lParam);
-
-				//if (!result)
-				//	result = DefWindowProc(hWnd, messg, wParam, lParam);
-			}
+			result = gpConEmu->OnSetCursor();
 			// If an application processes this message, it should return TRUE to halt further processing or FALSE to continue.
 			break;
 
@@ -1027,6 +1003,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 	}
 
 wrap:
+	gpConEmu->mp_HandleMonitor->DoCheck();
 	return result;
 }
 
@@ -1059,6 +1036,7 @@ INT_PTR CConEmuChild::DbgChildDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LP
 }
 #endif
 
+// Fill the mh_WndBack with background color/image
 LRESULT CConEmuChild::OnPaintGaps(HDC hdc)
 {
 	CVConGuard VCon(mp_VCon);
@@ -1083,12 +1061,17 @@ LRESULT CConEmuChild::OnPaintGaps(HDC hdc)
 	}
 
 	#ifdef _DEBUG
-	{
-		wchar_t szPos[80]; RECT rcScreen = {}; GetWindowRect(mh_WndBack, &rcScreen);
-		_wsprintf(szPos, SKIPCOUNT(szPos) L"PaintGaps VCon[%i] at {%i,%i}-{%i,%i} screen coords", mp_VCon->Index(), LOGRECTCOORDS(rcScreen));
-		DEBUGSTRPAINTGAPS(szPos);
-	}
+	wchar_t szPos[80]; RECT rcScreen = {}; GetWindowRect(mh_WndBack, &rcScreen);
+	swprintf_c(szPos, L"PaintGaps VCon[%i] at {%i,%i}-{%i,%i} screen coords", mp_VCon->Index(), LOGRECTCOORDS(rcScreen));
+	DEBUGSTRPAINTGAPS(szPos);
+
+	RECT rcMain = {}; GetWindowRect(ghWnd, &rcMain);
+	RECT rcMainClient = {}; GetClientRect(ghWnd, &rcMainClient); MapWindowPoints(ghWnd, NULL, (LPPOINT)&rcMainClient, 2);
+	RECT rcWork = {}; GetWindowRect(ghWndWork, &rcWork);
 	#endif
+
+	RECT rcBack = {}; GetWindowRect(mh_WndBack, &rcBack);
+	RECT rcView = {}; GetWindowRect(mh_WndDC, &rcView);
 
 	PAINTSTRUCT ps = {};
 	if (hdc)
@@ -1101,8 +1084,33 @@ LRESULT CConEmuChild::OnPaintGaps(HDC hdc)
 		BeginPaint(mh_WndBack, &ps);
 	}
 
-	HBRUSH hBrush = CreateSolidBrush(clrPalette[nColorIdx]);
-	if (hBrush)
+	const auto clrBack = clrPalette[nColorIdx];
+	if (VCon->drawImage)
+	{
+		RECT rcPaint = {};
+		if (rcBack != rcView)
+		{
+			const int shiftX = rcView.left - rcBack.left;
+			const int shiftY = rcView.top - rcBack.top;
+			for (int i = 0; i < 4; ++i)
+			{
+				switch (i)
+				{
+				case 0: // top
+					rcPaint = RECT{0, 0, RectWidth(rcBack), shiftY}; break;
+				case 1: // left
+					rcPaint = RECT{0, shiftY, shiftX, RectHeight(rcBack)}; break;
+				case 2: // right
+					rcPaint = RECT{shiftX + RectWidth(rcView), shiftY, RectWidth(rcBack), RectHeight(rcBack)}; break;
+				case 3: // bottom
+					rcPaint = RECT{shiftX, shiftY + RectHeight(rcView), shiftX + RectWidth(rcView), RectHeight(rcBack)}; break;
+				}
+				if (!IsRectEmpty(&rcPaint))
+					VCon->PaintBackgroundImage(ps.hdc, rcPaint, clrBack, true);
+			}
+		}
+	}
+	else if (HBRUSH hBrush = CreateSolidBrush(clrBack))
 	{
 		if (!hdc)
 		{
@@ -1262,9 +1270,10 @@ LRESULT CConEmuChild::OnSize(WPARAM wParam, LPARAM lParam)
 
 	if (gpSet->isLogging())
 	{
-		char szInfo[128];
-		_wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "VCon(0x%08X).OnSize(%ux%u)", LODWORD(mh_WndDC), (UINT)LOWORD(lParam), (UINT)HIWORD(lParam));
-		gpConEmu->LogString(szInfo);
+		wchar_t szInfo[128];
+		swprintf_c(szInfo, L"VCon(0x%08X).OnSize(%u,%u)", LODWORD(mh_WndDC), (UINT)LOWORD(lParam), (UINT)HIWORD(lParam));
+		if (!gpConEmu->LogString(szInfo))
+			DEBUGSTRSIZE(szInfo);
 	}
 
 	// Вроде это и не нужно. Ни для Ansi ни для Unicode версии плагина
@@ -1303,7 +1312,7 @@ LRESULT CConEmuChild::OnMove(WPARAM wParam, LPARAM lParam)
 	if (gpSet->isLogging())
 	{
 		char szInfo[128];
-		_wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "VCon(0x%08X).OnMove(%ux%u)", LODWORD(mh_WndDC), (int)(short)LOWORD(lParam), (int)(short)HIWORD(lParam));
+		sprintf_c(szInfo, "VCon(0x%08X).OnMove(%ux%u)", LODWORD(mh_WndDC), (int)(short)LOWORD(lParam), (int)(short)HIWORD(lParam));
 		gpConEmu->LogString(szInfo);
 	}
 
@@ -1379,6 +1388,60 @@ void CConEmuChild::Redraw(bool abRepaintNow /*= false*/)
 			RedrawWindow(mh_WndDC, &rcClient, NULL, RDW_INTERNALPAINT|RDW_NOERASE|RDW_NOFRAME|RDW_UPDATENOW|RDW_VALIDATE);
 		}
 	}
+}
+
+// Only for valid VCon, margins between Back and DC
+RECT CConEmuChild::CalcDCMargins(const RECT& arcBack)
+{
+	// #SplitScreen: тут нужно допиливать?
+
+	RECT rcAddShift = {};
+	RECT rcCalcBack = arcBack;
+	RECT rcCalcCon = CVConGroup::CalcRect(CER_CONSOLE_CUR, rcCalcBack, CER_BACK, mp_VCon);
+
+	// Расчетное DC (размер)
+	_ASSERTE(rcCalcCon.left==0 && rcCalcCon.top==0);
+	RECT rcCalcDC = MakeRect(0, 0, (rcCalcCon.right * gpFontMgr->FontWidth()), (rcCalcCon.bottom * gpFontMgr->FontHeight()));
+
+	RECT rcScrollPad = gpConEmu->CalcMargins(CEM_SCROLL|CEM_PAD);
+	gpConEmu->AddMargins(rcCalcBack, rcScrollPad);
+
+	int nDeltaX = (rcCalcBack.right - rcCalcBack.left) - (rcCalcDC.right - rcCalcDC.left);
+	int nDeltaY = (rcCalcBack.bottom - rcCalcBack.top) - (rcCalcDC.bottom - rcCalcDC.top);
+
+	// Actual gaps
+	if ((gpSet->isTryToCenter && (gpConEmu->isZoomed() || gpConEmu->isFullScreen() || gpSet->isQuakeStyle))
+		|| mp_VCon->RCon()->isNtvdm())
+	{
+		// Precise shifts calculation
+		if (nDeltaX > 0)
+		{
+			rcAddShift.left = nDeltaX >> 1;
+			rcAddShift.right = nDeltaX - rcAddShift.left;
+		}
+	}
+	else
+	{
+		if (nDeltaX > 0)
+			rcAddShift.right = nDeltaX;
+	}
+
+	if ((gpSet->isTryToCenter && (gpConEmu->isZoomed() || gpConEmu->isFullScreen()))
+		|| mp_VCon->RCon()->isNtvdm())
+	{
+		if (nDeltaY > 0)
+		{
+			rcAddShift.top = nDeltaY >> 1;
+			rcAddShift.bottom = nDeltaY - rcAddShift.top;
+		}
+	}
+	else
+	{
+		if (nDeltaY > 0)
+			rcAddShift.bottom = nDeltaY;
+	}
+
+	return rcAddShift;
 }
 
 // Вызывается из VConGroup::RepositionVCon
@@ -1494,7 +1557,7 @@ void CConEmuChild::InvalidateView()
 		if ((l == 1) && gpSet->isLogging(2))
 		{
 			wchar_t szInfo[80];
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"VCon[%i] invalidate called", mp_VCon->Index());
+			swprintf_c(szInfo, L"VCon[%i] invalidate called", mp_VCon->Index());
 			LogString(szInfo);
 		}
 	}
@@ -1529,7 +1592,7 @@ void CConEmuChild::OnAlwaysShowScrollbar(bool abSync /*= true*/)
 	{
 		CVConGuard VCon(mp_VCon);
 
-		if (gpSet->isAlwaysShowScrollbar == 1)
+		if (gpSet->isAlwaysShowScrollbar == 1 && !VCon->RCon()->isGuiVisible())
 			ShowScroll(TRUE);
 		else if (!m_si.nMax)
 			HideScroll(TRUE);
@@ -1584,12 +1647,6 @@ bool CConEmuChild::TrackMouse()
 			mb_Scroll2Visible = TRUE;
 			ShowScroll(FALSE/*abImmediate*/); // Если gpSet->isAlwaysShowScrollbar==1 - сама разберется
 		}
-		#ifndef SKIP_HIDE_TIMER
-		else if (mb_ScrollVisible && (gpSet->isAlwaysShowScrollbar != 1) && !m_TScrollCheck.IsStarted())
-		{
-			m_TScrollCheck.Start();
-		}
-		#endif
 	}
 	else if (mb_Scroll2Visible || mb_ScrollVisible)
 	{
@@ -1603,19 +1660,11 @@ bool CConEmuChild::TrackMouse()
 	return lbCapture;
 }
 
-bool CConEmuChild::CheckMouseOverScroll(bool abCheckVisible /*= false*/)
+bool CConEmuChild::CheckMouseOverScroll()
 {
-	if (abCheckVisible)
+	if (gpSet->isAlwaysShowScrollbar == 0)
 	{
-		if (gpSet->isAlwaysShowScrollbar == 0)
-		{
-			return false; // не показывается вообще
-		}
-		else if ((gpSet->isAlwaysShowScrollbar != 1) // 1 -- показывать всегда
-			&& !mb_ScrollVisible)
-		{
-			return false; // не показывается сейчас
-		}
+		return false; // don't show scrollbar at all
 	}
 
 	bool lbOverVScroll = false;
@@ -1623,7 +1672,7 @@ bool CConEmuChild::CheckMouseOverScroll(bool abCheckVisible /*= false*/)
 	CVirtualConsole* pVCon = mp_VCon;
 	CVConGuard guard(pVCon);
 
-	// Вроде бы в активной? Или в this?
+	// Process active or this console?
 	CVConGuard VCon;
 	CRealConsole* pRCon = (gpConEmu->GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : NULL;
 
@@ -1697,7 +1746,7 @@ void CConEmuChild::SetScroll(bool abEnabled, int anTop, int anVisible, int anHei
 	m_si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE; // | SIF_TRACKPOS;
 	m_si.nMin = 0;
 
-	if (!abEnabled)
+	if (!abEnabled && (gpSet->isAlwaysShowScrollbar != 1))
 	{
 		m_si.nPos = 0;
 		m_si.nPage = 0;
@@ -1707,18 +1756,12 @@ void CConEmuChild::SetScroll(bool abEnabled, int anTop, int anVisible, int anHei
 	else
 	{
 		m_si.nPos = anTop;
-		m_si.nPage = anVisible - 1;
-		m_si.nMax = anHeight;
+		// We shall take into account paging size, scroller must be at
+		// the bottom when the console is at the bottom...
+		m_si.nMax = anHeight - 1;
+		// Let paging previously last visible become new first visible
+		m_si.nPage = std::min(anVisible - 1, m_si.nMax);
 	}
-
-	//// Если режим "BufferHeight" включен - получить из консольного окна текущее состояние полосы прокрутки
-	//if (con.bBufferHeight) {
-	//    lbScrollRc = GetScrollInfo(hConWnd, SB_VERT, &si);
-	//} else {
-	//    // Сбросываем параметры так, чтобы полоса не отображалась (все на 0)
-	//}
-	//TODO("Нужно при необходимости 'всплыть' полосу прокрутки");
-	//nCurPos = SetScrollInfo(mh_WndDC/*mh_WndScroll*/, SB_VERT, &m_si, true);
 
 	if (!abEnabled)
 	{
@@ -1786,12 +1829,12 @@ void CConEmuChild::MySetScrollInfo(bool abSetEnabled, bool abEnableValue)
 {
 	SCROLLINFO si = m_si;
 
-	if (/*!mb_ScrollVisible &&*/ !m_si.nMax && (gpSet->isAlwaysShowScrollbar == 1))
+	if ((m_si.nMax < 0) || ((UINT)m_si.nMax < m_si.nPage) && (gpSet->isAlwaysShowScrollbar == 1))
 	{
 		ShowScrollBar(mh_WndBack, SB_VERT, TRUE);
 		// Прокрутка всегда показывается! Скрывать нельзя!
-		si.nPage = 1;
-		si.nMax = 100;
+		if (!si.nPage) si.nPage = 1;
+		si.nMax = si.nPage;
 	}
 
 	si.fMask |= SIF_PAGE|SIF_POS|SIF_RANGE/*|SIF_DISABLENOSCROLL*/;
@@ -1916,17 +1959,6 @@ void CConEmuChild::ShowScroll(bool abImmediate)
 
 	UpdateScrollRgn();
 
-	#ifndef SKIP_HIDE_TIMER
-	if (bTCheck)
-	{
-		m_TScrollCheck.Start(mb_ScrollAutoPopup ? TIMER_SCROLL_CHECK_DELAY2 : TIMER_SCROLL_CHECK_DELAY);
-	}
-	else if (m_TScrollCheck.IsStarted())
-	{
-		m_TScrollCheck.Stop();
-	}
-	#endif
-
 	//
 	if (bTShow)
 		m_TScrollShow.Start(mb_ScrollAutoPopup ? TIMER_SCROLL_SHOW_DELAY2 : TIMER_SCROLL_SHOW_DELAY);
@@ -1989,11 +2021,6 @@ void CConEmuChild::HideScroll(bool abImmediate)
 	}
 
 	UpdateScrollRgn();
-
-	#ifndef SKIP_HIDE_TIMER
-	if (m_TScrollCheck.IsStarted())
-		m_TScrollCheck.Stop();
-	#endif
 
 	//
 	if (m_TScrollShow.IsStarted())

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 struct FindTextOptions
 {
@@ -67,9 +67,11 @@ union CECursorType
 		unsigned int   MinSize      : 7;
 		// set to true for use distinct settings for Inactive cursor
 		unsigned int   Used         : 1;
+		// only for inactive cursor, if true - use inactive style when cursor is invisible
+		unsigned int   Invisible    : 1;
 	};
 
-	DWORD Raw;
+	DWORD Raw; // 32 bits
 };
 
 enum TabStyle

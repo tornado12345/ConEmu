@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,5 +29,20 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+struct ColorPalette;
+typedef DWORD SettingsLoadedFlags;
+
+namespace FastConfig
+{
+
+extern HWND ghFastCfg;
+
 void CheckOptionsFast(LPCWSTR asTitle, SettingsLoadedFlags slfFlags);
 void CreateDefaultTasks(SettingsLoadedFlags slfFlags);
+
+// Helper functions used in Settings/Main
+void DoPaintColorBox(HWND hCtrl, const ColorPalette& pal);
+LPCWSTR GetStartupCommand(CEStr& command);
+void DoStartupCommand(HWND hDlg, WORD nCtrlId);
+
+};

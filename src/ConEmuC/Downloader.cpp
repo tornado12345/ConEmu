@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 LONG gnIsDownloading = 0;
 
+static bool gbNoLog = false;
 static bool gbVerbose = false;
 static bool gbVerboseInitialized = false;
 
@@ -631,7 +632,7 @@ VOID CDownloader::InetCallback(HINTERNET hInternet, DWORD_PTR dwContext, DWORD d
 			{
 				wchar_t sAddr[32] = L"";
 				MultiByteToWideChar(CP_ACP, 0,
-					((SOCKADDR*)lpvStatusInformation)->sa_data, min(dwStatusInformationLength-sizeof(u_short),countof(sAddr)-1),
+					((SOCKADDR*)lpvStatusInformation)->sa_data, std::min<int>(dwStatusInformationLength-sizeof(u_short),countof(sAddr)-1),
 					sAddr, countof(sAddr)-1);
 				wcscat_c(sFormat, L" to Server, family=%u, data=%s");
 				pObj->ReportMessage(dc_LogCallback, sFormat,
@@ -768,7 +769,7 @@ bool CDownloader::SetupTimeouts()
 			}
 		}
 
-		nTimeoutSet = max(*TimeOuts[i].pDefault,mn_Timeout);
+		nTimeoutSet = std::max<DWORD>(*TimeOuts[i].pDefault, mn_Timeout);
 		ReportMessage(dc_LogCallback, L"Set internet %s timeout: %u ms",
 			at_Str, TimeOuts[i].pszName, at_Uint, nTimeoutSet, at_None);
 		if (!wi->_InternetSetOptionW(mh_Internet, TimeOuts[i].dwOption, &nTimeoutSet, sizeof(nTimeoutSet)))
@@ -817,7 +818,7 @@ BOOL CDownloader::DownloadFile(LPCWSTR asSource, LPCWSTR asTarget, DWORD& crc, D
 	bool bSecureHTTPS = false;
 	bool bFtp = false;
 	HTTP_VERSION_INFO httpver = {1,1};
-	wchar_t szHttpVer[32]; _wsprintf(szHttpVer, SKIPLEN(countof(szHttpVer)) L"HTTP/%u.%u", httpver.dwMajorVersion, httpver.dwMinorVersion);
+	wchar_t szHttpVer[32]; swprintf_c(szHttpVer, L"HTTP/%u.%u", httpver.dwMajorVersion, httpver.dwMinorVersion);
 	const wchar_t szConEmuAgent[] =
 		//L"Mozilla/5.0 (compatible; ConEmu Update)" // This was the cause of not working download redirects
 		L"ConEmu Update" // so we use that to enable redirects
@@ -1651,9 +1652,12 @@ bool PrintToConsole(HANDLE hCon, LPCWSTR asData, int anLen)
 
 static void PrintDownloadLog(LPCWSTR pszLabel, LPCWSTR pszInfo)
 {
+	if (gbNoLog)
+		return;
+
 	SYSTEMTIME st = {}; GetLocalTime(&st);
 	wchar_t szTime[80];
-	_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%i:%02i:%02i.%03i{%u} ",
+	swprintf_c(szTime, L"%i:%02i:%02i.%03i{%u} ",
 	           st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, GetCurrentThreadId());
 
 	CEStr lsAll(lstrmerge(szTime, pszLabel, (pszInfo && *pszInfo) ? pszInfo : L"<NULL>\n"));
@@ -1849,6 +1853,8 @@ int DoDownload(LPCWSTR asCmdLine)
 		{L"agent", &pszAgent},
 		// -debug - may be used to show console and print progress even if output is redirected
 		{L"debug", NULL, &gbVerbose}, {L"verbose", NULL, &gbVerbose},
+		// -nolog - don't write any logging messages to console
+		{L"nolog", NULL, &gbNoLog},
 		{NULL}
 	};
 
@@ -2000,7 +2006,7 @@ int DoDownload(LPCWSTR asCmdLine)
 		{
 			wchar_t szInfo[100];
 			iFiles++;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"File #%u downloaded, size=%u, crc32=x%08X", (DWORD)iFiles, (DWORD)args[0].uintArg, (DWORD)args[1].uintArg);
+			swprintf_c(szInfo, L"File #%u downloaded, size=%u, crc32=x%08X", (DWORD)iFiles, (DWORD)args[0].uintArg, (DWORD)args[1].uintArg);
 			DownloadLog(dc_LogCallback, szInfo);
 		}
 	}
@@ -2008,10 +2014,10 @@ int DoDownload(LPCWSTR asCmdLine)
 	iRc = iFiles ? CERR_DOWNLOAD_SUCCEEDED : CERR_CARGUMENT;
 wrap:
 	// Log exit code
-	_wsprintf(szResult, SKIPCOUNT(szResult)
+	swprintf_c(szResult,
 		L"Exit with code %s (%i)",
 		(iRc==CERR_DOWNLOAD_SUCCEEDED) ? L"CERR_DOWNLOAD_SUCCEEDED" :
-		(iRc==CERR_DOWNLOAD_SUCCEEDED) ? L"CERR_DOWNLOAD_FAILED" :
+		(iRc==CERR_DOWNLOAD_FAILED) ? L"CERR_DOWNLOAD_FAILED" :
 		(iRc==CERR_CARGUMENT) ? L"CERR_CARGUMENT" :
 		L"OtherExitCode",
 		iRc);

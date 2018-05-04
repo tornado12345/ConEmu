@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -72,6 +72,7 @@ const wchar_t* SkipNonPrintable(const wchar_t* asParams);
 int AddEndSlash(wchar_t* rsPath, int cchMax);
 wchar_t* MergeCmdLine(LPCWSTR asExe, LPCWSTR asParams);
 wchar_t* JoinPath(LPCWSTR asPath, LPCWSTR asPart1, LPCWSTR asPart2 = NULL);
+wchar_t* GetParentPath(LPCWSTR asPath);
 
 bool IsFilePath(LPCWSTR asFilePath, bool abFullRequired = false);
 

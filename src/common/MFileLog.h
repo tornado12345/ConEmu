@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,37 +29,46 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "defines.h"
+#include "MSectionSimple.h"
 
 struct CEStartupEnv;
 struct MSectionSimple;
+class MFileLog;
+
+class MFileLogHandle
+{
+	MFileLog* pLog;
+	HANDLE hLogFile;
+	MSectionLockSimple lock;
+	friend class MFileLog;
+public:
+	MFileLogHandle();
+	~MFileLogHandle();
+	operator HANDLE() const;
+};
 
 class MFileLog
 {
-	protected:
-		wchar_t* ms_FilePathName;
-		wchar_t* ms_FileName;
-		wchar_t* ms_DefPath;
-		HANDLE   mh_LogFile;
-		SYSTEMTIME mst_LastWrite;
-		HRESULT  InitFileName(LPCWSTR asName = NULL, DWORD anPID = 0);
-
-		#if !defined(CONEMU_MINIMAL)
-		static void LogStartEnvInt(LPCWSTR asText, LPARAM lParam, bool bFirst, bool bNewLine);
-		#endif
-	protected:
-		MSectionSimple* mpcs_Lock;
-	public:
-		MFileLog(LPCWSTR asName, LPCWSTR asDir = NULL, DWORD anPID = 0);
-		~MFileLog();
-		bool IsLogOpened();
-		void CloseLogFile();
-		HRESULT CreateLogFile(LPCWSTR asName = NULL, DWORD anPID = 0, DWORD anLevel = 0); // Returns 0 if succeeded, otherwise - GetLastError() code
-		LPCWSTR GetLogFileName();
-		void LogString(LPCSTR asText, bool abWriteTime = true, LPCSTR asThreadName = NULL, bool abNewLine = true, UINT anCP = CP_ACP);
-		void LogString(LPCWSTR asText, bool abWriteTime = true, LPCWSTR asThreadName = NULL, bool abNewLine = true);
-
-		#if !defined(CONEMU_MINIMAL)
-		void LogStartEnv(CEStartupEnv* apStartEnv);
-		#endif
+protected:
+	wchar_t* ms_FilePathName;
+	wchar_t* ms_FileName;
+	wchar_t* ms_DefPath;
+	HANDLE   mh_LogFile;
+	SYSTEMTIME mst_LastWrite;
+	HRESULT  InitFileName(LPCWSTR asName = NULL, DWORD anPID = 0);
+protected:
+	MSectionSimple* mpcs_Lock;
+	MFileLogHandle* mp_Acquired;
+	friend class MFileLogHandle;
+public:
+	MFileLog(LPCWSTR asName, LPCWSTR asDir = NULL, DWORD anPID = 0);
+	virtual ~MFileLog();
+	bool IsLogOpened();
+	void CloseLogFile();
+	HRESULT CreateLogFile(LPCWSTR asName = NULL, DWORD anPID = 0, DWORD anLevel = 0); // Returns 0 if succeeded, otherwise - GetLastError() code
+	LPCWSTR GetLogFileName();
+	void LogString(LPCSTR asText, bool abWriteTime = true, LPCSTR asThreadName = NULL, bool abNewLine = true, UINT anCP = CP_ACP);
+	void LogString(LPCWSTR asText, bool abWriteTime = true, LPCWSTR asThreadName = NULL, bool abNewLine = true);
+	bool AcquireHandle(LPCWSTR asText, MFileLogHandle& Acquired);
 };

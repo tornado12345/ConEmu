@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
 #include "Common.h"
 #include "ConEmuCheck.h"
 
@@ -201,7 +200,7 @@ class MPipe
 			BOOL fSuccess = FALSE;
 			DWORD cbRead, dwErr, cbReadBuf, nOverlappedWait;
 			// Для справки, информация о последнем запросе
-			cbReadBuf = min(anInSize, sizeof(m_In)); //-V105 //-V103
+			cbReadBuf = std::min<DWORD>(anInSize, sizeof(m_In)); //-V105 //-V103
 			memmove(&m_In, apIn, cbReadBuf); //-V106
 			// Send a message to the pipe server and read the response.
 			cbRead = 0; cbReadBuf = sizeof(m_Tmp);

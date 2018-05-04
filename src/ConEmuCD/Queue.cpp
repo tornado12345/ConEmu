@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SHOWDEBUGSTR
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "Queue.h"
 
 #define DEBUGSTRINPUTPIPE(s) //DEBUGSTR(s) // ConEmuC: Received key... / ConEmuC: Received input
@@ -92,12 +92,12 @@ BOOL ProcessInputMessage(MSG64::MsgStr &msg, INPUT_RECORD &r)
 			bool bAlt = isPressed(VK_MENU), bShift = isPressed(VK_SHIFT), bCtrl = isPressed(VK_CONTROL);
 			if (bAlt || bShift || !bCtrl)
 			{
-				msprintf(szLog, countof(szLog), L"  ---  CtrlC/CtrlBreak may fails because of bad Alt/Shift/Ctrl state (%u,%u,%u)!", (UINT)bAlt, (UINT)bShift, (UINT)bCtrl);
+				msprintf(szLog, countof(szLog), L"  ---  CtrlC/CtrlBreak may fail because of bad Alt/Shift/Ctrl state (%u,%u,%u)!", (UINT)bAlt, (UINT)bShift, (UINT)bCtrl);
 				LogString(szLog);
 			}
 			if (!lbProcessEvent)
 			{
-				LogString(L"  ---  CtrlC/CtrlBreak may fails because of disabled ENABLE_PROCESSED_INPUT!");
+				LogString(L"  ---  CtrlC/CtrlBreak may fail because of disabled ENABLE_PROCESSED_INPUT!");
 			}
 			}
 
@@ -146,7 +146,7 @@ BOOL ProcessInputMessage(MSG64::MsgStr &msg, INPUT_RECORD &r)
 			}
 
 			wchar_t szDbg[60];
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"    ConEmuC.MouseEvent(X=%i,Y=%i,Btns=0x%04x,Moved=%i)\n", r.Event.MouseEvent.dwMousePosition.X, r.Event.MouseEvent.dwMousePosition.Y, r.Event.MouseEvent.dwButtonState, (r.Event.MouseEvent.dwEventFlags & MOUSE_MOVED));
+			swprintf_c(szDbg, L"    ConEmuC.MouseEvent(X=%i,Y=%i,Btns=0x%04x,Moved=%i)\n", r.Event.MouseEvent.dwMousePosition.X, r.Event.MouseEvent.dwMousePosition.Y, r.Event.MouseEvent.dwButtonState, (r.Event.MouseEvent.dwEventFlags & MOUSE_MOVED));
 			DEBUGLOGINPUT(szDbg);
 			nLastEventTick = GetTickCount();
 		}
@@ -450,29 +450,33 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 	//			nCurInputCount = 0;
 	//	} while ((nCurInputCount > 0) && ((GetTickCount() - dwStartTick) < MAX_INPUT_QUEUE_EMPTY_WAIT));
 	//}
-	INPUT_RECORD* prNew = NULL;
+	INPUT_RECORD *prNew = NULL;
 	int nAllCount = 0;
 	BOOL lbReqEmpty = FALSE;
 
-	for (UINT n = 0; n < nCount; n++)
+	INPUT_RECORD *prCur = pr, *prSrc = pr;
+	for (UINT n = 0; n < nCount; ++n, ++prCur, ++prSrc)
 	{
-		if (pr[n].EventType != KEY_EVENT)
+		if (prCur != prSrc)
+			*prCur = *prSrc;
+
+		if (prCur->EventType != KEY_EVENT)
 		{
 			nAllCount++;
-			if (!lbReqEmpty && (pr[n].EventType == MOUSE_EVENT))
+			if (!lbReqEmpty && (prCur->EventType == MOUSE_EVENT))
 			{
 				// По всей видимости дурит консоль Windows.
 				// Если в буфере сейчас еще есть мышиные события, то запись
 				// в буфер возвращает ОК, но считывающее приложение получает 0-событий.
 				// В итоге, получаем пропуск некоторых событий, что очень неприятно 
 				// при выделении кучи файлов правой кнопкой мыши (проводкой с зажатой кнопкой)
-				if (pr[n].Event.MouseEvent.dwButtonState /*== RIGHTMOST_BUTTON_PRESSED*/)
+				if (prCur->Event.MouseEvent.dwButtonState /*== RIGHTMOST_BUTTON_PRESSED*/)
 					lbReqEmpty = TRUE;
 			}
 		}
 		else
 		{
-			WORD vk = pr[n].Event.KeyEvent.wVirtualKeyCode;
+			WORD vk = prCur->Event.KeyEvent.wVirtualKeyCode;
 			if (((vk == VK_RETURN) || (vk == VK_SPACE)) && gpSrv->pAppMap)
 			{
 				// github#19: don't post Enter/Space KeyUp events to the console input buffer
@@ -482,7 +486,7 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 				static DWORD nLastPID = 0;
 				static WORD nLastVK = 0;
 				bool bBypass = false;
-				if (pr[n].Event.KeyEvent.bKeyDown)
+				if (prCur->Event.KeyEvent.bKeyDown)
 				{
 					// The application may use Read only for getting the event when it is ready
 					// So the application is not waiting for and simple nReadConsoleInputPID
@@ -497,7 +501,7 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 						|| (nLastVK != vk))
 					{
 						// Skip this event
-						pr[n].EventType = 0;
+						--prCur;
 						nLastPID = 0; nLastVK = 0;
 						continue;
 					}
@@ -510,15 +514,17 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 				UNREFERENCED_PARAMETER(bBypass);
 			}
 
-			if (!pr[n].Event.KeyEvent.wRepeatCount)
+			if (!prCur->Event.KeyEvent.wRepeatCount)
 			{
-				_ASSERTE(pr[n].Event.KeyEvent.wRepeatCount!=0);
-				pr[n].Event.KeyEvent.wRepeatCount = 1;
+				_ASSERTE(prCur->Event.KeyEvent.wRepeatCount!=0);
+				prCur->Event.KeyEvent.wRepeatCount = 1;
 			}
 
-			nAllCount += pr[n].Event.KeyEvent.wRepeatCount;
+			nAllCount += prCur->Event.KeyEvent.wRepeatCount;
 		}
 	}
+	_ASSERTE(prCur >= pr);
+	nCount = std::min<UINT>(nCount, UINT(prCur - pr));
 
 	if (nAllCount > (int)nCount)
 	{
@@ -584,7 +590,7 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 		switch (pr[i].EventType)
 		{
 		case MOUSE_EVENT:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg))
+			swprintf_c(szDbg,
 				L"*** ConEmuC.MouseEvent(X=%i,Y=%i,Btns=0x%04x,Moved=%i)\n",
 				pr[i].Event.MouseEvent.dwMousePosition.X, pr[i].Event.MouseEvent.dwMousePosition.Y, pr[i].Event.MouseEvent.dwButtonState, (pr[i].Event.MouseEvent.dwEventFlags & MOUSE_MOVED));
 			DEBUGSTRINPUTWRITE(szDbg);
@@ -620,11 +626,14 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 				case 13: szCh[0] = L'\\'; szCh[1] = L'n'; break;
 				case 27: szCh[0] = L'\\'; szCh[1] = L'e'; break;
 				}
-				_wsprintf(szDbg, SKIPLEN(countof(szDbg))
+				swprintf_c(szDbg,
 					L"*** ConEmuC.KeybdEvent(%s, VK=%u, CH=%s)\n",
 					pr[i].Event.KeyEvent.bKeyDown ? L"Dn" : L"Up", pr[i].Event.KeyEvent.wVirtualKeyCode, szCh);
 				DEBUGSTRINPUTWRITE(szDbg);
 			}
+			break;
+		case 0:
+			_ASSERTE(pr[i].EventType != 0);
 			break;
 		}
 
@@ -681,18 +690,18 @@ BOOL SendConsoleEvent(INPUT_RECORD* pr, UINT nCount)
 		fSuccess = WriteConsoleInput(hIn, pr, nCount, &cbWritten);
 	}
 
-	// Error ERROR_INVALID_HANDLE may occurs when ConEmu was Attached to some external console with redirected input.
+	// Error ERROR_INVALID_HANDLE may occur when ConEmu was Attached to some external console with redirected input.
 
 #ifdef _DEBUG
 	DWORD dwErr = GetLastError();
 	if (!fSuccess || (nCount != cbWritten))
 	{
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"### WriteConsoleInput(Write=%i, Written=%i, Left=%i, Err=x%X)\n", nCount, cbWritten, gpSrv->InputQueue.GetNumberOfBufferEvents(), dwErr);
+		swprintf_c(szDbg, L"### WriteConsoleInput(Write=%i, Written=%i, Left=%i, Err=x%X)\n", nCount, cbWritten, gpSrv->InputQueue.GetNumberOfBufferEvents(), dwErr);
 		DEBUGSTRINPUTWRITEFAIL(szDbg);
 	}
 	else
 	{
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"*** WriteConsoleInput(Write=%i, Written=%i, Left=%i)\n", nCount, cbWritten, gpSrv->InputQueue.GetNumberOfBufferEvents());
+		swprintf_c(szDbg, L"*** WriteConsoleInput(Write=%i, Written=%i, Left=%i)\n", nCount, cbWritten, gpSrv->InputQueue.GetNumberOfBufferEvents());
 		DEBUGSTRINPUTWRITEALL(szDbg);
 	}
 	// Some Ctrl+<key> are eaten by console input buffer. ConsoleMode==0xA7 (cmd.exe)

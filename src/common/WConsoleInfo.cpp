@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define HIDE_USE_EXCEPTION_INFO
+
 #include "Common.h"
 #include "WConsoleInfo.h"
 
@@ -37,10 +38,10 @@ void ChangeScreenBufferSize(CONSOLE_SCREEN_BUFFER_INFO& sbi, SHORT VisibleX, SHO
 	_ASSERTE(BufferX>=VisibleX && VisibleX && BufferY>=VisibleY && VisibleY);
 	sbi.dwSize.X = BufferX;
 	sbi.dwSize.Y = BufferY;
-	sbi.srWindow.Right = min(BufferX,(sbi.srWindow.Left+VisibleX))-1;
-	sbi.srWindow.Left = max(0,(sbi.srWindow.Right+1-VisibleX));
-	sbi.srWindow.Bottom = min(BufferY,(sbi.srWindow.Top+VisibleY))-1;
-	sbi.srWindow.Top = max(0,(sbi.srWindow.Bottom+1-VisibleY));
+	sbi.srWindow.Right = std::min<SHORT>(BufferX,(sbi.srWindow.Left+VisibleX))-1;
+	sbi.srWindow.Left = std::max<SHORT>(0,(sbi.srWindow.Right+1-VisibleX));
+	sbi.srWindow.Bottom = std::min<SHORT>(BufferY,(sbi.srWindow.Top+VisibleY))-1;
+	sbi.srWindow.Top = std::max<SHORT>(0,(sbi.srWindow.Bottom+1-VisibleY));
 }
 
 // sbi - откуда брать данные

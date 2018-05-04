@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,8 @@ static const CECOLORFLAGS
 	CECF_FG_BOLD       = 0x1000000000000000ULL,
 	CECF_FG_ITALIC     = 0x2000000000000000ULL,
 	CECF_FG_UNDERLINE  = 0x4000000000000000ULL,
-	CECF_STYLEMASK     = CECF_FG_BOLD|CECF_FG_ITALIC|CECF_FG_UNDERLINE,
+	CECF_REVERSE       = 0x8000000000000000ULL,
+	CECF_STYLEMASK     = CECF_FG_BOLD|CECF_FG_ITALIC|CECF_FG_UNDERLINE|CECF_REVERSE,
 
 	CECF_NONE          = 0;
 

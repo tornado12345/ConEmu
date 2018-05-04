@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -160,7 +160,7 @@ void FixSshThreads(int iStep)
 			// Was initialized?
 			if (!pThInfo)
 				break;
-			// May occures in several threads simultaneously
+			// May occurs in several threads simultaneously
 			long n = InterlockedIncrement(&gnFixSshThreadsResumeOk);
 			if (n > 1)
 				break;

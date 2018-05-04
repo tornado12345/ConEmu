@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -75,7 +75,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Declare function ID variables
 #define DECLARE_CONEMU_HOOK_FUNCTION_ID
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <WinError.h>
 #include <WinNT.h>
 #include <TCHAR.h>

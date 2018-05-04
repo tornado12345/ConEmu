@@ -54,6 +54,7 @@ if exist "%daily_md%" (
 )
 rem Create YAML header
 :yaml
+call cecho /yellow "Creating YAML header for %CurVerBuild% %CurVerStage%"
 call :out_build > %daily_md%
 rem Dump git commits into ".daily.md"
 call :do_log %COMMIT_SHA% >> %daily_md%
@@ -65,6 +66,10 @@ goto :EOF
 :out_build
 echo ---
 echo build: %CurVerBuild%
+if /I "%CurVerStage%" == "ALPHA"   echo stage: alpha
+if /I "%CurVerStage%" == "PREVIEW" echo stage: preview
+if /I "%CurVerStage%" == "STABLE"  echo stage: stable
+rem add new line to the end of .daily.md
 echo ---^
 
 

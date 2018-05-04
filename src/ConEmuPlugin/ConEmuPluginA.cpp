@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
 #include "../common/Common.h"
 #ifdef _DEBUG
 #pragma warning( disable : 4995 )
@@ -225,7 +224,7 @@ bool CPluginAnsi::GetPanelItemInfo(const CEPanelInfo& PnlInfo, bool bSelected, I
 	Info.nFileSizeLow = pItem->FindData.nFileSizeLow;
 
 	MultiByteToWideChar(CP_OEMCP, 0, pItem->FindData.cFileName, -1, Info.cFileName, countof(Info.cFileName));
-	MultiByteToWideChar(CP_OEMCP, 0, pItem->FindData.cAlternateFileName, -1, Info.cAlternateFileName, countof(Info.cFileName));
+	MultiByteToWideChar(CP_OEMCP, 0, pItem->FindData.cAlternateFileName, -1, Info.cAlternateFileName, countof(Info.cAlternateFileName));
 
 	if (ppszFullPathName)
 		*ppszFullPathName = lstrdup(Info.cFileName);

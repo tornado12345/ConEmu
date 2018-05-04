@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConEmu.h"
 #include "ConEmuApp.h"
 #include "ConEmuCtrl.h"
+#include "ConfirmDlg.h"
 #include "DefaultTerm.h"
 #include "DpiAware.h"
 #include "DynDialog.h"
@@ -100,6 +101,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "SetPgIntegr.h"
 #include "SetPgKeyboard.h"
 #include "SetPgKeys.h"
+#include "SetPgGeneral.h"
 #include "SetPgMarkCopy.h"
 #include "SetPgMouse.h"
 #include "SetPgPaste.h"
@@ -178,7 +180,6 @@ CSettings::CSettings()
 	, mp_DpiAware()
 	, mp_ImgBtn()
 	, mn_LastChangingFontCtrlId()
-	, mp_HelpPopup()
 {
 	// Prepare global pointers
 	gpSetCls = this;
@@ -282,8 +283,6 @@ CSettings::CSettings()
 	mn_MsgLoadFontFromMain = RegisterWindowMessage(L"Settings::LoadFontNames");
 	mn_ActivateTabMsg = RegisterWindowMessage(L"Settings::ActivateTab");
 
-	mp_HelpPopup = new CEHelpPopup;
-
 	// Settings pages definitions
 	InitVars_Pages();
 
@@ -297,6 +296,7 @@ CSettings::CSettings()
 int CSettings::GetOverallDpi()
 {
 	// Must be called during initialization only
+	_ASSERTEX(!gpConEmu || gpConEmu->GetStartupStage() < CConEmuMain::ss_PostCreate2Called);
 	CDpiAware::QueryDpiForMonitor(NULL, &_dpi_all);
 	_ASSERTE(_dpi_all.Xdpi >= 96 && _dpi_all.Ydpi >= 96);
 	_dpi.SetDpi(_dpi_all);
@@ -307,6 +307,17 @@ int CSettings::GetOverallDpi()
 int CSettings::QueryDpi()
 {
 	return _dpi.Ydpi;
+}
+
+// Called during jump to monitor with different dpi
+void CSettings::SetRequestedDpi(int dpiX, int dpiY)
+{
+	if (dpiX <= 0 || dpiY <= 0)
+	{
+		_ASSERTE(dpiX>0 && dpiY>0);
+		return;
+	}
+	_dpi.SetDpi(dpiX, dpiY);
 }
 
 void CSettings::UpdateWinHookSettings(HMODULE hLLKeyHookDll)
@@ -349,7 +360,7 @@ void CSettings::UpdateWinHookSettings(HMODULE hLLKeyHookDll)
 			if (!pHK)
 				break;
 
-			// chk_Local may fails to be registered by RegisterHotKey
+			// chk_Local may fail to be registered by RegisterHotKey
 			// so it's better to try both ways if possible
 			if ((pHK->HkType == chk_Modifier) || (pHK->HkType == chk_Global))
 				continue;
@@ -410,40 +421,41 @@ void CSettings::InitVars_Pages()
 	ConEmuSetupPages Pages[] =
 	{
 		// При добавлении вкладки нужно добавить OnInitDialog_XXX в pageOpProc
-		{IDD_SPG_FONTS,       0, lng_SpgFonts,        thi_Fonts,        CSetPgFonts::Create},
-		{IDD_SPG_SIZEPOS,     1, lng_SpgSizePos,      thi_SizePos,      CSetPgSizePos::Create},
-		{IDD_SPG_APPEAR,      1, lng_SpgAppear,       thi_Appear,       CSetPgAppear::Create},
-		{IDD_SPG_QUAKE,       1, lng_SpgQuake,        thi_Quake,        CSetPgQuake::Create},
-		{IDD_SPG_BACKGR,      1, lng_SpgBackgr,       thi_Backgr,       CSetPgBackgr::Create},
-		{IDD_SPG_TABS,        1, lng_SpgTabBar,       thi_Tabs,         CSetPgTabs::Create},
-		{IDD_SPG_CONFIRM,     1, lng_SpgConfirm,      thi_Confirm,      CSetPgConfirm::Create},
-		{IDD_SPG_TASKBAR,     1, lng_SpgTaskBar,      thi_Taskbar,      CSetPgTaskbar::Create},
-		{IDD_SPG_UPDATE,      1, lng_SpgUpdate,       thi_Update,       CSetPgUpdate::Create},
-		{IDD_SPG_STARTUP,     0, lng_SpgStartup,      thi_Startup,      CSetPgStartup::Create},
-		{IDD_SPG_TASKS,       1, lng_SpgTasks,        thi_Tasks,        CSetPgTasks::Create},
-		{IDD_SPG_ENVIRONMENT, 1, lng_SpgEnvironment,  thi_Environment,  CSetPgEnvironment::Create},
-		{IDD_SPG_FEATURES,    0, lng_SpgFeatures,     thi_Features,     CSetPgFeatures::Create},
-		{IDD_SPG_CURSOR,      1, lng_SpgCursor,       thi_Cursor,       CSetPgCursor::Create},
-		{IDD_SPG_COLORS,      1, lng_SpgColors,       thi_Colors,       CSetPgColors::Create},
-		{IDD_SPG_TRANSPARENT, 1, lng_SpgTransparent,  thi_Transparent,  CSetPgTransparent::Create},
-		{IDD_SPG_STATUSBAR,   1, lng_SpgStatusBar,    thi_Status,       CSetPgStatus::Create},
-		{IDD_SPG_APPDISTINCT, 1, lng_SpgAppDistinct,  thi_Apps,         CSetPgApps::Create},
-		{IDD_SPG_INTEGRATION, 0, lng_SpgIntegration,  thi_Integr,       CSetPgIntegr::Create},
-		{IDD_SPG_DEFTERM,     1, lng_SpgDefTerm,      thi_DefTerm,      CSetPgDefTerm::Create},
-		{IDD_SPG_COMSPEC,     1, lng_SpgComSpec,      thi_Comspec,      CSetPgComspec::Create},
-		{IDD_SPG_CHILDGUI,    1, lng_SpgChildGui,     thi_ChildGui,     CSetPgChildGui::Create},
-		{IDD_SPG_ANSI,        1, lng_SpgANSI,         thi_ANSI,         CSetPgANSI::Create},
-		{IDD_SPG_KEYS,        0, lng_SpgKeys,         thi_Keys,         CSetPgKeys::Create},
-		{IDD_SPG_KEYBOARD,    1, lng_SpgKeyboard,     thi_Keyboard,     CSetPgKeyboard::Create},
-		{IDD_SPG_MOUSE,       1, lng_SpgMouse,        thi_Mouse,        CSetPgMouse::Create},
-		{IDD_SPG_MARKCOPY,    1, lng_SpgMarkCopy,     thi_MarkCopy,     CSetPgMarkCopy::Create},
-		{IDD_SPG_PASTE,       1, lng_SpgPaste,        thi_Paste,        CSetPgPaste::Create},
-		{IDD_SPG_HIGHLIGHT,   1, lng_SpgHighlight,    thi_Hilight,      CSetPgHilight::Create},
-		{IDD_SPG_FEATURE_FAR, 0, lng_SpgFarManager,   thi_Far,          CSetPgFar::Create, true/*Collapsed*/},
-		{IDD_SPG_FARMACRO,    1, lng_SpgFarMacros,    thi_FarMacro,     CSetPgFarMacro::Create},
-		{IDD_SPG_VIEWS,       1, lng_SpgFarViews,     thi_Views,        CSetPgViews::Create},
-		{IDD_SPG_INFO,        0, lng_SpgInfo,         thi_Info,         CSetPgInfo::Create, RELEASEDEBUGTEST(true,false)/*Collapsed in Release*/},
-		{IDD_SPG_DEBUG,       1, lng_SpgDebug,        thi_Debug,        CSetPgDebug::Create},
+		{IDD_SPG_GENERAL,     0, lng_SpgGeneral,      thi_General,      L"SettingsFast.html",         CSetPgGeneral::Create},
+		{IDD_SPG_FONTS,       1, lng_SpgFonts,        thi_Fonts,        L"SettingsMain.html",         CSetPgFonts::Create},
+		{IDD_SPG_SIZEPOS,     1, lng_SpgSizePos,      thi_SizePos,      L"SettingsSizePos.html",      CSetPgSizePos::Create},
+		{IDD_SPG_APPEAR,      1, lng_SpgAppear,       thi_Appear,       L"SettingsAppearance.html",   CSetPgAppear::Create},
+		{IDD_SPG_QUAKE,       1, lng_SpgQuake,        thi_Quake,        L"SettingsQuake.html",        CSetPgQuake::Create},
+		{IDD_SPG_BACKGR,      1, lng_SpgBackgr,       thi_Backgr,       L"SettingsBackground.html",   CSetPgBackgr::Create},
+		{IDD_SPG_TABS,        1, lng_SpgTabBar,       thi_Tabs,         L"SettingsTabBar.html",       CSetPgTabs::Create},
+		{IDD_SPG_CONFIRM,     1, lng_SpgConfirm,      thi_Confirm,      L"SettingsConfirm.html",      CSetPgConfirm::Create},
+		{IDD_SPG_TASKBAR,     1, lng_SpgTaskBar,      thi_Taskbar,      L"SettingsTaskBar.html",      CSetPgTaskbar::Create},
+		{IDD_SPG_UPDATE,      1, lng_SpgUpdate,       thi_Update,       L"SettingsUpdate.html",       CSetPgUpdate::Create},
+		{IDD_SPG_STARTUP,     0, lng_SpgStartup,      thi_Startup,      L"SettingsStartup.html",      CSetPgStartup::Create},
+		{IDD_SPG_TASKS,       1, lng_SpgTasks,        thi_Tasks,        L"SettingsTasks.html",        CSetPgTasks::Create},
+		{IDD_SPG_ENVIRONMENT, 1, lng_SpgEnvironment,  thi_Environment,  L"SettingsEnvironment.html",  CSetPgEnvironment::Create},
+		{IDD_SPG_FEATURES,    0, lng_SpgFeatures,     thi_Features,     L"SettingsFeatures.html",     CSetPgFeatures::Create},
+		{IDD_SPG_CURSOR,      1, lng_SpgCursor,       thi_Cursor,       L"SettingsTextCursor.html",   CSetPgCursor::Create},
+		{IDD_SPG_COLORS,      1, lng_SpgColors,       thi_Colors,       L"SettingsColors.html",       CSetPgColors::Create},
+		{IDD_SPG_TRANSPARENT, 1, lng_SpgTransparent,  thi_Transparent,  L"SettingsTransparency.html", CSetPgTransparent::Create},
+		{IDD_SPG_STATUSBAR,   1, lng_SpgStatusBar,    thi_Status,       L"SettingsStatusBar.html",    CSetPgStatus::Create},
+		{IDD_SPG_APPDISTINCT, 1, lng_SpgAppDistinct,  thi_Apps,         L"SettingsAppDistinct.html",  CSetPgApps::Create},
+		{IDD_SPG_INTEGRATION, 0, lng_SpgIntegration,  thi_Integr,       L"SettingsIntegration.html",  CSetPgIntegr::Create},
+		{IDD_SPG_DEFTERM,     1, lng_SpgDefTerm,      thi_DefTerm,      L"SettingsDefTerm.html",      CSetPgDefTerm::Create},
+		{IDD_SPG_COMSPEC,     1, lng_SpgComSpec,      thi_Comspec,      L"SettingsComspec.html",      CSetPgComspec::Create},
+		{IDD_SPG_CHILDGUI,    1, lng_SpgChildGui,     thi_ChildGui,     L"SettingsChildGui.html",     CSetPgChildGui::Create},
+		{IDD_SPG_ANSI,        1, lng_SpgANSI,         thi_ANSI,         L"SettingsANSI.html",         CSetPgANSI::Create},
+		{IDD_SPG_KEYS,        0, lng_SpgKeys,         thi_Keys,         L"SettingsHotkeys.html",      CSetPgKeys::Create},
+		{IDD_SPG_KEYBOARD,    1, lng_SpgKeyboard,     thi_Keyboard,     L"SettingsKeyboard.html",     CSetPgKeyboard::Create},
+		{IDD_SPG_MOUSE,       1, lng_SpgMouse,        thi_Mouse,        L"SettingsMouse.html",        CSetPgMouse::Create},
+		{IDD_SPG_MARKCOPY,    1, lng_SpgMarkCopy,     thi_MarkCopy,     L"SettingsMarkCopy.html",     CSetPgMarkCopy::Create},
+		{IDD_SPG_PASTE,       1, lng_SpgPaste,        thi_Paste,        L"SettingsPaste.html",        CSetPgPaste::Create},
+		{IDD_SPG_HIGHLIGHT,   1, lng_SpgHighlight,    thi_Hilight,      L"SettingsHighlight.html",    CSetPgHilight::Create},
+		{IDD_SPG_FEATURE_FAR, 0, lng_SpgFarManager,   thi_Far,          L"SettingsFar.html",          CSetPgFar::Create,       true/*Collapsed*/},
+		{IDD_SPG_FARMACRO,    1, lng_SpgFarMacros,    thi_FarMacro,     L"SettingsFarMacros.html",    CSetPgFarMacro::Create},
+		{IDD_SPG_VIEWS,       1, lng_SpgFarViews,     thi_Views,        L"SettingsFarView.html",      CSetPgViews::Create},
+		{IDD_SPG_INFO,        0, lng_SpgInfo,         thi_Info,         L"SettingsInfo.html",         CSetPgInfo::Create,      RELEASEDEBUGTEST(true,false)/*Collapsed in Release*/},
+		{IDD_SPG_DEBUG,       1, lng_SpgDebug,        thi_Debug,        L"SettingsDebug.html",        CSetPgDebug::Create},
 		// End
 		{},
 	};
@@ -521,7 +533,6 @@ CSettings::~CSettings()
 
 	SafeFree(m_Pages);
 
-	SafeDelete(mp_HelpPopup);
 	SafeDelete(mp_Dialog);
 	SafeDelete(mp_DpiAware);
 
@@ -594,6 +605,34 @@ bool CSettings::SetOption(LPCWSTR asName, LPCWSTR asValue)
 			lbRc = true;
 		}
 	}
+	else if (!lstrcmpi(asName, L"BackGround Image") || !lstrcmpi(asName, L"bgImage"))
+	{
+		auto reloadBgImage = [](LPARAM lParam) -> LRESULT
+		{
+			if (gpSetCls->LoadBackgroundFile((LPCWSTR)lParam, true))
+			{
+				wcscpy_c(gpSet->sBgImage, (LPCWSTR)lParam);
+				HWND hBgPg = gpSetCls->GetPage(thi_Hilight);
+				if (hBgPg)
+					SetDlgItemText(hBgPg, tBgImage, gpSet->sBgImage);
+				gpSetCls->NeedBackgroundUpdate();
+				gpConEmu->Update(true);
+				return 1;
+			}
+			return 0;
+		};
+
+		lbRc = (gpConEmu->CallMainThread(true, reloadBgImage, (LPARAM)asValue) != 0);
+	}
+	else if (!lstrcmpi(asName, L"Scheme"))
+	{
+		const ColorPalette* pPal = gpSet->PaletteGetByName(asValue);
+		if (pPal)
+		{
+			ChangeCurrentPalette(pPal, true);
+			lbRc = true;
+		}
+	}
 	else
 	{
 		_ASSERTE(FALSE && "Unsupported parameter name");
@@ -614,12 +653,17 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 	if (gpLng)
 		gpLng->Reload();
 
-	gpSet->PatchSizeSettings();
+	// Expose the directory where xml file was loaded from
+	SettingsStorage Storage = gpSet->GetSettingsType();
+
+	// gh-1082: "ConEmuCfgDir" << folder where our xml-file is located
+	CEStr CfgFilePath(GetParentPath(Storage.File));
+	SetEnvironmentVariable(ENV_CONEMUCFGDIR_VAR_W, CfgFilePath.c_str(L""));
 
 	if ((ghWnd == NULL) || (slfFlags & slf_OnResetReload))
 	{
-		gpConEmu->wndX = gpSet->_wndX;
-		gpConEmu->wndY = gpSet->_wndY;
+		gpConEmu->WndPos.x = gpSet->_wndX;
+		gpConEmu->WndPos.y = gpSet->_wndY;
 		gpConEmu->WndWidth.Raw = gpSet->wndWidth.Raw;
 		gpConEmu->WndHeight.Raw = gpSet->wndHeight.Raw;
 	}
@@ -629,7 +673,7 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 	{
 		gpConEmu->GetInitialDpi(&_dpi);
 		wchar_t szInfo[100];
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"DPI initialized to {%i,%i}\r\n", _dpi.Xdpi, _dpi.Ydpi);
+		swprintf_c(szInfo, L"DPI initialized to {%i,%i}\r\n", _dpi.Xdpi, _dpi.Ydpi);
 		DEBUGSTRDPI(szInfo);
 		LogString(szInfo, true, false);
 	}
@@ -650,8 +694,8 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 			if ((rcCon.right > 0) && (rcCon.bottom > 0)
 				&& ((rcCon.right < gpSet->wndWidth.Value) || (rcCon.bottom < gpSet->wndHeight.Value)))
 			{
-				gpSet->wndWidth.Set(true, ss_Standard, min(gpSet->wndWidth.Value, rcCon.right));
-				gpSet->wndHeight.Set(false, ss_Standard, min(gpSet->wndHeight.Value, rcCon.bottom));
+				gpSet->wndWidth.Set(true, ss_Standard, std::min(gpSet->wndWidth.Value, rcCon.right));
+				gpSet->wndHeight.Set(false, ss_Standard, std::min(gpSet->wndHeight.Value, rcCon.bottom));
 				gpConEmu->WndWidth.Raw = gpSet->wndWidth.Raw;
 				gpConEmu->WndHeight.Raw = gpSet->wndHeight.Raw;
 			}
@@ -666,10 +710,6 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 	if (slfFlags & slf_AllowFastConfig)
 	{
 		LPCWSTR pszDef = gpConEmu->GetDefaultTitle();
-		//wchar_t szType[8];
-		bool ReadOnly = false;
-		SettingsStorage Storage = {};
-		gpSet->GetSettingsType(Storage, ReadOnly);
 		LPCWSTR pszConfig = gpSetCls->GetConfigName();
 
 		CEStr szTitle;
@@ -680,7 +720,7 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 			szTitle = lstrmerge(pszDef, L" ", pszFastCfgTitle);
 
 		// Run "Fast configuration dialog" and apply some final defaults (if was Reset of new settings)
-		CheckOptionsFast(szTitle, slfFlags);
+		FastConfig::CheckOptionsFast(szTitle, slfFlags);
 
 		// Single instance?
 		if (gpSet->isSingleInstance && (gpSetCls->SingleInstanceArg == sgl_Default))
@@ -805,7 +845,7 @@ void CSettings::SettingsLoaded(SettingsLoadedFlags slfFlags, LPCWSTR pszCmdLine 
 void CSettings::SettingsPreSave()
 {
 	// Do not get data from LogFont if it was not created yet
-	if (gpConEmu->mn_StartupFinished >= CConEmuMain::ss_Started)
+	if (gpConEmu->GetStartupStage() >= CConEmuMain::ss_Started)
 	{
 		gpFontMgr->SettingsPreSave();
 	}
@@ -824,7 +864,7 @@ void CSettings::SettingsPreSave()
 
 
 // Помножить размер на масштаб * dpi * юниты(-1)
-LONG CSettings::EvalSize(LONG nSize, EvalSizeFlags Flags)
+LONG CSettings::EvalSize(LONG nSize, EvalSizeFlags Flags, DpiValue* apDpi /*= nullptr*/)
 {
 	if (nSize <= 0)
 	{
@@ -835,12 +875,15 @@ LONG CSettings::EvalSize(LONG nSize, EvalSizeFlags Flags)
 		return 0;
 	}
 
+	if (!apDpi)
+		apDpi = &_dpi;
+
 	LONG iMul = 1, iDiv = 1, iResult;
 
 	// DPI текущего(!) монитора
 	if ((Flags & esf_CanUseDpi) && gpSet->FontUseDpi)
 	{
-		int iDpi = (Flags & esf_Horizontal) ? _dpi.Xdpi : _dpi.Ydpi;
+		int iDpi = (Flags & esf_Horizontal) ? apDpi->Xdpi : apDpi->Ydpi;
 		if (iDpi > 0)
 		{
 			iMul *= iDpi;
@@ -1087,7 +1130,7 @@ void CSettings::SearchForControls()
 								|| (lstrcmpi(szClass, L"Static") == 0))
 						&& GetWindowText(hCtrl, szText, countof(szText)) && *szText)
 					{
-						// The control's text may has (&) accelerator confusing the search
+						// The control's text may have (&) accelerator confusing the search
 						wchar_t* p = wcschr(szText, L'&');
 						while (p)
 						{
@@ -1204,7 +1247,7 @@ LRESULT CSettings::OnInitDialog()
 {
 	//_ASSERTE(!hMain && !hColors && !hCmdTasks && !hViews && !hExt && !hFar && !hInfo && !hDebug && !hUpdate && !hSelection);
 	//hMain = hExt = hFar = hTabs = hKeys = hViews = hColors = hCmdTasks = hInfo = hDebug = hUpdate = hSelection = NULL;
-	_ASSERTE(m_Pages && (m_Pages[0].PageIndex==thi_Fonts) && !m_Pages[0].hPage /*...*/);
+	_ASSERTE(m_Pages && (m_Pages[0].PageIndex==thi_General) && !m_Pages[0].hPage /*...*/);
 	ClearPages();
 
 	CSetDlgColors::ReleaseHandles();
@@ -1263,10 +1306,8 @@ LRESULT CSettings::OnInitDialog()
 	mn_LastChangingFontCtrlId = 0;
 
 	//wchar_t szType[8];
-	SettingsStorage Storage = {};
-	bool ReadOnly = false;
-	gpSet->GetSettingsType(Storage, ReadOnly);
-	if (ReadOnly || isResetBasicSettings)
+	SettingsStorage Storage = gpSet->GetSettingsType();
+	if (Storage.ReadOnly || isResetBasicSettings)
 	{
 		EnableWindow(GetDlgItem(ghOpWnd, bSaveSettings), FALSE); // Сохранение запрещено
 		if (isResetBasicSettings)
@@ -1280,16 +1321,14 @@ LRESULT CSettings::OnInitDialog()
 		CEStr lsBracketed(L"<", CLngRc::getRsrc(lng_BasicSettings/*"Настройки по умолчанию"*/), L">");
 		SetDlgItemText(ghOpWnd, tStorage, lsBracketed);
 	}
-	else if (lstrcmp(Storage.szType, CONEMU_CONFIGTYPE_REG) == 0)
+	else if (Storage.Type == StorageType::REG)
 	{
-		wchar_t szStorage[MAX_PATH*2];
-		wcscpy_c(szStorage, L"HKEY_CURRENT_USER\\");
-		wcscat_c(szStorage, ConfigPath);
+		CEStr szStorage(L"HKEY_CURRENT_USER\\", ConfigPath);
 		SetDlgItemText(ghOpWnd, tStorage, szStorage);
 	}
 	else
 	{
-		SetDlgItemText(ghOpWnd, tStorage, gpConEmu->ConEmuXml());
+		SetDlgItemText(ghOpWnd, tStorage, Storage.File);
 	}
 
 	CEStr lsCfgAdd;
@@ -1302,7 +1341,7 @@ LRESULT CSettings::OnInitDialog()
 		CLngRc::getRsrc(lng_DlgSettings/*"Settings"*/),
 		lsCfgAdd,
 		L" ",
-		Storage.szType,
+		Storage.getTypeName(),
 		L" ",
 		gpConEmu->GetDefaultTitle(),
 		L" ",
@@ -1353,13 +1392,17 @@ LRESULT CSettings::OnInitDialog()
 		TreeView_SelectItem(GetDlgItem(ghOpWnd, tvSetupCategories), gpSetCls->m_Pages[0].hTI);
 
 		HWND hPlace = GetDlgItem(ghOpWnd, tSetupPagePlace);
-		ShowWindow(hPlace, SW_HIDE);
+		apiShowWindow(hPlace, SW_HIDE);
 
 		mb_IgnoreSelPage = false;
 
 		CSetPgBase::CreatePage(&(m_Pages[0]), ghOpWnd, mn_ActivateTabMsg, mp_DpiAware);
 
+		CEStr lsUrl(CEWIKIBASE, m_Pages[0].wikiPage);
+		SetDlgItemText(ghOpWnd, stSetPgWikiLink, lsUrl);
+
 		apiShowWindow(m_Pages[0].hPage, SW_SHOW);
+		m_LastActivePageId = gpSetCls->m_Pages[0].PageIndex;
 	}
 	MCHKHEAP
 	{
@@ -1524,9 +1567,9 @@ void CSettings::ChangeCurrentPalette(const ColorPalette* pPal, bool bChangeDropD
 		CSetDlgLists::SelectStringExact(hDlg, lbDefaultColors, pPal->pszName);
 	}
 
-	uint nCount = countof(pPal->Colors);
+	unsigned nCount = countof(pPal->Colors);
 
-	for (uint i = 0; i < nCount; i++)
+	for (unsigned i = 0; i < nCount; i++)
 	{
 		gpSet->Colors[i] = pPal->Colors[i]; //-V108
 	}
@@ -1538,7 +1581,7 @@ void CSettings::ChangeCurrentPalette(const ColorPalette* pPal, bool bChangeDropD
 	if (bTextChanged || bPopupChanged)
 	{
 		wchar_t szLog[128];
-		_wsprintf(szLog, SKIPCOUNT(szLog)
+		swprintf_c(szLog,
 			L"Color Palette: Text {%u|%u}->{%u|%u} Popup {%u|%u}->{%u|%u}",
 			gpSet->AppStd.nTextColorIdx, gpSet->AppStd.nBackColorIdx, pPal->nTextColorIdx, pPal->nBackColorIdx,
 			gpSet->AppStd.nPopTextColorIdx, gpSet->AppStd.nPopBackColorIdx, pPal->nPopTextColorIdx, pPal->nPopBackColorIdx);
@@ -1555,9 +1598,6 @@ void CSettings::ChangeCurrentPalette(const ColorPalette* pPal, bool bChangeDropD
 	}
 
 	LogString(L"Color Palette: Refreshing");
-
-	gpSet->AppStd.nExtendColorIdx = pPal->nExtendColorIdx;
-	gpSet->AppStd.isExtendColors = pPal->isExtendColors;
 
 	if (hDlg && (hDlg == GetActivePage()))
 	{
@@ -1681,7 +1721,11 @@ LRESULT CSettings::OnPage(LPNMHDR phdr)
 						SendMessage(m_Pages[i].hPage, mn_ActivateTabMsg, 1, (LPARAM)&(m_Pages[i]));
 						m_Pages[i].pPage->ProcessDpiChange(gpSetCls->mp_DpiAware);
 					}
-					ShowWindow(m_Pages[i].hPage, SW_SHOW);
+
+					CEStr lsUrl(CEWIKIBASE, m_Pages[i].wikiPage);
+					SetDlgItemText(ghOpWnd, stSetPgWikiLink, lsUrl);
+
+					apiShowWindow(m_Pages[i].hPage, SW_SHOW);
 					m_LastActivePageId = gpSetCls->m_Pages[i].PageIndex;
 				}
 				else if (p->itemOld.hItem == m_Pages[i].hTI)
@@ -1690,7 +1734,7 @@ LRESULT CSettings::OnPage(LPNMHDR phdr)
 				}
 			}
 			if (hCurrent)
-				ShowWindow(hCurrent, SW_HIDE);
+				apiShowWindow(hCurrent, SW_HIDE);
 		} // TVN_SELCHANGED
 		break;
 	}
@@ -1701,6 +1745,8 @@ LRESULT CSettings::OnPage(LPNMHDR phdr)
 /// IdShowPage is DialogID (IDD_SPG_FONTS, etc.)
 void CSettings::Dialog(int IdShowPage /*= 0*/)
 {
+	const TabHwndIndex lastPageId = gpSetCls->m_LastActivePageId;
+
 	if (!ghOpWnd || !IsWindow(ghOpWnd))
 	{
 		_ASSERTE(isMainThread());
@@ -1710,16 +1756,9 @@ void CSettings::Dialog(int IdShowPage /*= 0*/)
 		// Сначала обновить DC, чтобы некрасивостей не было
 		gpConEmu->UpdateWindowChild(NULL);
 
-		if (!gpSetCls->mp_DpiAware
-			#ifndef _DEBUG
-			&& CDpiAware::IsPerMonitorDpi()
-			#endif
-			)
-		{
-			gpSetCls->mp_DpiAware = new CDpiForDialog();
-		}
+		CDpiForDialog::Create(gpSetCls->mp_DpiAware);
 
-		wchar_t szLog[80]; _wsprintf(szLog, SKIPCOUNT(szLog) L"Creating settings dialog, IdPage=%u", IdShowPage);
+		wchar_t szLog[80]; swprintf_c(szLog, L"Creating settings dialog, IdPage=%u", IdShowPage);
 		LogString(szLog);
 
 		gpSetCls->InitPageNames();
@@ -1745,21 +1784,11 @@ void CSettings::Dialog(int IdShowPage /*= 0*/)
 	TabHwndIndex showPage = thi_Last;
 	if (IdShowPage)
 		showPage = gpSetCls->GetPageIdByDialogId(IdShowPage);
-	if ((showPage == thi_Last) && (gpSetCls->m_LastActivePageId != thi_Last))
-		showPage = gpSetCls->m_LastActivePageId;
+	if ((showPage == thi_Last) && (lastPageId != thi_Last))
+		showPage = lastPageId;
 
 	if (showPage != thi_Last)
-	{
-		for (size_t i = 0; gpSetCls->m_Pages[i].DialogID; i++)
-		{
-			if (gpSetCls->m_Pages[i].PageIndex == showPage)
-			{
-				//PostMessage(GetDlgItem(ghOpWnd, tvSetupCategories), TVM_SELECTITEM, TVGN_CARET, (LPARAM)gpSetCls->m_Pages[i].hTI);
-				SelectTreeItem(GetDlgItem(ghOpWnd, tvSetupCategories), gpSetCls->m_Pages[i].hTI, true);
-				break;
-			}
-		}
-	}
+		gpSetCls->ActivatePage(showPage);
 
 	SetFocus(ghOpWnd);
 wrap:
@@ -1816,25 +1845,34 @@ void CSettings::OnResetOrReload(bool abResetOnly, SettingsStorage* pXmlStorage /
 {
 	bool lbWasPos = false;
 	RECT rcWnd = {};
-	int nSel = -1;
 
-	wchar_t* pszMsg = NULL;
-	LPCWSTR pszWarning = L"\n\nWarning!!!\nAll your current settings will be lost!";
-	if (pXmlStorage)
+	bool bImportOnly = !abResetOnly && pXmlStorage;
+
+	CEStr szLabel, szMessage, szOkDescr;
+	if (bImportOnly)
 	{
-		_ASSERTE(abResetOnly == false);
-		pszMsg = lstrmerge(L"Confirm import settings from file:\n", pXmlStorage->pszFile ? pXmlStorage->pszFile : L"???", pszWarning);
+		szLabel = L"Confirm import settings from file";
+		szMessage = pXmlStorage->File ? pXmlStorage->File : L"???";
+		szOkDescr = L"Import settings via merging";
 	}
 	else if (abResetOnly)
 	{
-		pszMsg = lstrmerge(L"Confirm reset settings to defaults", pszWarning);
+		szLabel = L"Confirm reset settings to defaults";
+		szMessage = L"Warning!!!\nAll your current settings will be lost!";
+		szOkDescr = L"Reset settings to defaults!";
 	}
 	else
 	{
-		pszMsg = lstrmerge(L"Confirm reload settings from ", gpSet->Type, pszWarning);
+		szLabel = CEStr(L"Confirm reload settings from ", SettingsStorage::getTypeName(gpSetCls->Type));
+		szMessage = L"Warning!!!\nAll your current settings will be lost!";
+		szOkDescr = CEStr(L"Reset to defaults and import settings from ", SettingsStorage::getTypeName(gpSetCls->Type));
 	}
 
-	int nBtn = MsgBox(pszMsg, MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2, gpConEmu->GetDefaultTitle(), ghOpWnd);
+	int nBtn = ConfirmDialog(szMessage, szLabel, gpConEmu->GetDefaultTitle(),
+		NULL /* URL */, MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2, ghOpWnd,
+		L"Confirm", szOkDescr,
+		L"Cancel", NULL);
+	// int nBtn = MsgBox(pszMsg, MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2, gpConEmu->GetDefaultTitle(), ghOpWnd);
 	if (nBtn != IDYES)
 		return;
 
@@ -1844,41 +1882,49 @@ void CSettings::OnResetOrReload(bool abResetOnly, SettingsStorage* pXmlStorage /
 	if (ghOpWnd && IsWindow(ghOpWnd))
 	{
 		lbWasPos = true;
-		nSel = TabCtrl_GetCurSel(GetDlgItem(ghOpWnd, tabMain));
 		GetWindowRect(ghOpWnd, &rcWnd);
 		DestroyWindow(ghOpWnd);
 	}
 	_ASSERTE(ghOpWnd == NULL);
 
-	// Сброс настроек на умолчания
-	gpSet->InitSettings();
-
-	// Почистить макросы и сбросить на умолчания
-	CSetPgKeys::ReInitHotkeys();
-
-	if (!abResetOnly)
+	if (!bImportOnly)
 	{
-		// Если надо - загрузить из реестра/xml
+		// Сброс настроек на умолчания
+		gpSet->InitSettings();
+
+		// Почистить макросы и сбросить на умолчания
+		CSetPgKeys::ReInitHotkeys();
+	}
+
+	if (bImportOnly)
+	{
 		bool bNeedCreateVanilla = false;
 		gpSet->LoadSettings(bNeedCreateVanilla, pXmlStorage);
 	}
+	else if (!abResetOnly && !gpConEmu->IsResetBasicSettings())
+	{
+		// Reload from xml/reg
+		bool bNeedCreateVanilla = false;
+		gpSet->LoadSettings(bNeedCreateVanilla);
+	}
 	else
 	{
-		// Иначе - какие-то настройки могут быть модифицированы, как для "Новой конфигурации"
-		gpSet->IsConfigNew = true;
+		// Reset to defaults
+		gpSetCls->IsConfigNew = true; // otherwise some options may be modified, as for "new config"
 		gpSet->InitVanilla();
 	}
 
 
 	SettingsLoadedFlags slfFlags = slf_OnResetReload
-		| (abResetOnly ? (slf_DefaultSettings|slf_AllowFastConfig) : slf_None);
+		| ((abResetOnly && !bImportOnly) ? (slf_DefaultSettings/*|slf_AllowFastConfig*/) : slf_None);
 
 	SettingsLoaded(slfFlags, NULL);
 
 	if (lbWasPos && !ghOpWnd)
 	{
 		Dialog();
-		TabCtrl_SetCurSel(GetDlgItem(ghOpWnd, tabMain), nSel);
+		if (ghOpWnd)
+			SetWindowPos(ghOpWnd, NULL, rcWnd.left, rcWnd.top, 0, 0, SWP_NOSIZE|SWP_NOZORDER);
 	}
 
 	SetCursor(LoadCursor(NULL,IDC_ARROW));
@@ -1907,8 +1953,8 @@ void CSettings::ExportSettings()
 			SetConfigName(L"");
 		}
 
-		SettingsStorage XmlStorage = {CONEMU_CONFIGTYPE_XML};
-		XmlStorage.pszFile = pszFile;
+		SettingsStorage XmlStorage = {StorageType::XML};
+		XmlStorage.File = pszFile;
 		bool bOld = isResetBasicSettings; isResetBasicSettings = false;
 		gpSet->SaveSettings(FALSE, &XmlStorage);
 		isResetBasicSettings = bOld;
@@ -1930,6 +1976,7 @@ void CSettings::ExportSettings()
 
 void CSettings::ImportSettings()
 {
+	// #SETTINGS Support INI files?
 	wchar_t *pszFile = SelectFile(L"Import settings", L"*.xml", NULL, ghOpWnd, L"XML files (*.xml)\0*.xml\0", sff_Default);
 	if (pszFile)
 	{
@@ -1941,8 +1988,9 @@ void CSettings::ImportSettings()
 			SetConfigName(L"");
 		}
 
-		SettingsStorage XmlStorage = {CONEMU_CONFIGTYPE_XML};
-		XmlStorage.pszFile = pszFile;
+		SettingsStorage XmlStorage = {StorageType::XML};
+		XmlStorage.File = pszFile;
+		XmlStorage.ReadOnly = true;
 
 		OnResetOrReload(false, &XmlStorage);
 
@@ -1973,19 +2021,10 @@ INT_PTR CSettings::ProcessTipHelp(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM 
 
 	_ASSERTE((lpnmtdi->uFlags & TTF_IDISHWND) == TTF_IDISHWND);
 
-	if (mp_HelpPopup->mh_Popup)
-	{
-		POINT MousePos = {}; GetCursorPos(&MousePos);
-		mp_HelpPopup->ShowItemHelp(0, (HWND)lpnmtdi->hdr.idFrom, MousePos);
-
-		szHint[0] = 0;
-		lpnmtdi->lpszText = szHint;
-	}
-	else
 	{
 		if (gpSet->isShowHelpTooltips)
 		{
-			mp_HelpPopup->GetItemHelp(0, (HWND)lpnmtdi->hdr.idFrom, szHint, countof(szHint));
+			CEHelpPopup::GetItemHelp(0, (HWND)lpnmtdi->hdr.idFrom, szHint, countof(szHint));
 
 			lpnmtdi->lpszText = szHint;
 		}
@@ -2046,6 +2085,19 @@ INT_PTR CSettings::wndOpProc(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lPara
 			}
 
 			break;
+
+		case WM_CTLCOLORSTATIC:
+			return gpSetCls->OnCtlColorStatic(hWnd2, (HDC)wParam, (HWND)lParam, GetDlgCtrlID((HWND)lParam));
+
+		case WM_SETCURSOR:
+			if (CDlgItemHelper::isHyperlinkCtrl(GetDlgCtrlID((HWND)wParam)))
+			{
+				SetCursor(LoadCursor(NULL, IDC_HAND));
+				SetWindowLongPtr(hWnd2, DWLP_MSGRESULT, TRUE);
+				return TRUE;
+			}
+			break;
+
 		//case WM_GETICON:
 
 		//	if (wParam==ICON_BIG)
@@ -2179,11 +2231,7 @@ INT_PTR CSettings::wndOpProc(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lPara
 			}
 			else switch (phdr->idFrom)
 			{
-			#if 0
-			case tabMain:
-			#else
 			case tvSetupCategories:
-			#endif
 				gpSetCls->OnPage(phdr);
 				break;
 			}
@@ -2226,19 +2274,11 @@ INT_PTR CSettings::wndOpProc(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lPara
 		case WM_HELP:
 			if ((wParam == 0) && (lParam != 0))
 			{
-				// Показать хинт?
+				// Open wiki page
 				HELPINFO* hi = (HELPINFO*)lParam;
 				if (hi->cbSize >= sizeof(HELPINFO))
 				{
-					switch (hi->iCtrlId)
-					{
-					case tCmdGroupCommands:
-						// Some controls are processed personally
-						ConEmuAbout::OnInfo_About(L"-new_console");
-						break;
-					default:
-						gpSetCls->mp_HelpPopup->ShowItemHelp(hi);
-					}
+					CEHelpPopup::OpenSettingsWiki(hWnd2, hi->iCtrlId);
 				}
 			}
 			return TRUE;
@@ -2260,6 +2300,25 @@ INT_PTR CSettings::wndOpProc(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lPara
 	}
 
 	return 0;
+}
+
+INT_PTR CSettings::OnCtlColorStatic(HWND hDlg, HDC hdc, HWND hCtrl, WORD nCtrlId)
+{
+	if (CDlgItemHelper::isHyperlinkCtrl(nCtrlId))
+	{
+		_ASSERTE(hCtrl!=NULL);
+		// Check appropriate flags
+		DWORD nStyle = GetWindowLong(hCtrl, GWL_STYLE);
+		if (!(nStyle & SS_NOTIFY))
+			SetWindowLong(hCtrl, GWL_STYLE, nStyle|SS_NOTIFY);
+		// And the colors
+		SetTextColor(hdc, GetSysColor(COLOR_HOTLIGHT));
+		SetBkMode(hdc, TRANSPARENT);
+		HBRUSH hBrush = GetSysColorBrush(COLOR_3DFACE);
+		return (INT_PTR)hBrush;
+	}
+
+	return FALSE;
 }
 
 INT_PTR CSettings::OnMeasureFontItem(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lParam)
@@ -2358,21 +2417,29 @@ void CSettings::UpdatePos(int ax, int ay, bool bGetRect)
 {
 	int x = ax, y = ay;
 
-	if (!gpConEmu->isFullScreen()
+	if (bGetRect
+		&& !gpConEmu->isFullScreen()
 		&& !gpConEmu->isZoomed()
 		&& !gpConEmu->isIconic()
 		&& (gpConEmu->GetTileMode(false) == cwc_Current))
 	{
 		RECT rc; GetWindowRect(ghWnd, &rc);
-		x = rc.left; y = rc.top;
+		POINT newPos = gpConEmu->VisualPosFromReal(rc.left, rc.top);
+		//_ASSERTE(x==newPos.x && y==newPos.y); // May occur during Reset/Reload from Settings dialog
+		x = newPos.x; y = newPos.y;
+	}
+	else
+	{
+		POINT newPos = gpConEmu->VisualPosFromReal(ax, ay);
+		x = newPos.x; y = newPos.y;
 	}
 
-	if ((gpConEmu->wndX != x) || (gpConEmu->wndY != y))
+	if ((gpConEmu->WndPos.x != x) || (gpConEmu->WndPos.y != y))
 	{
-		if (gpConEmu->wndX != x)
-			gpConEmu->wndX = x;
-		if (gpConEmu->wndY != y)
-			gpConEmu->wndY = y;
+		if (gpConEmu->WndPos.x != x)
+			gpConEmu->WndPos.x = x;
+		if (gpConEmu->WndPos.y != y)
+			gpConEmu->WndPos.y = y;
 	}
 
 	if (gpSet->isUseCurrentSizePos)
@@ -2387,12 +2454,12 @@ void CSettings::UpdatePos(int ax, int ay, bool bGetRect)
 	if (hSizePosPg)
 	{
 		MSetter lIgnoreEdit(&CSetPgBase::mb_IgnoreEditChanged);
-		SetDlgItemInt(hSizePosPg, tWndX, gpSet->isUseCurrentSizePos ? gpConEmu->wndX : gpSet->_wndX, TRUE);
-		SetDlgItemInt(hSizePosPg, tWndY, gpSet->isUseCurrentSizePos ? gpConEmu->wndY : gpSet->_wndY, TRUE);
+		SetDlgItemInt(hSizePosPg, tWndX, gpSet->isUseCurrentSizePos ? x : gpSet->_wndX, TRUE);
+		SetDlgItemInt(hSizePosPg, tWndY, gpSet->isUseCurrentSizePos ? y : gpSet->_wndY, TRUE);
 	}
 
 	wchar_t szLabel[128];
-	_wsprintf(szLabel, SKIPLEN(countof(szLabel)) L"UpdatePos A={%i,%i} C={%i,%i} S={%i,%i}", ax,ay, gpConEmu->wndX, gpConEmu->wndY, gpSet->_wndX, gpSet->_wndY);
+	swprintf_c(szLabel, L"UpdatePos A={%i,%i} C={%i,%i} S={%i,%i}", ax,ay, x, y, gpSet->_wndX, gpSet->_wndY);
 	gpConEmu->LogWindowPos(szLabel);
 }
 
@@ -2424,7 +2491,7 @@ void CSettings::UpdateSize(const CESize w, const CESize h)
 	wchar_t szLabel[128];
 	CESize ws = {w.Raw};
 	CESize hs = {h.Raw};
-	_wsprintf(szLabel, SKIPLEN(countof(szLabel)) L"UpdateSize A={%s,%s} C={%s,%s} S={%s,%s}", ws.AsString(), hs.AsString(), gpConEmu->WndWidth.AsString(), gpConEmu->WndHeight.AsString(), gpSet->wndWidth.AsString(), gpSet->wndHeight.AsString());
+	swprintf_c(szLabel, L"UpdateSize A={%s,%s} C={%s,%s} S={%s,%s}", ws.AsString(), hs.AsString(), gpConEmu->WndWidth.AsString(), gpConEmu->WndHeight.AsString(), gpSet->wndWidth.AsString(), gpSet->wndHeight.AsString());
 	gpConEmu->LogWindowPos(szLabel);
 }
 
@@ -2457,11 +2524,11 @@ void CSettings::PostUpdateCounters(bool bPosted)
 		{
 			wchar_t sTemp[64];
 
-			i64 v = 0, v2 = 0, v3 = 0;
+			int64_t v = 0, v2 = 0, v3 = 0;
 
 			if (nID == tPerfFPS || nID == tPerfInterval)
 			{
-				i64 *pFPS = NULL;
+				int64_t *pFPS = NULL;
 				UINT nCount = 0;
 
 				if (nID == tPerfFPS)
@@ -2473,13 +2540,13 @@ void CSettings::PostUpdateCounters(bool bPosted)
 					pFPS = mn_RFPS; nCount = countof(mn_RFPS);
 				}
 
-				i64 tmin, tmax;
-				i64 imin = 0, imax = 0;
+				int64_t tmin, tmax;
+				int64_t imin = 0, imax = 0;
 				tmax = tmin = pFPS[0];
 
 				for (UINT i = 0; i < nCount; i++)
 				{
-					i64 vi = pFPS[i]; //-V108
+					int64_t vi = pFPS[i]; //-V108
 					if (!vi) continue;
 
 					if (vi < tmin) { tmin = vi; imin = i; }
@@ -2489,7 +2556,7 @@ void CSettings::PostUpdateCounters(bool bPosted)
 				if ((tmax > tmin) && mn_Freq > 0)
 				{
 					_ASSERTE(imin!=imax);
-					i64 iSamples = imax - imin;
+					int64_t iSamples = imax - imin;
 					if (iSamples < 0)
 						iSamples += nCount;
 					v = iSamples * 10 * mn_Freq / (tmax - tmin);
@@ -2499,10 +2566,10 @@ void CSettings::PostUpdateCounters(bool bPosted)
 			{
 				v = v2 = mn_KbdDelays[0]; v3 = 0;
 
-				size_t nCount = max(0, min(mn_KBD_CUR_FRAME, (int)countof(mn_KbdDelays)));
+				size_t nCount = std::max<int>(0, std::min<int>(mn_KBD_CUR_FRAME, (int)countof(mn_KbdDelays)));
 				for (size_t i = 0; i < nCount; i++)
 				{
-					i64 vi = mn_KbdDelays[i];
+					int64_t vi = mn_KbdDelays[i];
 					// Skip too large values, they may be false detected
 					if (vi <= 0 || vi >= 5000) continue;
 
@@ -2524,9 +2591,9 @@ void CSettings::PostUpdateCounters(bool bPosted)
 			// WinApi's wsprintf can't do float/double, so we use integer arithmetics for FPS and others
 
 			if (nID == tPerfKeyboard)
-				_wsprintf(sTemp, SKIPLEN(countof(sTemp)) L"%u/%u/%u", (int)v, (int)v3, (int)v2);
+				swprintf_c(sTemp, L"%u/%u/%u", (int)v, (int)v3, (int)v2);
 			else
-				_wsprintf(sTemp, SKIPLEN(countof(sTemp)) L"%u.%u", (int)(v/10), (int)(v%10));
+				swprintf_c(sTemp, L"%u.%u", (int)(v/10), (int)(v%10));
 
 			switch (nID)
 			{
@@ -2569,7 +2636,7 @@ void CSettings::Performance(UINT nID, BOOL bEnd)
 			// Performance
 			wchar_t sTemp[32];
 			// These are not MHz. E.g. on "AMD Athlon 64 X2 1999 MHz" we get "0.004 GHz"
-			_wsprintf(sTemp, SKIPLEN(countof(sTemp)) L" (%I64i)", ((i64)(mn_Freq/1000)));
+			swprintf_c(sTemp, L" (%I64i)", ((int64_t)(mn_Freq/1000)));
 			CEStr lsTemp, lsInfo(gpLng->getControl(gbPerformance, lsTemp, L"Performance counters"), sTemp);
 			SetDlgItemText(GetPage(thi_Info), nID, lsInfo);
 			// Update immediately
@@ -2582,7 +2649,7 @@ void CSettings::Performance(UINT nID, BOOL bEnd)
 	if (nID >= tPerfLast)
 		return;
 
-	i64 tick2 = 0, t;
+	int64_t tick2 = 0, t;
 
 	if (nID == tPerfFPS)
 	{
@@ -2630,7 +2697,7 @@ void CSettings::Performance(UINT nID, BOOL bEnd)
 		}
 		else if (mn_KbdDelayCounter && mn_Freq)
 		{
-			i64 iPrev = mn_KbdDelayCounter; mn_KbdDelayCounter = 0;
+			int64_t iPrev = mn_KbdDelayCounter; mn_KbdDelayCounter = 0;
 			// let eval ms the delay of console output is refreshed
 			t = (tick2 - iPrev) * 1000 / mn_Freq;
 			int idx = (InterlockedIncrement(&mn_KBD_CUR_FRAME) & (countof(mn_KbdDelays)-1));
@@ -2739,7 +2806,7 @@ void CSettings::RegisterTipsFor(HWND hChildDlg)
 			// In this case, the "tool" is the entire parent window.
 			tiBalloon.cbSize = 44; // был sizeof(TOOLINFO);
 			tiBalloon.uFlags = TTF_IDISHWND | TTF_TRACK | TTF_ABSOLUTE;
-			tiBalloon.hwnd = GetPage(thi_Fonts);
+			tiBalloon.hwnd = GetPage(thi_General);
 			tiBalloon.hinst = g_hInstance;
 			static wchar_t szAsterisk[] = L"*"; // eliminate GCC warning
 			tiBalloon.lpszText = szAsterisk;
@@ -2841,7 +2908,7 @@ void CSettings::RecreateFont(WORD wFromID)
 		if (hMainPg)
 		{
 			wchar_t szSize[10];
-			_wsprintf(szSize, SKIPLEN(countof(szSize)) L"%i", gpSet->FontSizeY);
+			swprintf_c(szSize, L"%i", gpSet->FontSizeY);
 			SetDlgItemText(hMainPg, tFontSizeY, szSize);
 		}
 	}
@@ -2975,42 +3042,10 @@ void CSettings::UnregisterTabs()
 // Показать в "Инфо" текущий режим консоли
 void CSettings::UpdateConsoleMode(CRealConsole* pRCon)
 {
+	CSetPgInfo* pInfoPg;
 	HWND hInfoPg = GetPage(thi_Info);
-	if (hInfoPg && IsWindow(hInfoPg))
-	{
-		WORD nConInMode = 0, nConOutMode = 0;
-		TermEmulationType Term = te_win32;
-		bool bBracketedPaste = false;
-		pRCon->GetConsoleModes(nConInMode, nConOutMode, Term, bBracketedPaste);
-		CEActiveAppFlags appFlags = pRCon->GetActiveAppFlags();
-
-		wchar_t szFlags[128] = L"";
-		switch (Term)
-		{
-		case te_win32:
-			wcscpy_c(szFlags, L"win32"); break;
-		case te_xterm:
-			wcscpy_c(szFlags, L"xterm"); break;
-		default:
-			msprintf(szFlags, countof(szFlags), L"term=%u", Term);
-		}
-		if (bBracketedPaste)
-			wcscat_c(szFlags, L"|BrPaste");
-		if (appFlags & caf_Cygwin1)
-			wcscat_c(szFlags, L"|cygwin");
-		if (appFlags & caf_Msys1)
-			wcscat_c(szFlags, L"|msys");
-		if (appFlags & caf_Msys2)
-			wcscat_c(szFlags, L"|msys2");
-		if (appFlags & caf_Clink)
-			wcscat_c(szFlags, L"|clink");
-
-		wchar_t szInfo[255];
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo))
-			L"Console states (In=x%02X, Out=x%02X, %s)",
-			nConInMode, nConOutMode, szFlags);
-		SetDlgItemText(hInfoPg, IDC_CONSOLE_STATES, szInfo);
-	}
+	if (GetPageObj(pInfoPg) && IsWindow(hInfoPg))
+		pInfoPg->FillConsoleMode(hInfoPg, pRCon);
 }
 
 
@@ -3105,7 +3140,7 @@ bool CSettings::IsBackgroundEnabled(CVirtualConsole* apVCon)
 	}
 }
 
-void CSettings::SetBgImageDarker(u8 newValue, bool bUpdate)
+void CSettings::SetBgImageDarker(uint8_t newValue, bool bUpdate)
 {
 	if (/*newV < 256*/ newValue != gpSet->bgImageDarker)
 	{
@@ -3117,7 +3152,7 @@ void CSettings::SetBgImageDarker(u8 newValue, bool bUpdate)
 			SendDlgItemMessage(hBgPg, slDarker, TBM_SETPOS, (WPARAM) true, (LPARAM) gpSet->bgImageDarker);
 
 			TCHAR tmp[10];
-			_wsprintf(tmp, SKIPLEN(countof(tmp)) L"%u", (UINT)gpSet->bgImageDarker);
+			swprintf_c(tmp, L"%u", (UINT)gpSet->bgImageDarker);
 			SetDlgItemText(hBgPg, tDarker, tmp);
 		}
 
@@ -3141,7 +3176,7 @@ CBackgroundInfo* CSettings::GetBackgroundObject()
 	return mp_BgInfo;
 }
 
-bool CSettings::LoadBackgroundFile(TCHAR *inPath, bool abShowErrors)
+bool CSettings::LoadBackgroundFile(LPCWSTR inPath, bool abShowErrors)
 {
 	bool lRes = false;
 
@@ -3184,7 +3219,7 @@ bool CSettings::LoadBackgroundFile(TCHAR *inPath, bool abShowErrors)
 			{
 				wchar_t szError[MAX_PATH*2];
 				DWORD dwErr = GetLastError();
-				_wsprintf(szError, SKIPLEN(countof(szError)) L"Can't expand environment strings:\r\n%s\r\nError code=0x%08X\r\nImage loading failed",
+				swprintf_c(szError, L"Can't expand environment strings:\r\n%s\r\nError code=0x%08X\r\nImage loading failed",
 				          inPath, dwErr);
 				MBoxA(szError);
 			}
@@ -3306,7 +3341,8 @@ bool CSettings::CheckConsoleFontRegistry(LPCWSTR asFaceName)
 			DWORD idx = 0, cchName = countof(szId), dwLen = sizeof(szFont)-2;
 			while ((iRc = RegEnumValue(hk, idx++, szId, &cchName, NULL, &dwType, (LPBYTE)szFont, &dwLen)) == 0)
 			{
-				szId[min(countof(szId)-1,cchName)] = 0; szFont[min(countof(szFont)-1,dwLen/2)] = 0;
+				szId[std::min<size_t>(countof(szId)-1,cchName)] = 0;
+				szFont[std::min<size_t>(countof(szFont)-1,dwLen/2)] = 0;
 				wchar_t* pszEnd;
 				if (wcstoul(szId, &pszEnd, 10) && *szFont)
 				{
@@ -3474,7 +3510,7 @@ bool CSettings::CheckConsoleFontFast(LPCWSTR asCheckName /*= NULL*/)
 
 			#if 0
 			wchar_t szDbg[1024];
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Cmd:\n%s\nExitCode=%i", szCmd, nCheckResult);
+			swprintf_c(szDbg, L"Cmd:\n%s\nExitCode=%i", szCmd, nCheckResult);
 			MBoxA(szDbg);
 			FreeConsole();
 			#endif
@@ -3486,7 +3522,7 @@ wrap:
 	if (gpSet->isLogging())
 	{
 		wchar_t szInfo[128];
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"CheckConsoleFontFast(`%s`,`%s`) = %u",
+		swprintf_c(szInfo, L"CheckConsoleFontFast(`%s`,`%s`) = %u",
 			asCheckName ? asCheckName : L"NULL", LF.lfFaceName, gpSetCls->nConFontError);
 		LogString(szInfo);
 	}
@@ -3513,7 +3549,8 @@ bool CSettings::CheckConsoleFont(HWND ahDlg)
 			INT_PTR nIdx = -1;
 			while ((iRc = RegEnumValue(hk, idx++, szId, &cchName, NULL, &dwType, (LPBYTE)szFont, &dwLen)) == 0)
 			{
-				szId[min(countof(szId)-1,cchName)] = 0; szFont[min(countof(szFont)-1,dwLen/2)] = 0;
+				szId[std::min<size_t>(countof(szId)-1,cchName)] = 0;
+				szFont[std::min<size_t>(countof(szFont)-1,dwLen/2)] = 0;
 				if (*szFont)
 				{
 					LPCWSTR pszFaceName = (szFont[0] == L'*') ? (szFont+1) : szFont;
@@ -3533,7 +3570,7 @@ bool CSettings::CheckConsoleFont(HWND ahDlg)
 
 		bool bLoaded = false;
 
-		if (ahDlg && (GetSystemMetrics(SM_DBCSENABLED) != 0))
+		if (ahDlg && IsWinDBCS())
 		{
 			// Chinese
 			HKEY hk = NULL;
@@ -3605,21 +3642,21 @@ INT_PTR CSettings::EditConsoleFontProc(HWND hWnd2, UINT messg, WPARAM wParam, LP
 			gpSetCls->hConFontDlg = NULL; // пока не выставим - на смену в контролах не реагировать
 			wchar_t temp[10];
 			const DWORD* pnSizesSmall = NULL;
-			uint nCount = CSetDlgLists::GetListItems(CSetDlgLists::eFSizesSmall, pnSizesSmall);
-			for (uint i = 0; i < nCount; i++)
+			unsigned nCount = CSetDlgLists::GetListItems(CSetDlgLists::eFSizesSmall, pnSizesSmall);
+			for (unsigned i = 0; i < nCount; i++)
 			{
-				_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", pnSizesSmall[i]);
+				swprintf_c(temp, L"%i", pnSizesSmall[i]);
 				SendDlgItemMessage(hWnd2, tConsoleFontSizeY, CB_ADDSTRING, 0, (LPARAM) temp);
-				_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", (int)(pnSizesSmall[i]*3/2));
+				swprintf_c(temp, L"%i", (int)(pnSizesSmall[i]*3/2));
 				SendDlgItemMessage(hWnd2, tConsoleFontSizeX, CB_ADDSTRING, 0, (LPARAM) temp);
 
 				if ((LONG)pnSizesSmall[i] >= gpFontMgr->LogFont.lfHeight)
 					break; // не допускаются шрифты больше, чем выбрано для основного шрифта!
 			}
 
-			_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->ConsoleFont.lfHeight);
+			swprintf_c(temp, L"%i", gpSet->ConsoleFont.lfHeight);
 			CSetDlgLists::SelectStringExact(hWnd2, tConsoleFontSizeY, temp);
-			_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->ConsoleFont.lfWidth);
+			swprintf_c(temp, L"%i", gpSet->ConsoleFont.lfWidth);
 			CSetDlgLists::SelectStringExact(hWnd2, tConsoleFontSizeX, temp);
 
 			// Показать текущий шрифт и проверить его
@@ -3771,7 +3808,7 @@ INT_PTR CSettings::EditConsoleFontProc(HWND hWnd2, UINT messg, WPARAM wParam, LP
 						sei.fMask = SEE_MASK_NO_CONSOLE|SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
 						sei.lpVerb = L"runas";
 						sei.lpFile = WIN3264TEST(gpConEmu->ms_ConEmuC32Full,gpConEmu->ms_ConEmuC64Full);
-						_wsprintf(szCommandLine, SKIPLEN(countof(szCommandLine)) L" \"/REGCONFONT=%s\"", szFaceName);
+						swprintf_c(szCommandLine, L" \"/REGCONFONT=%s\"", szFaceName);
 						sei.lpParameters = szCommandLine;
 						wchar_t szWorkDir[MAX_PATH+1];
 						wcscpy_c(szWorkDir, gpConEmu->WorkDir());
@@ -3887,14 +3924,27 @@ INT_PTR CSettings::EditConsoleFontProc(HWND hWnd2, UINT messg, WPARAM wParam, LP
 
 							if (TB != tConsoleFontSizeX)
 							{
-								_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", lpOutl->otmTextMetrics.tmAveCharWidth);
+								swprintf_c(temp, L"%i", lpOutl->otmTextMetrics.tmAveCharWidth);
 								CSetDlgLists::SelectStringExact(hWnd2, tConsoleFontSizeX, temp);
 							}
 
 							if (lpOutl->otmTextMetrics.tmHeight != LF.lfHeight)
 							{
-								_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", lpOutl->otmTextMetrics.tmHeight);
-								CSetDlgLists::SelectStringExact(hWnd2, tConsoleFontSizeY, temp);
+								swprintf_c(temp, L"%i", lpOutl->otmTextMetrics.tmHeight);
+								if (TB == tConsoleFontSizeY)
+								{
+									CEStr lsMsg(L"The created font height differs: ", temp);
+									gpSetCls->ShowModifierErrorTip(lsMsg, hWnd2, TB);
+								}
+								else
+								{
+									CSetDlgLists::SelectStringExact(hWnd2, tConsoleFontSizeY, temp);
+									gpSetCls->ShowModifierErrorTip(L"", hWnd2, TB);
+								}
+							}
+							else
+							{
+								gpSetCls->ShowModifierErrorTip(L"", hWnd2, TB);
 							}
 
 							free(lpOutl); lpOutl = NULL;
@@ -4096,14 +4146,6 @@ bool CSettings::isDialogMessage(MSG &Msg)
 		return true;
 	}
 
-	if (mp_HelpPopup && mp_HelpPopup->mh_Popup)
-	{
-		if (IsDialogMessage(mp_HelpPopup->mh_Popup, &Msg))
-		{
-			return true;
-		}
-	}
-
 	return false;
 }
 
@@ -4117,9 +4159,9 @@ const ConEmuSetupPages* CSettings::GetPageData(TabHwndIndex nPage)
 
 	const ConEmuSetupPages* pData = NULL;
 
-	_ASSERTE((thi_Fonts == (TabHwndIndex)0) && (nPage >= thi_Fonts) && (nPage < thi_Last));
+	_ASSERTE((thi_General == (TabHwndIndex)0) && (nPage >= thi_General) && (nPage < thi_Last));
 
-	if ((nPage >= thi_Fonts) && (nPage < thi_Last))
+	if ((nPage >= thi_General) && (nPage < thi_Last))
 	{
 		if (m_Pages[nPage].PageIndex == nPage)
 		{
@@ -4171,6 +4213,24 @@ TabHwndIndex CSettings::GetPageIdByDialogId(UINT DialogID)
 	return pageId;
 }
 
+bool CSettings::ActivatePage(TabHwndIndex showPage)
+{
+	if (showPage != thi_Last)
+	{
+		for (size_t i = 0; m_Pages[i].DialogID; i++)
+		{
+			if (m_Pages[i].PageIndex == showPage)
+			{
+				//PostMessage(GetDlgItem(ghOpWnd, tvSetupCategories), TVM_SELECTITEM, TVGN_CARET, (LPARAM)gpSetCls->m_Pages[i].hTI);
+				SelectTreeItem(GetDlgItem(ghOpWnd, tvSetupCategories), m_Pages[i].hTI, true);
+				return true;;
+			}
+		}
+	}
+
+	return false;
+}
+
 HWND CSettings::GetActivePage()
 {
 	const ConEmuSetupPages* p = (m_LastActivePageId != thi_Last) ? GetPageData(m_LastActivePageId) : NULL;
@@ -4189,6 +4249,16 @@ CSetPgBase* CSettings::GetActivePageObj()
 	if (!p->hPage || !IsWindowVisible(p->hPage))
 		return NULL;
 	return p->pPage;
+}
+
+LPCWSTR CSettings::GetActivePageWiki(CEStr& lsWiki)
+{
+	lsWiki.Clear();
+	const ConEmuSetupPages* p = (m_LastActivePageId != thi_Last) ? GetPageData(m_LastActivePageId) : NULL;
+	if (!p)
+		return NULL;
+	lsWiki.Attach(lstrmerge(CEWIKIBASE, p->wikiPage));
+	return lsWiki;
 }
 
 HWND CSettings::GetPage(TabHwndIndex nPage)

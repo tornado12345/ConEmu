@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -62,7 +62,7 @@ public:
 	JSON_TYPE getType();
 	size_t getLength();
 	bool getBool();
-	i64 getInt();
+	int64_t getInt();
 	double getDouble();
 	const wchar_t* getString();
 	const wchar_t* getObjectName(size_t index);

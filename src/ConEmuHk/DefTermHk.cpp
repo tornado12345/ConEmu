@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -61,6 +61,7 @@ extern HMODULE ghOurModule; // Хэндл нашей dll'ки (здесь хук
 bool gbPrepareDefaultTerminal = false;
 bool gbIsNetVsHost = false;
 bool gbIsVStudio = false;
+bool gbIsVSDebug = false; // msvsmon.exe
 bool gbIsVsCode = false;
 int  gnVsHostStartConsole = 0;
 bool gbIsGdbHost = false;
@@ -73,7 +74,7 @@ bool isDefTermEnabled()
 {
 	if (!gbPrepareDefaultTerminal || !gpDefTerm)
 		return false;
-	bool bDontCheckName = gbIsNetVsHost
+	bool bDontCheckName = (gbIsNetVsHost || gbIsVSDebug)
 		// Especially for Code, which starts detached "cmd /c start /wait"
 		|| ((ghConWnd == NULL) && (gnImageSubsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI))
 		;
@@ -473,7 +474,7 @@ void CDefTermHk::LogHookingStatus(DWORD nForePID, LPCWSTR sMessage)
 		return;
 	}
 	wchar_t szPID[16];
-	CEStr lsLog(L"DefTerm[", _ultow(nForePID, szPID, 10), L"]: ", sMessage);
+	CEStr lsLog(L"DefTerm[", ultow_s(nForePID, szPID, 10), L"]: ", sMessage);
 	mp_FileLog->LogString(lsLog);
 }
 
@@ -718,7 +719,10 @@ size_t CDefTermHk::GetSrvAddArgs(bool bGuiArgs, CEStr& rsArgs, CEStr& rsNewCon)
 	if (!this)
 		return 0;
 
-	size_t cchMax = 64 + ((m_Opt.pszConfigName && *m_Opt.pszConfigName) ? lstrlen(m_Opt.pszConfigName) : 0);
+	size_t cchMax = 64
+		+ ((m_Opt.pszCfgFile && *m_Opt.pszCfgFile) ? (20 + lstrlen(m_Opt.pszCfgFile)) : 0)
+		+ ((m_Opt.pszConfigName && *m_Opt.pszConfigName) ? (12 + lstrlen(m_Opt.pszConfigName)) : 0)
+		;
 	wchar_t* psz = rsArgs.GetBuffer(cchMax);
 	size_t cchNew = 32; // "-new_console:ni"
 	wchar_t* pszNew = rsNewCon.GetBuffer(cchNew);
@@ -761,7 +765,13 @@ size_t CDefTermHk::GetSrvAddArgs(bool bGuiArgs, CEStr& rsArgs, CEStr& rsNewCon)
 			wcscat_c(szNewConSw, L"n");
 	}
 
-	// That switch must be processed in server too!
+	// That switches must be processed in server too!
+	if (m_Opt.pszCfgFile && *m_Opt.pszCfgFile)
+	{
+		_wcscat_c(psz, cchMax, L" /LoadCfgFile \"");
+		_wcscat_c(psz, cchMax, m_Opt.pszCfgFile);
+		_wcscat_c(psz, cchMax, L"\"");
+	}
 	if (m_Opt.pszConfigName && *m_Opt.pszConfigName)
 	{
 		_wcscat_c(psz, cchMax, L" /CONFIG \"");

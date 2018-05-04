@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #undef PRINT_RECENT_STACK
 #endif
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <commctrl.h>
 #include "header.h"
 #include "../common/MSetter.h"
@@ -259,7 +259,7 @@ HICON CTabBarClass::GetTabIconByIndex(int IconIndex)
 void CTabBarClass::SelectTab(int i)
 {
 	wchar_t szInfo[120];
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"SelectTab tab requested: Tab=%i", i+1);
+	swprintf_c(szInfo, L"SelectTab tab requested: Tab=%i", i+1);
 	if (gpSet->isLogging()) { LogString(szInfo); } else { DEBUGSTRSEL(szInfo); }
 
 	if (mp_Rebar->IsTabbarCreated())
@@ -488,6 +488,7 @@ bool CTabBarClass::IsTabsShown()
 	// Otherwise we'll get size calculation errors
 	// And don't add `_visible` to condition list - it will break autotabs
 
+	// #SIZE_TODO May be not precise
 	return _active && mp_Rebar->IsTabbarCreated();
 }
 
@@ -500,15 +501,26 @@ bool CTabBarClass::IsSearchShown(bool bFilled)
 
 void CTabBarClass::Activate(BOOL abPreSyncConsole/*=FALSE*/)
 {
+	const bool wasActive = _active;
+	_active = true; // Required to proper size calculation
+	if (!wasActive)
+		gpConEmu->RequestRecalc();
+
+	RECT rcRebar = gpConEmu->RebarRect();
+	if (wasActive && IsRectEmpty(&rcRebar))
+	{
+		gpConEmu->RequestRecalc();
+	}
+
 	CheckRebarCreated();
 
 	bool bAutoShowHide = true;
 	// If tabs are shown on startup, than we must not pass `true` to bAutoShowHide
 	// to avoid erroneous accidental resizes
-	if ((gpConEmu->mn_StartupFinished < CConEmuMain::ss_PostCreate2Called) && (gpSet->isTabs == 1))
+	if ((gpConEmu->GetStartupStage() < CConEmuMain::ss_PostCreate2Called) && (gpSet->isTabs == 1))
 		bAutoShowHide = false;
 
-	_active = true;
+	_ASSERTE(_active == true);
 	gpConEmu->OnTabbarActivated(true, bAutoShowHide);
 	UpdatePosition();
 }
@@ -942,7 +954,7 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 		wchar_t szDbg[100];
 		int nNewVisible = m_Tabs.GetCount();
 		int nNewStacked = m_TabStack.size();
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"*** Tab list updated. Visible:%u, Stacked:%u, StackChanged:%s\n",
+		swprintf_c(szDbg, L"*** Tab list updated. Visible:%u, Stacked:%u, StackChanged:%s\n",
 			nNewVisible, nNewStacked, bStackChanged ? L"Yes" : L"No");
 		DEBUGSTRCOUNT(szDbg);
 		nPrevVisible = nNewVisible;
@@ -955,7 +967,7 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 
 	#ifdef _DEBUG
 	wchar_t szDbg[128];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CTabBarClass::Update.  ItemCount=%i, PrevItemCount=%i\n", tabIdx, nCurCount);
+	swprintf_c(szDbg, L"CTabBarClass::Update.  ItemCount=%i, PrevItemCount=%i\n", tabIdx, nCurCount);
 	DEBUGSTRTABS(szDbg);
 	#endif
 
@@ -964,7 +976,7 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 		for (I = tabIdx; I < nCurCount; I++)
 		{
 			#ifdef _DEBUG
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"   Deleting tab=%i\n", I+1);
+			swprintf_c(szDbg, L"   Deleting tab=%i\n", I+1);
 			DEBUGSTRTABS(szDbg);
 			#endif
 
@@ -987,11 +999,6 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 
 	UpdateToolConsoles();
 
-	//if (gpSet->isTabsInCaption)
-	//{
-	//	SendMessage(ghWnd, WM_NCPAINT, 0, 0);
-	//}
-
 	mn_InUpdate --;
 
 	if (mb_PostUpdateRequested)
@@ -1005,6 +1012,7 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 	return; // Just for clearness
 }
 
+// #SIZE_TODO Eliminate the function
 RECT CTabBarClass::GetMargins(bool bIgnoreVisibility /*= false*/)
 {
 	RECT rcNewMargins = {0,0};
@@ -1215,10 +1223,7 @@ bool CTabBarClass::OnNotify(LPNMHDR nmhdr, LRESULT& lResult)
 
 		if (iPage >= 0)
 		{
-			// Если в табе нет "…" - тип не нужен
 			if (!mp_Rebar->GetTabText(iPage, ms_TmpTabText, countof(ms_TmpTabText)))
-				return true;
-			if (!wcschr(ms_TmpTabText, L'\x2026' /*"…"*/))
 				return true;
 
 			CVConGuard VCon;
@@ -1227,6 +1232,9 @@ bool CTabBarClass::OnNotify(LPNMHDR nmhdr, LRESULT& lResult)
 
 			CTab tab(__FILE__,__LINE__);
 			if (!VCon->RCon()->GetTab(wndIndex, tab))
+				return true;
+
+			if ((tab->Type() == fwt_Panels) && (!wcschr(ms_TmpTabText, ucEllipsis)))
 				return true;
 
 			lstrcpyn(ms_TmpTabText, VCon->RCon()->GetTabTitle(tab), countof(ms_TmpTabText));
@@ -1295,7 +1303,8 @@ void CTabBarClass::OnCommand(WPARAM wParam, LPARAM lParam)
 	else if (wParam == TID_MINIMIZE)
 	{
 		LogString(L"ToolBar: TID_MINIMIZE");
-		PostMessage(ghWnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+		//PostMessage(ghWnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+		gpConEmu->DoMinimizeRestore(sih_Minimize);
 	}
 	else if (wParam == TID_MAXIMIZE)
 	{
@@ -1340,7 +1349,7 @@ void CTabBarClass::OnCaptionHidden()
 {
 	if (!this) return;
 
-	mp_Rebar->OnCaptionHiddenChanged(gpSet->isCaptionHidden());
+	mp_Rebar->OnCaptionHiddenChanged(gpConEmu->isCaptionHidden());
 }
 
 void CTabBarClass::OnWindowStateChanged()
@@ -1394,6 +1403,7 @@ void CTabBarClass::OnShowButtonsChanged()
 	Reposition();
 }
 
+// #SIZE_TODO Eliminate the function
 int CTabBarClass::GetTabbarHeight()
 {
 	if (!this) return 0;
@@ -1421,15 +1431,8 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 	#endif
 
 	MCHKHEAP
-	// get file name
-	TCHAR dummy[MAX_PATH*2];
-	TCHAR fileName[MAX_PATH+4]; fileName[0] = 0;
-	TCHAR szFormat[32];
-	TCHAR szEllip[MAX_PATH+1];
-	//wchar_t /**tFileName=NULL,*/ *pszNo=NULL, *pszTitle=NULL;
-	int nSplit = 0;
-	int nMaxLen = 0; //gpSet->nTabLenMax - _tcslen(szFormat) + 2/* %s */;
-	int origLength = 0; //_tcslen(tFileName);
+	const int min_allowed_tab_width = 15, max_allowed_tab_width = MAX_PATH;
+	CEStr sFileName, sFormat, sBuffer;
 
 	CRealConsole* pRCon = apVCon ? apVCon->RCon() : NULL;
 	bool bIsFar = pRCon ? pRCon->isFar() : false;
@@ -1450,28 +1453,19 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 	if (pTab->Name.Empty() || (pTab->Type() == fwt_Panels))
 	{
 		//_tcscpy(szFormat, _T("%s"));
-		lstrcpyn(szFormat,
-			bIsFar ? gpSet->szTabPanels
-			: gpSet->szTabConsole,
-			countof(szFormat));
-		// Modified console contents - tab suffix
-		// Not only Far manager windows but simple consoles also
-		if (gpSet->szTabModifiedSuffix[0] && (pTab->Flags() & fwt_ModifiedFarWnd))
-		{
-			if ((_tcslen(szFormat) + _tcslen(gpSet->szTabModifiedSuffix)) < countof(szFormat))
-			{
-				wcscat_c(szFormat, gpSet->szTabModifiedSuffix);
-			}
-		}
-		nMaxLen = gpSet->nTabLenMax - _tcslen(szFormat) + 2/* %s */;
+		sFormat.Clear();
+		sFormat.Append(
+			(bIsFar) ? gpSet->szTabPanels : gpSet->szTabConsole,
+			// Modified console contents - tab suffix
+			// Not only Far manager windows but simple consoles also
+			(gpSet->szTabModifiedSuffix[0] && (pTab->Flags() & fwt_ModifiedFarWnd)) ? gpSet->szTabModifiedSuffix : nullptr);
 
-		lstrcpyn(fileName, pszTabName, countof(fileName));
+		sFileName.Set(pszTabName);
 
 		if (gpSet->pszTabSkipWords && *gpSet->pszTabSkipWords)
 		{
-			StripWords(fileName, gpSet->pszTabSkipWords);
+			StripWords(sFileName.ms_Val, gpSet->pszTabSkipWords);
 		}
-		origLength = _tcslen(fileName);
 		//if (origLength>6) {
 		//    // Чтобы в заголовке было что-то вроде "{C:\Program Fil...- Far"
 		//    //                              вместо "{C:\Program F...} - Far"
@@ -1485,37 +1479,43 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 
 		CEStr tFileName;
 		if (apiGetFullPathName(pszTabName, tFileName))
-			lstrcpyn(fileName, PointToName(tFileName), countof(fileName));
+			sFileName.Set(PointToName(tFileName));
 		else
-			lstrcpyn(fileName, pszTabName, countof(fileName));
+			sFileName.Set(pszTabName);
 
 		if (pTab->Type() == fwt_Editor)
 		{
 			if (pTab->Flags() & fwt_ModifiedFarWnd)
-				lstrcpyn(szFormat, gpSet->szTabEditorModified, countof(szFormat));
+				sFormat.Set(gpSet->szTabEditorModified);
 			else
-				lstrcpyn(szFormat, gpSet->szTabEditor, countof(szFormat));
+				sFormat.Set(gpSet->szTabEditor);
 		}
 		else if (pTab->Type() == fwt_Viewer)
 		{
-			lstrcpyn(szFormat, gpSet->szTabViewer, countof(szFormat));
+			sFormat.Set(gpSet->szTabViewer);
 		}
 		else
 		{
 			_ASSERTE(FALSE && "Must be processed in previous branch");
-			lstrcpyn(szFormat, bIsFar ? gpSet->szTabPanels : gpSet->szTabConsole, countof(szFormat));
+			sFormat.Set(bIsFar ? gpSet->szTabPanels : gpSet->szTabConsole);
 		}
 	}
 
 	// restrict length
-	if (!nMaxLen)
-		nMaxLen = gpSet->nTabLenMax - _tcslen(szFormat) + 2/* %s */;
+	INT_PTR nMaxLen = gpSet->nTabLenMax - sFormat.GetLen();
+	// Take into account %X macro form sFormat
+	for (const wchar_t* prcnt = wcschr(sFormat.c_str(L""), L'%'); prcnt && *prcnt; prcnt = wcschr(prcnt, L'%'))
+	{
+		if (*(++prcnt)) // skip '%'
+			++prcnt;    // skip char after '%'
+		++nMaxLen;
+	}
+	if (nMaxLen < min_allowed_tab_width)
+		nMaxLen = min_allowed_tab_width;
+	else if (nMaxLen > max_allowed_tab_width)
+		nMaxLen = max_allowed_tab_width;
 
-	if (!origLength)
-		origLength = _tcslen(fileName);
-	if (nMaxLen<15) nMaxLen=15; else if (nMaxLen>=MAX_PATH) nMaxLen=MAX_PATH-1;
-
-	if (origLength > nMaxLen)
+	if (sFileName.GetLen() > nMaxLen)
 	{
 		/*_tcsnset(fileName, _T('\0'), MAX_PATH);
 		_tcsncat(fileName, tFileName, 10);
@@ -1533,14 +1533,8 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 		//}
 		// "{C:\Program Files} - Far 2.1283 Administrator x64"
 		// После добавления суффиков к заголовку фара - оно уже влезать не будет в любом случае... Так что если панели - '...' строго ставить в конце
-		nSplit = nMaxLen;
-		_tcsncpy(szEllip, fileName, nSplit); szEllip[nSplit]=0;
-		szEllip[nSplit] = L'\x2026' /*"…"*/;
-		szEllip[nSplit+1] = 0;
-		//_tcscat(szEllip, L"\x2026" /*"…"*/);
-		//_tcscat(szEllip, tFileName + origLength - (nMaxLen - nSplit));
-		//tFileName = szEllip;
-		lstrcpyn(fileName, szEllip, countof(fileName));
+		sFileName.ms_Val[nMaxLen] = ucEllipsis;
+		sFileName.ms_Val[nMaxLen+1] = 0;
 	}
 
 	// szFormat различается для Panel/Viewer(*)/Editor(*)
@@ -1548,16 +1542,18 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 	////pszNo = wcsstr(szFormat, L"%i");
 	////pszTitle = wcsstr(szFormat, L"%s");
 	////if (pszNo == NULL)
-	////	_wsprintf(fileName, SKIPLEN(countof(fileName)) szFormat, tFileName);
+	////	swprintf_c(fileName, szFormat, tFileName);
 	////else if (pszNo < pszTitle || pszTitle == NULL)
-	////	_wsprintf(fileName, SKIPLEN(countof(fileName)) szFormat, pTab->Pos, tFileName);
+	////	swprintf_c(fileName, szFormat, pTab->Pos, tFileName);
 	////else
-	////	_wsprintf(fileName, SKIPLEN(countof(fileName)) szFormat, tFileName, pTab->Pos);
+	////	swprintf_c(fileName, szFormat, tFileName, pTab->Pos);
 	//wcscpy(pTab->Name, fileName);
-	const TCHAR* pszFmt = szFormat;
-	TCHAR* pszDst = dummy;
+
+	const TCHAR* pszFmt = sFormat.c_str();
+	INT_PTR cchBufferMax = gpSet->nTabLenMax + sFormat.GetLen() + 3;
+	TCHAR* pszDst = sBuffer.GetBuffer(cchBufferMax);
+	TCHAR* pszEnd = pszDst + cchBufferMax;
 	TCHAR* pszStart = pszDst;
-	TCHAR* pszEnd = dummy + countof(dummy) - 1; // в конце еще нужно зарезервировать место для '\0'
 
 	if (!pszFmt || !*pszFmt)
 	{
@@ -1590,11 +1586,26 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 			LPCTSTR pszText = NULL;
 			switch (*pszFmt)
 			{
+				case _T('m'): case _T('M'): // %m...m, %M...M - mark ‘...’ for active (m) and inactive (M) tab
+					{
+						TCHAR m = *(pszFmt++);
+						TCHAR* pm = szTmp;
+						for (size_t i = 0; i < countof(szTmp) && *pszFmt && *pszFmt != m; ++pszFmt, ++pm)
+							*pm = *pszFmt;
+						*pm = 0;
+						pszText = szTmp;
+						while (*pszFmt && *pszFmt != m)
+							++pszFmt;
+						bool isTabActive = (pRCon && pRCon->isActive(false)) && ((pTab->Flags() & fwt_CurrentFarWnd) == fwt_CurrentFarWnd);
+						if (isTabActive != (m == _T('m')))
+							szTmp[0] = 0;
+					}
+					break;
 				case _T('s'): case _T('S'): // %s - Title
-					pszText = fileName;
+					pszText = sFileName.c_str();
 					break;
 				case _T('i'): case _T('I'): // %i - Far window number (you can see it in standard F12 menu)
-					_wsprintf(szTmp, SKIPLEN(countof(szTmp)) _T("%i"), pTab->Info.nIndex);
+					swprintf_c(szTmp, _T("%i"), pTab->Info.nIndex);
 					pszText = szTmp;
 					break;
 				case _T('p'): case _T('P'): // %p - Active process PID
@@ -1604,7 +1615,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 					}
 					else
 					{
-						_wsprintf(szTmp, SKIPLEN(countof(szTmp)) _T("%u"), apVCon->RCon()->GetActivePID());
+						swprintf_c(szTmp, _T("%u"), apVCon->RCon()->GetActivePID());
 					}
 					pszText = szTmp;
 					break;
@@ -1612,7 +1623,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 					{
 						int iCon = gpConEmu->isVConValid(apVCon);
 						if (iCon > 0)
-							_wsprintf(szTmp, SKIPLEN(countof(szTmp)) _T("%u"), iCon);
+							swprintf_c(szTmp, _T("%u"), iCon);
 						else
 							wcscpy_c(szTmp, _T("?"));
 						pszText = szTmp;
@@ -1620,9 +1631,9 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 					break;
 				case _T('n'): case _T('N'): // %n - Active process name
 					{
-						pszText = bRenamedTab ? fileName : pRCon ? pRCon->GetActiveProcessName() : NULL;
-						wcscpy_c(szTmp, (pszText && *pszText) ? pszText : L"?");
-						pszText = szTmp;
+						pszText = bRenamedTab ? sFileName.c_str() : pRCon ? pRCon->GetActiveProcessName() : NULL;
+						if (!pszText || !*pszText)
+							pszText = L"?";
 					}
 					break;
 				case _T('d'): case _T('D'): // %d - current shell directory
@@ -1631,7 +1642,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 						// CTabBarClass::Update will be triggered from CRealConsole::StoreCurWorkDir
 						// https://conemu.github.io/en/ShellWorkDir.html
 						bDynamic = true;
-						pszText = pRCon ? pRCon->GetConsoleCurDir(szArg) : NULL;
+						pszText = pRCon ? pRCon->GetConsoleCurDir(szArg, false) : NULL;
 						if (pszText && (*pszFmt == _T('f') || *pszFmt == _T('F')))
 						{
 							pszText = PointToName(pszText);
@@ -1655,8 +1666,10 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 			pszFmt++;
 			if (pszText)
 			{
-				if ((*(pszDst-1) == L' ') && (*pszText == L' '))
+				if ((pszDst > pszStart) && (*(pszDst-1) == L' ') && (*pszText == L' '))
 					pszText = SkipNonPrintable(pszText);
+				#if 0
+				// sFileName already has ellipsis
 				TCHAR* pszPartEnd = pszEnd; CEStr lsTrimmed;
 				if (bDynamic && (nMaxLen > 1) && (wcslen(pszText) > (size_t)nMaxLen))
 				{
@@ -1667,6 +1680,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 						pszText = lsTrimmed.ms_Val;
 					}
 				}
+				#endif
 				while (*pszText && pszDst < pszEnd)
 				{
 					*(pszDst++) = *(pszText++);
@@ -1677,7 +1691,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 		{
 			pszFmt++; // Avoid adding sequential spaces (e.g. if some macros was empty)
 		}
-		else
+		else if (pszDst < pszEnd)
 		{
 			*(pszDst++) = *(pszFmt++);
 		}
@@ -1698,12 +1712,7 @@ int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
 
 	*pszDst = 0;
 
-	#ifdef _DEBUG
-	if (dummy[0] && *(pszDst-1) == L' ')
-		*pszDst = 0;
-	#endif
-
-	pTab->SetLabel(dummy);
+	pTab->SetLabel(sBuffer);
 
 	MCHKHEAP;
 
@@ -1730,7 +1739,7 @@ void CTabBarClass::PrintRecentStack()
 			_ASSERTE(p!=NULL);
 			continue;
 		}
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"%2u: %s", i+1,
+		swprintf_c(szDbg, L"%2u: %s", i+1,
 			(p->Info.Status == tisPassive) ? L"<passive> " :
 			(p->Info.Status == tisEmpty) ? L"<not_init> " :
 			(p->Info.Status == tisInvalid) ? L"<invalid> " :
@@ -1746,13 +1755,13 @@ void CTabBarClass::PrintRecentStack()
 int CTabBarClass::GetNextTab(bool abForward, bool abAltStyle/*=false*/)
 {
 	// We need "visible" position (selected tab from tabbar)
-	// It may differs from actual active tab during switching
+	// It may differ from actual active tab during switching
 	int nCurSel = GetCurSel();
 	int nCurCount = GetItemCount();
 
 	#ifdef PRINT_RECENT_STACK
 	// Debug method
-	wchar_t szTab[80]; _wsprintf(szTab, SKIPCOUNT(szTab) L"GetNextTab: GetCurSel=%i\n", nCurSel);
+	wchar_t szTab[80]; swprintf_c(szTab, L"GetNextTab: GetCurSel=%i\n", nCurSel);
 	DEBUGSTRRECENT(szTab);
 	PrintRecentStack();
 	#endif
@@ -1796,7 +1805,7 @@ int CTabBarClass::GetNextTab(bool abForward, bool abAltStyle/*=false*/)
 		if (nNewSel >= 0)
 		{
 			#ifdef PRINT_RECENT_STACK
-			_wsprintf(szTab, SKIPCOUNT(szTab) L"GetNextTab(true): nNewSel=%i\n", nNewSel);
+			swprintf_c(szTab, L"GetNextTab(true): nNewSel=%i\n", nNewSel);
 			DEBUGSTRRECENT(szTab);
 			#endif
 			return nNewSel;
@@ -1812,7 +1821,7 @@ int CTabBarClass::GetNextTab(bool abForward, bool abAltStyle/*=false*/)
 	if (nNewSel >= 0)
 	{
 		#ifdef PRINT_RECENT_STACK
-		_wsprintf(szTab, SKIPCOUNT(szTab) L"GetNextTab(false): nNewSel=%i\n", nNewSel);
+		swprintf_c(szTab, L"GetNextTab(false): nNewSel=%i\n", nNewSel);
 		DEBUGSTRRECENT(szTab);
 		#endif
 		return nNewSel;

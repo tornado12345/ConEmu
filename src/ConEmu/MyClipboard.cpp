@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -55,7 +55,7 @@ bool MyOpenClipboard(LPCWSTR asAction)
 	{
 		DWORD dwErr = GetLastError();
 
-		wchar_t szCode[32]; _wsprintf(szCode, SKIPCOUNT(szCode) L", Code=%u", dwErr);
+		wchar_t szCode[32]; swprintf_c(szCode, L", Code=%u", dwErr);
 		wchar_t* pszMsg = lstrmerge(L"OpenClipboard failed (", asAction, L")", szCode);
 		LogString(pszMsg);
 		int iBtn = DisplayLastError(pszMsg, dwErr, MB_RETRYCANCEL|MB_ICONSTOP);
@@ -92,9 +92,9 @@ HANDLE MySetClipboardData(UINT uFormat, HANDLE hMem)
 
 	wchar_t szLog[100]; DWORD dwErr = (h == NULL) ? GetLastError() : 0;
 	if (h != NULL)
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"SetClipboardData(x%04X, x%08X) succeeded", uFormat, (DWORD)(DWORD_PTR)hMem);
+		swprintf_c(szLog, L"SetClipboardData(x%04X, x%08X) succeeded", uFormat, (DWORD)(DWORD_PTR)hMem);
 	else
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"SetClipboardData(x%04X, x%08X) failed, code=%u", uFormat, (DWORD)(DWORD_PTR)hMem, dwErr);
+		swprintf_c(szLog, L"SetClipboardData(x%04X, x%08X) failed, code=%u", uFormat, (DWORD)(DWORD_PTR)hMem, dwErr);
 	LogString(szLog);
 
 	return h;
@@ -211,14 +211,14 @@ wchar_t* GetCliboardText(DWORD& rnErrCode, wchar_t* rsErrText, INT_PTR cchErrMax
 	if ((hglb = GetClipboardData(CF_UNICODETEXT)) == NULL)
 	{
 		rnErrCode = GetLastError();
-		_wsprintf(rsErrText, SKIPLEN(cchErrMax) L"Clipboard does not contain CF_UNICODETEXT, nothing to paste (code=%u)", rnErrCode);
+		swprintf_c(rsErrText, cchErrMax/*#SECURELEN*/, L"Clipboard does not contain CF_UNICODETEXT, nothing to paste (code=%u)", rnErrCode);
 		gpConEmu->LogString(rsErrText);
 		_wcscpy_c(rsErrText, cchErrMax, L"Available formats:");
 		int nLen = lstrlen(rsErrText);
 		UINT fmt = 0;
 		while (((nLen + 11) < cchErrMax) && ((fmt = EnumClipboardFormats(fmt)) != 0))
 		{
-			_wsprintf(rsErrText+nLen, SKIPLEN(cchErrMax-nLen) L" x%04X", fmt);
+			swprintf_c(rsErrText+nLen, cchErrMax-nLen/*#SECURELEN*/, L" x%04X", fmt);
 			nLen += lstrlen(rsErrText+nLen);
 		}
 		gpConEmu->LogString(rsErrText);
@@ -229,13 +229,13 @@ wchar_t* GetCliboardText(DWORD& rnErrCode, wchar_t* rsErrText, INT_PTR cchErrMax
 	else if ((lptstr = (LPCWSTR)GlobalLock(hglb)) == NULL)
 	{
 		rnErrCode = GetLastError();
-		_wsprintf(rsErrText, SKIPLEN(cchErrMax) L"Can't lock CF_UNICODETEXT, paste failed (code=%u)", rnErrCode);
+		swprintf_c(rsErrText, cchErrMax/*#SECURELEN*/, L"Can't lock CF_UNICODETEXT, paste failed (code=%u)", rnErrCode);
 		gpConEmu->LogString(rsErrText);
 	}
 	else if (*lptstr == 0)
 	{
 		rnErrCode = GetLastError();
-		_wsprintf(rsErrText, SKIPLEN(cchErrMax) L"CF_UNICODETEXT is empty, nothing to paste (code=%u)", rnErrCode);
+		swprintf_c(rsErrText, cchErrMax/*#SECURELEN*/, L"CF_UNICODETEXT is empty, nothing to paste (code=%u)", rnErrCode);
 		gpConEmu->LogString(rsErrText);
 		rsErrText[0] = 0; // Don't call DisplayLastError
 		GlobalUnlock(hglb);

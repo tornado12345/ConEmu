@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -118,6 +118,7 @@ void CDwmHelper::InitDwm()
 	BOOL lbDbg;
 
 	mh_User32 = GetModuleHandle(L"User32.dll");
+	_AdjustWindowRectExForDpi = NULL;
 	_ChangeWindowMessageFilter = NULL;
 	mb_DwmAllowed = false;
 	mh_DwmApi = NULL;
@@ -186,6 +187,7 @@ void CDwmHelper::InitDwm()
 				mb_EnableGlass = true;
 		}
 	}
+
 	if (gOSVer.dwMajorVersion >= 6 || (gOSVer.dwMajorVersion == 5 && gOSVer.dwMinorVersion >= 1))
 	{
 		mh_UxTheme = LoadLibrary(_T("UxTheme.dll"));
@@ -224,6 +226,11 @@ void CDwmHelper::InitDwm()
 			}
 		}
 	}
+
+	if (IsWin10())
+	{
+		_AdjustWindowRectExForDpi = (AdjustWindowRectExForDpi_t)GetProcAddress(mh_User32, "AdjustWindowRectExForDpi");
+	}
 }
 
 bool CDwmHelper::IsDwm()
@@ -231,7 +238,7 @@ bool CDwmHelper::IsDwm()
 	if (!mb_DwmAllowed)
 		return false;
 	BOOL composition_enabled = FALSE;
-	bool isDwm = _DwmIsCompositionEnabled(&composition_enabled) == S_OK &&
+	bool isDwm = (_DwmIsCompositionEnabled(&composition_enabled) == S_OK) &&
 		composition_enabled;
 	return isDwm;
 }
@@ -418,33 +425,6 @@ int CDwmHelper::GetDwmClientRectTopOffset()
 
 	if (!gpSet->isTabs)
 		goto wrap;
-
-
-	// GetFrameHeight(), GetCaptionDragHeight(), GetTabsHeight()
-	if (gpSet->isTabsInCaption)
-	{
-		//if (dt == fdt_Win8)
-		{
-			nOffset = gpConEmu->GetTabsHeight() + gpConEmu->GetFrameHeight() + gpConEmu->GetCaptionDragHeight();
-		}
-		//else
-		//{
-		//	//mn_DwmClientRectTopOffset =
-		//	//	(GetSystemMetrics(SM_CYCAPTION)+(IsGlass() ? 8 : 0)
-		//	//	+(IsZoomed(ghWnd)?(GetSystemMetrics(SM_CYFRAME)-1):(GetSystemMetrics(SM_CYCAPTION)/2)));
-		//	nOffset = 0
-		//		//+ (IsGlass() ? 8 : 0)
-		//		+ gpConEmu->GetFrameHeight() //+ 2
-		//		+ gpConEmu->GetCaptionDragHeight()
-		//		+ gpConEmu->GetTabsHeight();
-		//}
-	}
-	//else
-	//{
-	//	mn_DwmClientRectTopOffset = 0;
-	//		//GetSystemMetrics(SM_CYCAPTION)+(IsGlass() ? 8 : 0)
-	//		//+(GetSystemMetrics(SM_CYFRAME)-1);
-	//}
 
 wrap:
 	mn_DwmClientRectTopOffset = nOffset;
@@ -643,4 +623,14 @@ HRESULT CDwmHelper::DwmInvalidateIconicBitmaps(HWND hwnd)
 	if (_DwmInvalidateIconicBitmaps)
 		hr = _DwmInvalidateIconicBitmaps(hwnd);
 	return hr;
+}
+
+BOOL CDwmHelper::AdjustWindowRectExForDpi(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle, UINT dpi)
+{
+	BOOL rc = FALSE;
+	if (_AdjustWindowRectExForDpi)
+		rc = _AdjustWindowRectExForDpi(lpRect, dwStyle, bMenu, dwExStyle, dpi);
+	else
+		rc = AdjustWindowRectEx(lpRect, dwStyle, bMenu, dwExStyle);
+	return rc;
 }

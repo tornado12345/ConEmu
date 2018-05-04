@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -54,6 +54,9 @@ LRESULT CSetPgQuake::OnInitDialog(HWND hDlg, bool abInitial)
 
 	EnableWindow(GetDlgItem(hDlg, cbQuakeAutoHide), gpSet->isQuakeStyle);
 
+	checkDlgButton(hDlg, cbRestoreInactive, gpSet->isRestoreInactive);
+	checkDlgButton(hDlg, cbRestore2ActiveMonitor, gpSet->isRestore2ActiveMon);
+
 	// Frame hide options
 	SetDlgItemInt(hDlg, tHideCaptionAlwaysFrame, gpSet->HideCaptionAlwaysFrame(), TRUE);
 	SetDlgItemInt(hDlg, tHideCaptionAlwaysDelay, gpSet->nHideCaptionAlwaysDelay, FALSE);
@@ -85,7 +88,7 @@ LRESULT CSetPgQuake::OnEditChanged(HWND hDlg, WORD nCtrlId)
 			if (lbOk && (gpSet->nHideCaptionAlwaysFrame != ((nNewVal < 0) ? 255 : (BYTE)nNewVal)))
 			{
 				gpSet->nHideCaptionAlwaysFrame = (nNewVal < 0) ? 255 : (BYTE)nNewVal;
-				gpConEmu->OnHideCaption();
+				gpConEmu->RefreshWindowStyles();
 				gpConEmu->UpdateWindowRgn();
 			}
 		}

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -353,7 +353,7 @@ bool CConEmuCtrl::ProcessHotKeyMsg(UINT messg, WPARAM wParam, LPARAM lParam, con
 		&& (vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT))
 	{
 		//120821 - в режиме HideCaption почему-то не выходит из Maximized по Win+Down
-		if (gpSet->isCaptionHidden())
+		if (gpConEmu->isCaptionHidden())
 		{
 			if (vk == VK_DOWN)
 			{
@@ -369,11 +369,11 @@ bool CConEmuCtrl::ProcessHotKeyMsg(UINT messg, WPARAM wParam, LPARAM lParam, con
 }
 
 // Warning! UpdateControlKeyState() must be called already!
-ConEmuChord CConEmuCtrl::ChordFromVk(BYTE Vk)
+ConEmuChord CConEmuCtrl::ChordFromVk(DWORD Vk)
 {
 	_ASSERTE((Vk & 0xFF) == Vk);
 
-	ConEmuChord chord = {Vk};
+	ConEmuChord chord = {LOBYTE(Vk)};
 
 	if (bWin)
 		chord.Mod |= cvk_Win;
@@ -454,26 +454,6 @@ bool CConEmuCtrl::key_GlobalRestore(const ConEmuChord& VkState, bool TestOnly, c
 }
 
 // pRCon may be NULL
-bool CConEmuCtrl::key_MultiNew(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
-{
-	if (TestOnly)
-		return true;
-	// Создать новую консоль
-	gpConEmu->RecreateAction(gpSetCls->GetDefaultCreateAction(), gpSet->isMultiNewConfirm);
-	return true;
-}
-
-// pRCon may be NULL
-bool CConEmuCtrl::key_MultiNewShift(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
-{
-	if (TestOnly)
-		return true;
-	// Создать новую консоль
-	gpConEmu->RecreateAction(cra_CreateTab/*FALSE*/, TRUE/*Confirm*/);
-	return true;
-}
-
-// pRCon may be NULL
 bool CConEmuCtrl::key_MultiNewPopupMenu(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
 {
 	if (TestOnly)
@@ -488,16 +468,6 @@ bool CConEmuCtrl::key_MultiNewPopupMenu2(const ConEmuChord& VkState, bool TestOn
 		return true;
 	// Создать новую консоль
 	gpConEmu->mp_Menu->OnNewConPopupMenu(NULL, 0, true);
-	return true;
-}
-
-// pRCon may be NULL
-bool CConEmuCtrl::key_MultiNewWindow(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
-{
-	if (TestOnly)
-		return true;
-	// Создать новую консоль
-	gpConEmu->RecreateAction(cra_CreateWindow, TRUE/*Confirm*/);
 	return true;
 }
 
@@ -521,7 +491,7 @@ bool CConEmuCtrl::key_MultiNext(const ConEmuChord& VkState, bool TestOnly, const
 }
 
 // pRCon may be NULL
-bool CConEmuCtrl::key_MultiNextShift(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
+bool CConEmuCtrl::key_MultiPrev(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
 {
 	if (TestOnly)
 		return true;
@@ -588,41 +558,9 @@ bool CConEmuCtrl::key_MultiCmd(const ConEmuChord& VkState, bool TestOnly, const 
 	if (TestOnly)
 		return true;
 
-	RConStartArgs args;
-
-	// User choosed default task?
-	int nGroup = 0;
-	const CommandTasks* pGrp = NULL;
-	while ((pGrp = gpSet->CmdTaskGet(nGroup++)))
-	{
-		if (pGrp->pszName && *pGrp->pszName
-			&& (pGrp->Flags & CETF_CMD_DEFAULT))
-		{
-			// Process "/dir ..." and other switches
-			pGrp->ParseGuiArgs(&args);
-			SafeFree(args.pszSpecialCmd);
-
-			// Run all tabs of the task, if they were specified
-			args.pszSpecialCmd = lstrdup(pGrp->pszName);
-			break;
-		}
-	}
-
-	if (!args.pszSpecialCmd)
-	{
-		args.pszSpecialCmd = GetComspec(&gpSet->ComSpec); //lstrdup(L"cmd");
-		if (!args.pszSpecialCmd)
-		{
-			_ASSERTE(FALSE && "Memory allocation failure");
-			return true;
-		}
-		lstrmerge(&args.pszSpecialCmd, L" /k \"%ConEmuBaseDir%\\CmdInit.cmd\"");
-	}
-
-	if (!args.pszStartupDir)
-	{
-		args.pszStartupDir = lstrdup(L"%CD%");
-	}
+	RConStartArgsEx args;
+	CEStr lsTitle;
+	gpSet->CmdTaskGetDefaultShell(args, lsTitle);
 
 	gpConEmu->CreateCon(&args, true);
 	return true;
@@ -1280,12 +1218,12 @@ bool CConEmuCtrl::key_ShowCaption(const ConEmuChord& VkState, bool TestOnly, con
 		return true;
 
 	gpSet->SwitchHideCaptionAlways();
-	gpConEmu->OnHideCaption();
+	gpConEmu->RefreshWindowStyles();
 
 	if (ghOpWnd)
 	{
-		if (gpSetCls->GetPage(thi_Features))
-			CheckDlgButton(gpSetCls->GetPage(thi_Features), cbHideCaptionAlways, gpSet->isHideCaptionAlways());
+		if (gpSetCls->GetPage(thi_Appear))
+			CheckDlgButton(gpSetCls->GetPage(thi_Appear), cbHideCaptionAlways, gpSet->isHideCaptionAlways());
 		apiSetForegroundWindow(ghOpWnd);
 	}
 
@@ -1339,7 +1277,7 @@ bool CConEmuCtrl::key_PasteTextAllApp(const ConEmuChord& VkState, bool TestOnly,
 		_ASSERTE(FALSE && "Unsupported PasteLinesMode");
 		pasteMode = pm_Standard;
 	}
-	pRCon->Paste(pasteMode);
+	pRCon->Paste(pasteMode, NULL, false/*default*/, pApp->PosixAllLines());
 	return true;
 }
 
@@ -1379,7 +1317,7 @@ bool CConEmuCtrl::key_PasteFirstLineAllApp(const ConEmuChord& VkState, bool Test
 		_ASSERTE(FALSE && "Unsupported PasteLinesMode");
 		pasteMode = pm_Standard;
 	}
-	pRCon->Paste(pasteMode);
+	pRCon->Paste(pasteMode, NULL, false/*default*/, pApp->PosixFirstLine());
 	return true;
 }
 
@@ -1401,6 +1339,8 @@ void CConEmuCtrl::StatusCommand(ConEmuStatusCommand nStatusCmd, int IntParm, LPC
 				gpSet->isStatusBarShow = false;
 			else
 				gpSet->isStatusBarShow = !gpSet->isStatusBarShow;
+
+			gpConEmu->RequestRecalc();
 
 			if (!gpConEmu->isZoomed() && !gpConEmu->isFullScreen())
 			{
@@ -1527,13 +1467,13 @@ size_t CConEmuCtrl::GetOpenedTabs(CESERVER_REQ_GETALLTABS::TabInfo*& pTabs)
 			}
 
 			if ((V == nActiveCon) && (T <= 9))
-				_wsprintf(pTabs[cchCount].Title, SKIPLEN(countof(pTabs[cchCount].Title)) L"[%i/&%i]%s", V+1, T, szMark);
+				swprintf_c(pTabs[cchCount].Title, L"[%i/&%i]%s", V+1, T, szMark);
 			else
-				_wsprintf(pTabs[cchCount].Title, SKIPLEN(countof(pTabs[cchCount].Title)) L"[%i/%i]%s", V+1, T, szMark);
+				swprintf_c(pTabs[cchCount].Title, L"[%i/%i]%s", V+1, T, szMark);
 
 			#ifdef _DEBUG
 			if (pRCon->IsFarLua())
-				_wsprintf(pTabs[cchCount].Title+lstrlen(pTabs[cchCount].Title), SKIPLEN(30) L"{%i} ", tab->Info.nFarWindowID);
+				swprintf_c(pTabs[cchCount].Title+lstrlen(pTabs[cchCount].Title), 30/*#SECURELEN*/, L"{%i} ", tab->Info.nFarWindowID);
 			#endif
 
 			int nCurLen = lstrlen(pTabs[cchCount].Title);
@@ -1611,7 +1551,7 @@ bool CConEmuCtrl::key_RunTask(const ConEmuChord& VkState, bool TestOnly, const C
 	if (gpSet->CmdTaskGet(hk->GetTaskIndex()))
 	{
 		wchar_t szMacro[64];
-		_wsprintf(szMacro, SKIPLEN(countof(szMacro)) L"Task(%i)", hk->GetTaskIndex()+1); //1-based
+		swprintf_c(szMacro, L"Task(%i)", hk->GetTaskIndex()+1); //1-based
 		wchar_t* pszResult = ConEmuMacro::ExecuteMacro(szMacro, pRCon);
 		SafeFree(pszResult);
 	}

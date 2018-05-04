@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -195,7 +195,7 @@ LPCWSTR ConEmuHotKey::GetDescription(wchar_t* pszDescr, int cchMaxLen, bool bAdd
 
 	if (bAddMacroIndex && (HkType == chk_Macro))
 	{
-		_wsprintf(pszDescr, SKIPLEN(cchMaxLen) L"Macro %02i: ", DescrLangID-vkGuiMacro01+1);
+		swprintf_c(pszDescr, cchMaxLen/*#SECURELEN*/, L"Macro %02i: ", DescrLangID-vkGuiMacro01+1);
 		int nLen = lstrlen(pszDescr);
 		pszDescr += nLen;
 		cchMaxLen -= nLen;
@@ -213,7 +213,7 @@ LPCWSTR ConEmuHotKey::GetDescription(wchar_t* pszDescr, int cchMaxLen, bool bAdd
 		if ((HkType == chk_User) && GuiMacro && *GuiMacro)
 			lstrcpyn(pszDescr, GuiMacro, cchMaxLen);
 		else
-			_wsprintf(pszDescr, SKIPLEN(cchMaxLen) L"#%i", DescrLangID);
+			swprintf_c(pszDescr, cchMaxLen/*#SECURELEN*/, L"#%i", DescrLangID);
 	}
 	else if ((cchMaxLen >= 16) && GuiMacro && *GuiMacro)
 	{
@@ -228,6 +228,22 @@ LPCWSTR ConEmuHotKey::GetDescription(wchar_t* pszDescr, int cchMaxLen, bool bAdd
 			cchMaxLen -= 2;
 		}
 		lstrcpyn(pszDescr, GuiMacro, cchMaxLen);
+	}
+
+	if ((DescrLangID == vkMultiCmd)
+		&& wcsstr(pszDescr, L"%s"))
+	{
+		RConStartArgsEx args; CEStr lsTitle;
+		if (int shell_rc = gpSet->CmdTaskGetDefaultShell(args, lsTitle))
+		{
+			CEStr lsFormat;
+			INT_PTR cchBufMax = wcslen(pszDescr) + wcslen(lsTitle) + 3;
+			if (lsFormat.GetBuffer(cchBufMax))
+			{
+				msprintf(lsFormat.ms_Val, cchBufMax, pszDescr, lsTitle.c_str());
+				lstrcpyn(pszDescr, lsFormat, cchMaxLen);
+			}
+		}
 	}
 
 	return pszRc;
@@ -757,7 +773,7 @@ void ConEmuHotKey::GetVkKeyName(BYTE vk, wchar_t (&szName)[32], bool bSingle /*=
 	default:
 		if (vk >= VK_F1 && vk <= VK_F24)
 		{
-			_wsprintf(szName, SKIPLEN(countof(szName)) L"F%u", (DWORD)vk-VK_F1+1);
+			swprintf_c(szName, L"F%u", (DWORD)vk-VK_F1+1);
 		}
 		else if ((vk >= (BYTE)'A' && vk <= (BYTE)'Z') || (vk >= (BYTE)'0' && vk <= (BYTE)'9'))
 		{
@@ -771,7 +787,7 @@ void ConEmuHotKey::GetVkKeyName(BYTE vk, wchar_t (&szName)[32], bool bSingle /*=
 			//BYTE States[256] = {};
 			//// Скорее всго не сработает
 			//if (!ToUnicode(vk, 0, States, szName, countof(szName), 0))
-			//	_wsprintf(szName, SKIPLEN(countof(szName)) L"<%u>", (DWORD)vk);
+			//	swprintf_c(szName, L"<%u>", (DWORD)vk);
 			// есть еще if (!GetKeyNameText((LONG)(DWORD)*m_HotKeys[i].VkPtr, szName, countof(szName)))
 		}
 	}
@@ -919,6 +935,25 @@ bool ConEmuHotKey::UseDndRKey()
 bool ConEmuHotKey::UseWndDragKey()
 {
 	return gpSet->isMouseDragWindow;
+}
+
+bool ConEmuHotKey::UsePromptFind()
+{
+	CVConGuard VCon;
+	if (gpConEmu->GetActiveVCon(&VCon) < 0 || !VCon->RCon())
+		return false;
+	CRealConsole* pRCon = VCon->RCon();
+	if (!pRCon->isFar())
+		return true;
+	// Even if Far we may search for the prompt, if we are in panels and they are OFF
+	if (!pRCon->isFarPanelAllowed())
+		return false;
+	DWORD dwFlags = pRCon->GetActiveDlgFlags();
+	if (((dwFlags & FR_FREEDLG_MASK) != 0)
+		|| pRCon->isEditor() || pRCon->isViewer()
+		|| pRCon->isFilePanel(true, true, true))
+		return true;
+	return false;
 }
 
 /*

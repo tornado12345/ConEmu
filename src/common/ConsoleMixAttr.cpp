@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // declare AddConAttr values
 #define DEFINE_ADDCONATTR
 
-#include <windows.h>
 #include "Common.h"
 #include "ConsoleMixAttr.h"
 
@@ -101,7 +100,7 @@ WORD GetRowIdFromAttrs(const WORD* pnAttrs4)
 		default:
 			// That may happen after tab completion, if cursor was at position 2-4,
 			// than only part of our mark was erased
-			_ASSERTE((i > 0) && ((pnAttrs4[i] & CHANGED_CONATTR) == 0) && "Unknown mark!");
+			//_ASSERTE((i > 0) && ((pnAttrs4[i] & CHANGED_CONATTR) == 0) && "Unknown mark!");
 			return 0;
 		}
 	}
@@ -200,11 +199,18 @@ bool FindConsoleRowId(HANDLE hConOut, const CEConsoleMark& Mark, SHORT nFromRow,
 	return false;
 }
 
-bool FindConsoleRowId(HANDLE hConOut, SHORT nFromRow, SHORT* pnRow/*=NULL*/, CEConsoleMark* pMark/*=NULL*/)
+bool FindConsoleRowId(HANDLE hConOut, SHORT nFromRow, bool bUpWard, SHORT* pnRow/*=NULL*/, CEConsoleMark* pMark/*=NULL*/)
 {
 	CEConsoleMark RowId = {};
 
-	for (SHORT nRow = nFromRow; nRow >= 0; nRow--)
+	// While searching downward we need to know the size of the buffer
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	if (!bUpWard && !GetConsoleScreenBufferInfo(hConOut, &csbi))
+		return false;
+
+	for (SHORT nRow = nFromRow;
+		(bUpWard && (nRow >= 0)) || (!bUpWard && nRow < csbi.dwSize.Y);
+		nRow += (bUpWard ? -1 : +1))
 	{
 		if (ReadConsoleRowId(hConOut, nRow, &RowId))
 		{

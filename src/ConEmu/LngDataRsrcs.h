@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -46,11 +46,14 @@ static LngPredefined gsDataRsrcs[] = {
 	{ lng_DlgAbout,                 L"About" },
 	{ lng_DlgAffinity,              L"Set active console processes affinity and priority" },
 	{ lng_DlgAttach,                L"Attach: Choose window or console application" },
+	{ lng_DlgCreateNewConsole,      L"Create new console" },
 	{ lng_DlgFastCfg,               L"fast configuration" },
 	{ lng_DlgHotkey,                L"Choose hotkey" },
 	{ lng_DlgRenameTab,             L"Rename tab" },
+	{ lng_DlgRestartConsole,        L"Restart console" },
 	{ lng_DlgSettings,              L"Settings" },
 	{ lng_ExitCode,                 L"exit code" },
+	{ lng_HkGlblGnrlMsg,            L"You can't choose distinctive (R/L) modifier for Global hotkeys due to WinAPI limitation" },
 	{ lng_HotkeyDuplicated,         L"Hotkey <%s> is not unique" },
 	{ lng_HotkeysAll,               L"All hotkeys" },
 	{ lng_HotkeysFilter,            L"Filter hotkeys (Alt+F)" },
@@ -87,12 +90,13 @@ static LngPredefined gsDataRsrcs[] = {
 	{ lng_SpgFarManager,            L"Far Manager" },
 	{ lng_SpgFarViews,              L"Panel Views" },
 	{ lng_SpgFeatures,              L"Features" },
-	{ lng_SpgFonts,                 L"Main" },
+	{ lng_SpgFonts,                 L"Fonts" },
 	{ lng_SpgHighlight,             L"Highlight" },
 	{ lng_SpgInfo,                  L"Info" },
 	{ lng_SpgIntegration,           L"Integration" },
 	{ lng_SpgKeyboard,              L"Keyboard" },
 	{ lng_SpgKeys,                  L"Keys & Macro" },
+	{ lng_SpgGeneral,               L"General" },
 	{ lng_SpgMarkCopy,              L"Mark/Copy" },
 	{ lng_SpgMouse,                 L"Mouse" },
 	{ lng_SpgPaste,                 L"Paste" },

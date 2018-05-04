@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,30 +26,33 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#ifdef _DEBUG
-//#define USE_LOCK_SECTION
-//#endif
-
 #define HIDE_USE_EXCEPTION_INFO
 #include "Common.h"
 #include "MModule.h"
+#include "WSession.h"
+
+BOOL apiQuerySessionID(DWORD nPID, DWORD& nSessionID)
+{
+	BOOL bSucceeded = FALSE;
+	typedef BOOL (WINAPI* ProcessIdToSessionId_t)(DWORD dwProcessId, DWORD *pSessionId);
+	ProcessIdToSessionId_t processIdToSessionId = NULL;
+	MModule kernel32(L"kernel32.dll");
+	if (kernel32.GetProcAddress("ProcessIdToSessionId", processIdToSessionId))
+	{
+		bSucceeded = processIdToSessionId(GetCurrentProcessId(), &nSessionID);
+	}
+	return bSucceeded;
+}
 
 LPCWSTR apiQuerySessionID()
 {
 	static wchar_t szSessionId[16] = L"";
 	if (!*szSessionId)
 	{
-		BOOL bSucceeded = FALSE;
 		DWORD nSessionId = 0;
-		typedef BOOL (WINAPI* ProcessIdToSessionId_t)(DWORD dwProcessId, DWORD *pSessionId);
-		ProcessIdToSessionId_t processIdToSessionId = NULL;
-		MModule kernel32(L"kernel32.dll");
-		if (kernel32.GetProcAddress("ProcessIdToSessionId", processIdToSessionId))
-		{
-			bSucceeded = processIdToSessionId(GetCurrentProcessId(), &nSessionId);
-		}
+		BOOL bSucceeded = apiQuerySessionID(GetCurrentProcessId(), nSessionId);
 		if (bSucceeded)
-			_wsprintf(szSessionId, SKIPCOUNT(szSessionId) L"%u", nSessionId);
+			swprintf_c(szSessionId, L"%u", nSessionId);
 		else
 			wcscpy_c(szSessionId, L"?");
 	}

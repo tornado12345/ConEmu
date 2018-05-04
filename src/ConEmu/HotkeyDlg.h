@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,16 +37,17 @@ class CDpiForDialog;
 class CHotKeyDialog
 {
 private:
-	HWND mh_Dlg;
-	HWND mh_Parent;
-	ConEmuHotKey m_HK;
-	CDpiForDialog* mp_DpiAware;
+	HWND mh_Dlg = NULL;
+	HWND mh_Parent = NULL;
+	ConEmuHotKey m_HK = {};
+	CDpiForDialog* mp_DpiAware = nullptr;
 public:
 	static bool EditHotKey(HWND hParent, DWORD& VkMod);
 	DWORD GetVkMod();
 public:
 	static DWORD dlgGetHotkey(HWND hDlg, UINT iEditCtrl = hkHotKeySelect, UINT iListCtrl = lbHotKeyList);
 	static void SetHotkeyField(HWND hHk, BYTE vk);
+	static void FillModifierBoxes(const ConEmuHotKey& HK, HWND hDlg);
 public:
 	CHotKeyDialog(HWND hParent, DWORD aVkMod);
 	~CHotKeyDialog();

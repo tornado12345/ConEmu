@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -52,6 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	L"-MinTSA - start minimized in taskbar status area, hide to TSA after console close.\r\n" \
 	L"-StartTSA - start minimized in taskbar status area, exit after console close.\r\n" \
 	L"-Detached - start ConEmu without consoles.\r\n" \
+	L"-NoAutoClose - don't close ConEmu window automatically with last tab.\r\n" \
 	L"-Icon <file> - Take icon from file (exe, dll, ico).\r\n" \
 	L"-Title <title> - Set fixed(!) title for ConEmu window. You may use environment variables in <title>.\r\n" \
 	L"-Multi | -NoMulti - Enable or disable multiconsole features.\r\n" \
@@ -85,6 +86,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	L"-LoadCfgFile <file> - Use specified xml file as configuration storage.\r\n" \
 	L"-SaveCfgFile <file> - Save configuration to the specified xml file.\r\n" \
 	L"-LoadRegistry - Use Windows registry as configuration storage.\r\n" \
+	L"-Settings - Open settings dialog after ConEmu startup.\r\n" \
 	L"-SetDefTerm - Set ConEmu as default terminal, use with \"-Exit\" switch.\r\n" \
 	L"-UpdateSrcSet <url> - Force to check version.ini by another url.\r\n" \
 	L"-AnsiLog <folder> - Force console output logging into the folder.\r\n" \
@@ -100,7 +102,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 #define pAboutTasks \
 	L"You may set up most used shells as ConEmu's ‘Tasks’ (‘Settings’ dialog ‘Tasks’ page).\r\n" \
 	L"\r\n" \
-	L"Each Task may contains one or more commands, " \
+	L"Each Task may contain one or more commands, " \
 	L"each command will be started in separate ConEmu tab or pane.\r\n" \
 	L"Delimit Task Commands with empty lines.\r\n" \
 	L"\r\n" \
@@ -232,6 +234,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"    close all tabs (8), no confirm (8,1)\r\n" \
 	L"    close all zombies (9), no confirm (9,1)\r\n" \
 	L"    terminate all but shell process (10), no confirm (10,1)\r\n" \
+	L"    close consoles to the right (11), no confirm (11,1)\r\n" \
 	L"Context([<Tab>[,<Split>]])\r\n" \
 	L"  - Change macro execution context\r\n" \
 	L"    Tab: 1-based tab index\r\n" \
@@ -277,7 +280,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"     returns - \"OK\", or \"InvalidArg\"\r\n" \
 	L"GetInfo(\"<Opt1>\"[,\"<Opt2>\"[,...]])\r\n" \
 	L"  - Returns values of some ConEmu environment variables\r\n" \
-	L"    Processed in GUI so the result may differs from RealConsole env.vars\r\n" \
+	L"    Processed in GUI so the result may differ from RealConsole env.vars\r\n" \
 	L"    \"PID\": returns %ConEmuPID% and so on\r\n" \
 	L"  - Returns additional information about RealConsole\r\n" \
 	L"    \"Root\": XML with RootProcess info\r\n" \
@@ -289,6 +292,12 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"     Cmd==0: switch mode (default)\r\n" \
 	L"     Cmd==1: group\r\n" \
 	L"     Cmd==2: un-group\r\n" \
+	L"  - Group keyboard input for all consoles\r\n" \
+	L"     Cmd==3: switch mode\r\n" \
+	L"     Cmd==4: group\r\n" \
+	L"     Cmd==5: un-group\r\n" \
+	L"  - Group keyboard input for selected consoles\r\n" \
+	L"     Cmd==6: toggle group mode on active console\r\n" \
 	L"HighlightMouse(<What>[,<Act>])\r\n" \
 	L"  - change highlighting in the ACTIVE console only\r\n" \
 	L"    What==0: switch off/row/col/row+col/off/...\r\n" \
@@ -301,7 +310,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"  - Check, is RealConsole active or not, \"Yes\"/\"No\"\r\n" \
 	L"IsRealVisible\r\n" \
 	L"  - Check, is RealConsole visible or not, \"Yes\"/\"No\"\r\n" \
-	L"    Keys(\"<Combo1>\"[,\"<Combo2>\"[,...]])\r\n" \
+	L"Keys(\"<Combo1>\"[,\"<Combo2>\"[,...]])\r\n" \
 	L"     - Post special keystrokes to the console (AutoHotKey syntax)\r\n" \
 	L"       \"[Mod1[Mod2[Mod3]]]Key\"\r\n" \
 	L"       Mod: ^ - LCtrl, >^ - RCtrl, ! - LAlt, >! - RAlt, + - Shift\r\n" \
@@ -327,7 +336,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"     Cmd==5: select and parse folder pathname, Text - default\r\n" \
 	L"     Cmd==6: select and parse cygwin file pathname, Text - default\r\n" \
 	L"     Cmd==7: select and parse cygwin folder pathname, Text - default\r\n" \
-	L"     Cmd==8: paste path from clipboard converted to CygWin style\r\n" \
+	L"     Cmd==8: paste path from clipboard converted to POSIX style\r\n" \
 	L"     Cmd==9: paste all lines space-separated\r\n" \
 	L"     Cmd==10: paste all lines space-separated, without confirmations\r\n" \
 	L"PasteExplorerPath (<DoCd>,<SetFocus>)\r\n" \
@@ -372,10 +381,12 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"     Type: 4; No arguments; Go to cursor line\r\n" \
 	L"Select(<Type>,<DX>,<DY>,<HE>)\r\n" \
 	L"  - Used internally for text selection\r\n" \
-	L"     Type: 0 - Text, 1 - Block\r\n" \
+	L"     Type: 0 - Text, 1 - Block, 2 - Stop\r\n" \
 	L"     DX: select text horizontally: -1/+1\r\n" \
 	L"     DY: select text vertically: -1/+1\r\n" \
 	L"     HE: to-home(-1)/to-end(+1) with text selection\r\n" \
+	L"Select(2)\r\n" \
+	L"  - Use to stop selection\r\n" \
 	L"SetDpi(<DPI>)\r\n" \
 	L"  - Change effective dpi for ConEmu window: 96, 120, 144, 192\r\n" \
 	L"SetOption('\"Check\",<ID>,<Value>)\r\n" \
@@ -393,12 +404,17 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"      Value: 0(disable) .. 1(enable)\r\n" \
 	L"    \"AlwaysOnTop\": place ConEmu window above all non-topmost windows\r\n" \
 	L"      Value: 2 - toggle, 1 - enable, 0 - disable\r\n" \
+	L"    \"bgImage\": change background image\r\n" \
+	L"      Value: file or color, e.g. \"C:\\image.jpg\" or \"#3182a4\"\r\n" \
 	L"    \"bgImageDarker\": darkening of background image\r\n" \
 	L"      Value: 0 .. 255\r\n" \
 	L"    \"FarGotoEditorPath\": path to the highlight/error editor \r\n" \
 	L"      Value: path to the executable with arguments\r\n" \
 	L"    \"QuakeAutoHide\": auto hide on focus lose, Quake mode\r\n" \
 	L"      Value: 2 - switch auto-hide, 1 - enable, 0 - disable\r\n" \
+	L"    \"Scheme\": switch color scheme for the whole ConEmu window\r\n" \
+	L"    \"VConScheme\": switch color scheme for the active console\r\n" \
+	L"      Value: color palette name, e.g. \"<Solarized>\"\r\n" \
 	L"Settings([<PageResourceId>])\r\n" \
 	L"  - Show ‘Settings’ dialog with specified page activated (optionally)\r\n" \
 	L"      PageResourceId: integer DialogID from ‘resource.h’\r\n" \
@@ -417,6 +433,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"    Cmd=1, Horz=-1..1, Vert=-1..1: Move splitter between panes (aka resize panes)\r\n" \
 	L"    Cmd=2, Horz=-1..1, Vert=-1..1: Put cursor to the nearest pane\r\n" \
 	L"    Cmd=3, Maximize/restore active pane\r\n" \
+	L"    Cmd=4, Horz=-1..1, Vert=-1..1: Swap nearest panes\r\n" \
 	L"Status(0[,<Parm>])\r\n" \
 	L"  - Show/Hide status bar, Parm=1 - Show, Parm=2 - Hide\r\n" \
 	L"Status(1[,\"<Text>\"])\r\n" \

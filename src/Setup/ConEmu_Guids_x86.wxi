@@ -27,6 +27,12 @@
 	<?define Guid.ConEmuCD64.dll = "1AC86089-DA0D-44CC-A391-A4537A6C4196" ?>
 	<?define Guid.ConEmuHk.dll = "6B716C2D-C03D-4299-9177-C994C8E3A9CA" ?>
 	<?define Guid.ConEmuHk64.dll = "0A976845-7CB8-49D4-B96E-BB01B677ECB8" ?>
+	<!-- cygwin/msys connector -->
+	<?define Guid.conemu_cyg_32.exe = "88D4B0A3-D52E-4466-85CD-A2FD126BE8B3" ?>
+	<?define Guid.conemu_cyg_64.exe = "175C157E-EA75-461B-ADF8-336CDC5A1F56" ?>
+	<?define Guid.conemu_msys_32.exe = "5BB73329-5489-4A55-BCF1-CFC4FBCFB7A5" ?>
+	<?define Guid.conemu_msys2_32.exe = "46EF06F0-3508-4317-A313-199C4645D0DC" ?>
+	<?define Guid.conemu_msys2_64.exe = "1BD2B9A3-7FAC-44A1-BA59-96B23A31DE66" ?>
 	<!-- ExtendedConsole for Far3 -->
 	<?define Guid.ExtendedConsole.dll = "537F9767-B8F9-4FB5-8377-27105392311A" ?>
 	<?define Guid.ExtendedConsole64.dll = "92B68F0B-9B34-4E4B-A83F-18B1A19C1F06" ?>
@@ -57,6 +63,8 @@
 	<?define Guid.DosBox_Sample.conf = "686C782C-0AC2-4BE8-AFEE-BFA9BDCF845E" ?>
 	<!-- Portable Reg -->
 	<?define Guid.Portable.Readme.txt = "32DA0E92-B7D0-446A-BDF7-E04611E821C0" ?>
+	<!-- Localization -->
+	<?define Guid.ConEmu.l10n = "CDD787AA-4EE3-4D1A-8DF0-C4DD9D09E6B8" ?>
 	<!-- Documentation -->
 	<?define Guid.About_ConEmu.txt = "A94A790E-7698-45BA-9027-B6F55401BC35" ?>
 	<?define Guid.Portable.txt = "B94B2B1C-E779-428F-A19F-4016D81FF7B5" ?>
@@ -65,7 +73,9 @@
 	<?define Guid.FAQ_ConEmu.txt = "676732CF-706D-4CD4-A119-608650ED1858" ?>
 	<?define Guid.Settings_ConEmu.reg = "75608193-1D79-4E7A-A0A0-3A274B11706E" ?>
 	<?define Guid.WhatsNew_ConEmu.txt = "3C56F1F9-4A06-4D48-906C-F8CE71FDA032" ?>
+    <!-- ConEmu.Scripts directory -->
 	<?define Guid.Scripts_Readme.txt = "282DC16B-82CA-4ABC-B7A9-098587AC20B5" ?>
+	<?define Guid.Scripts_git_log.cmd = "7CD18C9A-D364-433B-A194-805A8F3DB201" ?>
     <!-- ConEmu.Addons directory -->
 	<?define Guid.FarHereInstall.cmd = "DE37979D-7C4D-4335-9F27-818CA2C9A6ED" ?>
 	<?define Guid.FarHereUninstall.cmd = "427F4EE4-3A79-4F1B-97B1-AD12096CFC69" ?>
@@ -132,7 +142,15 @@
 	<?define Guid.CallPlugin.txt = "E59E49D3-541B-489A-B46D-F0915397A3F7" ?>
 	<?define Guid.RevokeMouseInput.ps1 = "76B9E76D-6367-46EB-BD7E-5C4EF2DB669D" ?>
 	<?define Guid.utf_8_test.cmd = "DC6442DC-E399-4C77-80C4-C36C50A73D2A" ?>
+
 	<?define Guid.wsl_con.cmd = "ABB7E80E-C443-4C3C-A865-7A2F51C083F7" ?>
+	<?define Guid.wslbridge.exe = "E6880A1E-47C0-45D1-8C38-4D2D89B27977" ?>
+	<?define Guid.wsl.cygwin1.dll = "513B06CA-03DA-40A9-8A90-0FDE87B06ACF" ?>
+	<?define Guid.wsl.256colors2.pl = "C8749D5A-8F52-4F14-9F31-9F80A56974BF" ?>
+	<?define Guid.wsl.hashlist.sha256 = "9C5F54EC-B6F9-45B5-9E3B-909FE5860034" ?>
+	<?define Guid.wsl.README.md = "BF0EF055-A180-43B7-9349-9E9EB82008B4" ?>
+	<?define Guid.wsl_boot.sh = "7E6FC6B0-A1E3-4B57-A4A3-EBCEE32FD194" ?>
+	<?define Guid.wslbridge_backend = "D96D266B-6653-414D-B18D-39365BAA7994" ?>
 	
 	<?define Guid.AnsiColors16.ans = "D0B94B0D-E1C4-4CD4-9E6B-5AD30BD299D6" ?>
 	<?define Guid.AnsiColors16t.ans = "590BFE53-BB03-492B-A713-82AD42C682C9" ?>

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ bool ProcessSetEnvCmd(LPCWSTR& asCmdLine, CProcessEnvCmd* pSetEnv = NULL, CStart
 class CStartEnvBase
 {
 public:
+	virtual ~CStartEnvBase() {}
 	// Methods
 	virtual void Alias(LPCWSTR asName, LPCWSTR asValue) = 0;
 	virtual void ChCp(LPCWSTR asCP) = 0;

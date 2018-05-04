@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2015 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -259,7 +259,7 @@ BOOL CTaskBarGhost::CreateTabSnapshot()
 	m_TabSize.VConSize = mpt_ViewSize;
 	m_TabSize.BitmapSize = mpt_Size;
 
-	RECT rcNewUsedRect = MakeRect(mpt_ViewOffset.x, mpt_ViewOffset.y, min(mpt_Size.x, (mpt_ViewOffset.x + mpt_ViewSize.x)), min(mpt_Size.y, (mpt_ViewOffset.y + mpt_ViewSize.y)));
+	RECT rcNewUsedRect = MakeRect(mpt_ViewOffset.x, mpt_ViewOffset.y, std::min(mpt_Size.x, (mpt_ViewOffset.x + mpt_ViewSize.x)), std::min(mpt_Size.y, (mpt_ViewOffset.y + mpt_ViewSize.y)));
 	bool bUsedRectChanged = (memcmp(&rcNewUsedRect, &m_TabSize.UsedRect, sizeof(m_TabSize.UsedRect)) != 0);
 	m_TabSize.UsedRect = rcNewUsedRect;
 
@@ -596,7 +596,7 @@ LRESULT CTaskBarGhost::OnCreate()
 	SetTimer(mh_Ghost, 101, 2500, NULL);
 
 	wchar_t szEvtName[64];
-	_wsprintf(szEvtName, SKIPLEN(countof(szEvtName)) CEGHOSTSKIPACTIVATE, LODWORD(mh_Ghost));
+	swprintf_c(szEvtName, CEGHOSTSKIPACTIVATE, LODWORD(mh_Ghost));
 	SafeCloseHandle(mh_SkipActivateEvent);
 	mh_SkipActivateEvent = CreateEvent(NULL, FALSE, FALSE, szEvtName);
 
@@ -787,7 +787,8 @@ void CTaskBarGhost::GetPreviewPosSize(POINT* pPtOffset, POINT* pPtViewOffset, PO
 	//RECT rcMain = gpConEmu->CalcRect(CER_MAIN);
 	//// размер всей рабочей области (но БЕЗ табов, прокруток, статусов)
 	//RECT rcWork = gpConEmu->CalcRect(CER_WORKSPACE, rcMain, CER_MAIN, mp_VCon/*хотя VCon и не важен, нужен полный размер*/);
-	RECT rcWork = gpConEmu->CalcRect(CER_WORKSPACE, mp_VCon/*хотя VCon и не важен, нужен полный размер*/);
+	//RECT rcWork = gpConEmu->CalcRect(CER_WORKSPACE, mp_VCon/*хотя VCon и не важен, нужен полный размер*/);
+	RECT rcWork = gpConEmu->WorkspaceRect();
 	_ASSERTE(rcWork.right>rcWork.left && rcWork.bottom>rcWork.top);
 
 	//RECT rcView = {0};
@@ -809,18 +810,20 @@ void CTaskBarGhost::GetPreviewPosSize(POINT* pPtOffset, POINT* pPtViewOffset, PO
 	WARNING("'+1'?")
 	POINT szSize = MakePoint(rcWork.right-rcWork.left, rcWork.bottom-rcWork.top);
 	//POINT ptViewOffset = MakePoint(szSize.x - (rcView.right-rcView.left), szSize.y - (rcView.bottom-rcView.top));
-	POINT ptViewOffset = MakePoint(max(0,(szSize.x - ptViewSize.x)>>1), max(0,(szSize.y - ptViewSize.y)>>1));
+	POINT ptViewOffset = MakePoint(std::max<int>(0,(szSize.x - ptViewSize.x)>>1), std::max<int>(0,(szSize.y - ptViewSize.y)>>1));
 
 	ptOffset = MakePoint(rcWork.left, rcWork.top);
 
+#if 0
 	// Due to rather strange DWM's behavior which differs a lot
 	// when window has *non-resizable* border
-	if (gpSet->isFrameHidden())
+	if (gpConEmu->isFrameCropped())
 	{
 		RECT rcMargin = gpConEmu->CalcMargins(CEM_FRAMEONLY);
-		ptOffset.x += rcMargin.left;
-		ptOffset.y += rcMargin.top;
+		//ptOffset.x += rcMargin.left;
+		//ptOffset.y += rcMargin.top;
 	}
+#endif
 
 	if (pPtOffset)
 		*pPtOffset = ptOffset;
@@ -916,7 +919,7 @@ LRESULT CTaskBarGhost::GhostProc(UINT message, WPARAM wParam, LPARAM lParam)
 	else if (message != 0xAE/*WM_NCUAHDRAWCAPTION*/ && message != WM_GETTEXT && message != WM_GETMINMAXINFO
 		&& message != WM_GETICON && message != WM_TIMER)
 	{
-		//wchar_t szDbg[127]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GhostProc(%i{x%03X},%i,%i)\n", message, message, (DWORD)wParam, (DWORD)lParam);
+		//wchar_t szDbg[127]; swprintf_c(szDbg, L"GhostProc(%i{x%03X},%i,%i)\n", message, message, (DWORD)wParam, (DWORD)lParam);
 		//OutputDebugStringW(szDbg);
 	}
 #endif

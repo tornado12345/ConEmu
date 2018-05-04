@@ -1,5 +1,5 @@
 $package = 'ConEmu'
-$version = '16.10.22'
+$version = '18.05.03'
 
 
 $isSytem32Bit = (($Env:PROCESSOR_ARCHITECTURE -eq 'x86') -and `
@@ -11,6 +11,19 @@ $displayName = "ConEmu $($version.replace('.','')).$os"
 
 $installerRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer'
 $productsRoot = "$installerRoot\UserData\S-1-5-18\Products"
+
+
+# To avoid unexpected PC reboot, prohibit ConEmu uninstall from ConEmu
+$is_conemu = $FALSE
+try {
+  & ConEmuC.exe -IsConEmu
+  $is_conemu = ($LASTEXITCODE -eq 1)
+} catch {
+}
+if ($is_conemu) {
+  throw "Can't detect proper ConEmu environment variables! Please restart console!"
+}
+
 
 Write-Host "Searching for installed msi-packet..."
 

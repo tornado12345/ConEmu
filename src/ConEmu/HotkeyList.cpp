@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -239,20 +239,24 @@ int ConEmuHotKeyList::AllocateHotkeys()
 	/*
 		*** User (Keys)
 	*/
-	Add(vkMultiNew,       chk_User,  NULL,    L"Multi.NewConsole",      CConEmuCtrl::key_MultiNew) // it can be used to create multiple consoles by holding Win+W
+	Add(vkCheckUpdates,    chk_User,  NULL,   L"CheckUpdates",          CConEmuCtrl::key_GuiMacro, false, L"Update()")
+		->SetHotKey('U',VK_LWIN,VK_SHIFT);
+	Add(vkMultiNew,       chk_User,  NULL,    L"Multi.NewConsole",      CConEmuCtrl::key_GuiMacro, false, L"Create()") // it can be used to create multiple consoles by holding Win+W
 		->SetHotKey('W',VK_LWIN);
-	Add(vkMultiNewShift,  chk_User,  NULL,    L"Multi.NewConsoleShift", CConEmuCtrl::key_MultiNewShift)
+	Add(vkMultiNewConfirm,chk_User,  NULL,    L"Multi.NewConsoleShift", CConEmuCtrl::key_GuiMacro, false, L"Create(0,1)")
 		->SetHotKey('W',VK_LWIN,VK_SHIFT);
 	Add(vkMultiCmd,       chk_User,  NULL,    L"Multi.CmdKey",          CConEmuCtrl::key_MultiCmd)
 		->SetHotKey('X',VK_LWIN);
-	Add(vkMultiNewWnd,    chk_User,  NULL,    L"Multi.NewWindow",       CConEmuCtrl::key_MultiNewWindow)
+	Add(vkMultiWnd,       chk_User,  NULL,    L"Multi.NewWndConfirm",   CConEmuCtrl::key_GuiMacro, false, L"Create(2)")
+		;
+	Add(vkMultiWndConfirm,chk_User,  NULL,    L"Multi.NewWndConfirm",   CConEmuCtrl::key_GuiMacro, false, L"Create(2,1)")
 		;
 	Add(vkMultiNewPopup,  chk_User,  NULL,    L"Multi.NewConsolePopup", CConEmuCtrl::key_MultiNewPopupMenu)
 		->SetHotKey('N',VK_LWIN);
 	Add(vkMultiNewPopup2, chk_User,  NULL,    L"Multi.NewConsolePopup2",CConEmuCtrl::key_MultiNewPopupMenu2)
 		;
 	Add(vkMultiNewAttach, chk_User,  NULL,    L"Multi.NewAttach",       CConEmuCtrl::key_MultiNewAttach, true/*OnKeyUp*/)
-		->SetHotKey('G',VK_LWIN);
+		->SetHotKey('G',VK_LWIN,VK_SHIFT);
 	/*
 			Splitters
 	*/
@@ -282,10 +286,20 @@ int ConEmuHotKeyList::AllocateHotkeys()
 		->SetHotKey(VK_LEFT,VK_APPS);
 	Add(vkSplitFocusRight,chk_User,  NULL,    L"Multi.SplitFocusR",     CConEmuCtrl::key_GuiMacro, false, L"Split(2,1,0)")
 		->SetHotKey(VK_RIGHT,VK_APPS);
+	Add(vkSplitSwap,      chk_User,  NULL,    L"Multi.SplitSwap",       CConEmuCtrl::key_GuiMacro, false, L"Split(4)")
+		->SetHotKey('X',VK_APPS,VK_MENU);
+	Add(vkSplitSwapUp,    chk_User,  NULL,    L"Multi.SplitSwapU",      CConEmuCtrl::key_GuiMacro, false, L"Split(4,0,-1)")
+		->SetHotKey(VK_UP,VK_APPS,VK_MENU);
+	Add(vkSplitSwapDown,  chk_User,  NULL,    L"Multi.SplitSwapD",      CConEmuCtrl::key_GuiMacro, false, L"Split(4,0,1)")
+		->SetHotKey(VK_DOWN,VK_APPS,VK_MENU);
+	Add(vkSplitSwapLeft,  chk_User,  NULL,    L"Multi.SplitSwapL",      CConEmuCtrl::key_GuiMacro, false, L"Split(4,-1,0)")
+		->SetHotKey(VK_LEFT,VK_APPS,VK_MENU);
+	Add(vkSplitSwapRight, chk_User,  NULL,    L"Multi.SplitSwapR",      CConEmuCtrl::key_GuiMacro, false, L"Split(4,1,0)")
+		->SetHotKey(VK_RIGHT,VK_APPS,VK_MENU);
 	Add(vkMultiNext,      chk_User,  NULL,    L"Multi.Next",            CConEmuCtrl::key_MultiNext)
-		->SetHotKey('Q',VK_LWIN);
-	Add(vkMultiNextShift, chk_User,  NULL,    L"Multi.NextShift",       CConEmuCtrl::key_MultiNextShift)
 		->SetHotKey('Q',VK_LWIN,VK_SHIFT);
+	Add(vkMultiNextShift, chk_User,  NULL,    L"Multi.NextShift",       CConEmuCtrl::key_MultiPrev)
+		;
 	Add(vkMultiRecreate,  chk_User,  NULL,    L"Multi.Recreate",        CConEmuCtrl::key_MultiRecreate)
 		->SetHotKey(192/*VK_тильда*/,VK_LWIN);
 	Add(vkMultiAltCon,    chk_User,  NULL,    L"Multi.AltCon",          CConEmuCtrl::key_AlternativeBuffer)
@@ -294,8 +308,12 @@ int ConEmuHotKeyList::AllocateHotkeys()
 		->SetHotKey(VK_PAUSE);
 	Add(vkMultiBuffer,    chk_User,  NULL,    L"Multi.Scroll",          CConEmuCtrl::key_MultiBuffer)
 		;
-	Add(vkMultiGroup,     chk_User,  NULL,    L"Multi.GroupInput",      CConEmuCtrl::key_GuiMacro, false, L"GroupInput")
+	Add(vkMultiGroup,     chk_User,  NULL,    L"Multi.GroupInput",      CConEmuCtrl::key_GuiMacro, false, L"GroupInput(0)")
 		->SetHotKey('G', VK_APPS);
+	Add(vkMultiGroupAll,  chk_User,  NULL,    L"Multi.GroupInputAll",   CConEmuCtrl::key_GuiMacro, false, L"GroupInput(3)")
+		->SetHotKey('G', VK_APPS, VK_SHIFT);
+	Add(vkMultiGroupKey,  chk_User,  NULL,    L"Multi.GroupInputKey",   CConEmuCtrl::key_GuiMacro, false, L"GroupInput(6)")
+		->SetHotKey('G', VK_APPS, VK_MENU);
 	Add(vkConDetach,      chk_User,  NULL,    L"Multi.Detach",          CConEmuCtrl::key_GuiMacro, false, L"Detach")
 		;
 	Add(vkConUnfasten,    chk_User,  NULL,    L"Multi.Unfasten",        CConEmuCtrl::key_GuiMacro, false, L"Unfasten")
@@ -313,6 +331,8 @@ int ConEmuHotKeyList::AllocateHotkeys()
 	Add(vkCloseZombies,    chk_User,  NULL,   L"CloseZombiesKey",       CConEmuCtrl::key_GuiMacro, false, L"Close(9)")
 		;
 	Add(vkCloseExceptCon, chk_User,  NULL,    L"CloseExceptConKey",     CConEmuCtrl::key_GuiMacro, false, L"Close(5)")
+		;
+	Add(vkClose2Right,    chk_User,  NULL,   L"CloseToRightKey",        CConEmuCtrl::key_GuiMacro, false, L"Close(11)")
 		;
 	Add(vkTerminateApp,   chk_User,  NULL,    L"KillProcessKey",        CConEmuCtrl::key_GuiMacro, false, L"Close(1)")
 		->SetHotKey(VK_CANCEL,VK_CONTROL,VK_MENU); // Ctrl+Alt+Break
@@ -351,9 +371,9 @@ int ConEmuHotKeyList::AllocateHotkeys()
 	Add(vkShowTabsList2,  chk_User,  NULL,    L"Multi.ShowTabsList2",   CConEmuCtrl::key_GuiMacro, false, L"Tabs(8)")
 		->SetHotKey(VK_F12,VK_APPS);
 	Add(vkPasteText,      chk_User,  NULL,    L"ClipboardVkAllLines",   CConEmuCtrl::key_PasteText)
-		->SetHotKey(VK_INSERT,VK_SHIFT);
-	Add(vkPasteFirstLine, chk_User,  NULL,    L"ClipboardVkFirstLine",  CConEmuCtrl::key_PasteFirstLine)
 		->SetHotKey('V',VK_CONTROL);
+	Add(vkPasteFirstLine, chk_User,  NULL,    L"ClipboardVkFirstLine",  CConEmuCtrl::key_PasteFirstLine)
+		->SetHotKey(VK_INSERT,VK_SHIFT);
 	Add(vkAltNumpad,      chk_User,  NULL,    L"Key.AltNumpad",         CConEmuCtrl::key_GuiMacro, false, L"AltNumber(16)")
 		;
 	Add(vkDeleteLeftWord, chk_User,  ConEmuHotKey::UseCtrlBS, L"DeleteWordToLeft", CConEmuCtrl::key_DeleteWordToLeft)
@@ -427,6 +447,10 @@ int ConEmuHotKeyList::AllocateHotkeys()
 		->SetHotKey(VK_HOME,VK_APPS);
 	Add(vkAppsEnd,        chk_User,  NULL,    L"Key.BufBottom",         CConEmuCtrl::key_GuiMacro, false, L"Scroll(3,+1)") // Buffer scroll
 		->SetHotKey(VK_END,VK_APPS);
+	Add(vkFindPrevPrompt, chk_User, ConEmuHotKey::UsePromptFind, L"Key.BufPrUp", CConEmuCtrl::key_GuiMacro, false, L"Scroll(5,-1)") // Buffer scroll: Find prompt upward
+		->SetHotKey(VK_PRIOR,VK_CONTROL,VK_MENU);
+	Add(vkFindNextPrompt, chk_User, ConEmuHotKey::UsePromptFind, L"Key.BufPrDn", CConEmuCtrl::key_GuiMacro, false, L"Scroll(5,+1)") // Buffer scroll: Find prompt downward
+		->SetHotKey(VK_NEXT,VK_CONTROL,VK_MENU);
 	Add(vkAppsBS,         chk_User,  NULL,    L"Key.BufCursor",         CConEmuCtrl::key_GuiMacro, false, L"Scroll(4)") // Buffer scroll
 		->SetHotKey(VK_BACK,VK_APPS);
 	Add(vkResetTerminal,  chk_User,  NULL,    L"Key.ResetTerm",         CConEmuCtrl::key_GuiMacro, false, L"Write(\"\\ec\")") // Reset terminal

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -53,7 +53,8 @@ const VConFlags
 	vf_Active    = 0x0001,
 	vf_Visible   = 0x0002,
 	vf_Maximized = 0x0008,
-	vf_Grouped   = 0x0010,
+	vf_GroupSplit= 0x0010, // simultaneous input for active split group
+	vf_GroupSet  = 0x0020, // simultaneous input for selected consoles
 	vf_None      = 0
 ;
 
@@ -83,10 +84,12 @@ class CVirtualConsole :
 	protected:
 		struct VConRConSizes
 		{
-			uint TextWidth, TextHeight; // размер в символах
-			uint Width, Height; // размер в пикселях
-			uint nMaxTextWidth, nMaxTextHeight; // размер в символах
-			uint LastPadSize;
+			unsigned TextWidth, TextHeight; // RCon size in cells
+			unsigned Width, Height; // DC size in pixels
+			unsigned OffsetX, OffsetY;
+			unsigned BackWidth, BackHeight;
+			unsigned nMaxTextWidth, nMaxTextHeight; // max size in cells
+			unsigned LastPadSize;
 			LONG nFontHeight, nFontWidth;
 		} m_Sizes;
 
@@ -97,21 +100,22 @@ class CVirtualConsole :
 
 	protected:
 		CVirtualConsole(CConEmuMain* pOwner, int index);
-		bool Constructor(RConStartArgs *args);
+		bool Constructor(RConStartArgsEx *args);
 	public:
 		void InitGhost();
 	protected:
 		virtual ~CVirtualConsole();
 		friend class CVConRelease;
 	public:
-		CRealConsole *RCon();
+		CConEmuMain* Owner();
+		CRealConsole* RCon();
 		HWND GuiWnd();
 		void setFocus();
 		HWND GhostWnd();
 		bool isActive(bool abAllowGroup);
 		bool isVisible();
 		bool isGroup();
-		bool isGroupedInput();
+		EnumVConFlags isGroupedInput();
 	public:
 		int Index();
 		LPCWSTR IndexStr();
@@ -149,7 +153,7 @@ class CVirtualConsole :
 		bool    mb_InUpdate;
 		RECT    mrc_Client, mrc_Back;
 		CEDC    m_DC;
-		HBRUSH  hBrush0, hOldBrush, hSelectedBrush;
+		HBRUSH  hOldBrush, hSelectedBrush;
 		HBRUSH  CreateBackBrush(bool bGuiVisible, bool& rbNonSystem, COLORREF *pColors = NULL);
 		CEFontStyles m_SelectedFont;
 		//CEFONT  mh_FontByIndex[MAX_FONT_STYLES_EX]; // pointers to Normal/Bold/Italic/Bold&Italic/...Underline
@@ -257,13 +261,15 @@ class CVirtualConsole :
 		void UpdateThumbnail(bool abNoSnapshot = FALSE);
 		void SelectFont(CEFontStyles newFont);
 		void SelectBrush(HBRUSH hNew);
-		void PaintBackgroundImage(const RECT& rcText, const COLORREF crBack);
+		void PaintBackgroundImage(HDC hdc, const RECT& rcText, const COLORREF crBack, bool Background = false);
 		bool CheckSelection(const CONSOLE_SELECTION_INFO& select, SHORT row, SHORT col);
 		//bool GetCharAttr(wchar_t ch, WORD atr, wchar_t& rch, BYTE& foreColorNum, BYTE& backColorNum, FONT* pFont);
 		COLORREF* GetColors();
 		COLORREF* GetColors(bool bFade);
 		int GetPaletteIndex();
 		bool ChangePalette(int aNewPaletteIdx);
+		bool ChangePalette(LPCWSTR asNewPalette);
+		bool ChangePalette(const ColorPalette* pPal);
 		void PaintVCon(HDC hPaintDc);
 		bool PrintClient(HDC hPrintDc, bool bAllowRepaint, const LPRECT PaintRect);
 		bool Blit(HDC hPaintDC, int anX, int anY, int anShowWidth, int anShowHeight);
@@ -271,8 +277,11 @@ class CVirtualConsole :
 		void UpdateInfo();
 		LONG GetVConWidth();
 		LONG GetVConHeight();
+		POINT GetVConOffset();
+		SIZE GetBackSize();
 		LONG GetTextWidth();
 		LONG GetTextHeight();
+		SIZE GetCellSize();
 		RECT GetRect();
 		RECT GetDcClientRect();
 		void OnFontChanged();
@@ -281,7 +290,7 @@ class CVirtualConsole :
 		void OnConsoleSizeChanged();
 		void OnConsoleSizeReset(USHORT sizeX, USHORT sizeY);
 		static void ClearPartBrushes();
-		HRGN GetExclusionRgn(bool abTestOnly=false);
+		HRGN GetExclusionRgn();
 		COORD FindOpaqueCell();
 		bool RegisterPanelView(PanelViewInit* ppvi);
 		void OnPanelViewSettingsChanged();
@@ -300,7 +309,7 @@ class CVirtualConsole :
 		CONSOLE_SCREEN_BUFFER_INFO csbi; DWORD mdw_LastError;
 		CONSOLE_CURSOR_INFO	cinf;
 		COORD winSize, coord;
-		uint TextLen;
+		unsigned TextLen;
 		bool isCursorValid, drawImage, textChanged, attrChanged;
 		DWORD nBgImageColors;
 		COORD bgBmpSize; HDC hBgDc; // Это только ссылка, для удобства отрисовки
@@ -348,13 +357,20 @@ class CVirtualConsole :
 		} TransparentInfo;
 		//static HMENU mh_PopupMenu, mh_TerminatePopup, mh_DebugPopup, mh_EditPopup;
 
+		struct HighlightRect
+		{
+			COLORREF crPatColor;
+			DWORD    StockBrush;
+			RECT     rcPaint;
+		};
 		struct _HighlightInfo
 		{
 			COORD m_Last;
 			COORD m_Cur;
 			// store last paint coords
-			RECT  mrc_LastRow, mrc_LastCol;
-			RECT  mrc_LastHyperlink;
+			MArray<HighlightRect> LastRect;
+			//RECT  mrc_LastRow, mrc_LastCol;
+			//RECT  mrc_LastHyperlink;
 			// true - if VCon visible & enabled in settings & highlight exist
 			bool  mb_Exists;
 			// true - if Invalidate was called, but UpdateHighlights still not
@@ -362,6 +378,14 @@ class CVirtualConsole :
 			bool  mb_SelfSettings;
 			bool  mb_HighlightRow;
 			bool  mb_HighlightCol;
+
+			// required in VC12 coz MArray
+			_HighlightInfo()
+				: m_Last(), m_Cur()
+				, mb_Exists(), mb_ChangeDetected()
+				, mb_SelfSettings(), mb_HighlightRow(), mb_HighlightCol()
+			{
+			};
 		} m_HighlightInfo;
 		void ResetHighlightCoords();
 		void ResetHighlightHyperlinks();

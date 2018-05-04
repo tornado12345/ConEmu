@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -84,7 +84,6 @@ protected:
 	virtual void LogHookingStatus(DWORD nForePID, LPCWSTR sMessage) override;
 protected:
 	friend bool InitDefTerm();
-	friend void DefTermLogInit();
 	friend void DefTermLogString(LPCSTR asMessage, LPCWSTR asLabel /*= NULL*/);
 	friend void DefTermLogString(LPCWSTR asMessage, LPCWSTR asLabel /*= NULL*/);
 };

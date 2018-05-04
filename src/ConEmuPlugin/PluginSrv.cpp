@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRCMD(s) DEBUGSTR(s)
 
 
-#include <windows.h>
 #include "../common/Common.h"
 #include "../ConEmuHk/ConEmuHooks.h"
 #ifdef _DEBUG
@@ -100,7 +99,7 @@ bool PlugServerStart()
 	bool lbStarted = false;
 	DWORD dwCurProcId = GetCurrentProcessId();
 
-	_wsprintf(gszPluginServerPipe, SKIPLEN(countof(gszPluginServerPipe)) CEPLUGINPIPENAME, L".", dwCurProcId);
+	swprintf_c(gszPluginServerPipe, CEPLUGINPIPENAME, L".", dwCurProcId);
 
 	ghServerTerminateEvent = CreateEvent(NULL,TRUE,FALSE,NULL);
 	_ASSERTE(ghServerTerminateEvent!=NULL);
@@ -193,7 +192,7 @@ BOOL WINAPI PlugServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ* &pp
 
 		if (hkl)
 		{
-			WCHAR szLoc[10]; _wsprintf(szLoc, SKIPLEN(countof(szLoc)) L"%08x", hkl);
+			WCHAR szLoc[10]; swprintf_c(szLoc, L"%08x", hkl);
 			hkl1 = LoadKeyboardLayout(szLoc, KLF_ACTIVATE|KLF_REORDER|KLF_SUBSTITUTE_OK|KLF_SETFORPROCESS);
 			hkl2 = ActivateKeyboardLayout(hkl1, KLF_SETFORPROCESS|KLF_REORDER);
 

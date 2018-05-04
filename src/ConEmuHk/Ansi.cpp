@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <WinError.h>
 #include <WinNT.h>
 #include <TCHAR.h>
@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/HandleKeeper.h"
 #include "../common/MConHandle.h"
 #include "../common/MSectionSimple.h"
+#include "../common/UnicodeChars.h"
 #include "../common/WCodePage.h"
 #include "../common/WConsole.h"
 #include "../common/WErrGuard.h"
@@ -53,6 +54,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Ansi.h"
 DWORD AnsiTlsIndex = 0;
 ///* ***************** */
+
+#ifdef _DEBUG
+#define GH_1402
+#endif
 
 #undef isPressed
 #define isPressed(inp) ((GetKeyState(inp) & 0x8000) == 0x8000)
@@ -264,6 +269,28 @@ UINT CEAnsi::GetCodePage()
 	return cp;
 }
 
+// Intended to log some WinAPI functions
+void CEAnsi::WriteAnsiLogFormat(const char* format, ...)
+{
+	if (!ghAnsiLogFile || !format)
+		return;
+	ScopedObject(CLastErrorGuard);
+	va_list argList;
+	va_start(argList, format);
+	char func_buffer[200] = "";
+	if (S_OK == StringCchVPrintfA(func_buffer, countof(func_buffer), format, argList))
+	{
+		static char s_ExeName[80] = "";
+		if (!*s_ExeName)
+			WideCharToMultiByte(CP_UTF8, 0, gsExeName, -1, s_ExeName, countof(s_ExeName)-1, nullptr, nullptr);
+
+		char log_string[300] = "";
+		msprintf(log_string, countof(log_string), "\x1B]9;11;\"%s: %s\"\x1B\\", s_ExeName, func_buffer);
+		WriteAnsiLogUtf8(log_string, (DWORD)strlen(log_string));
+	}
+	va_end(argList);
+}
+
 BOOL CEAnsi::WriteAnsiLogUtf8(const char* lpBuffer, DWORD nChars)
 {
 	if (!lpBuffer || !nChars)
@@ -448,8 +475,10 @@ void CEAnsi::GetFeatures(bool* pbAnsiAllowed, bool* pbSuppressBells)
 //{
 //	BOOL WasSet;
 //	BOOL BrightOrBold;     // 1
-//	BOOL ItalicOrInverse;  // 3
-//	BOOL BackOrUnderline;  // 4
+//	BOOL Italic;           // 3
+//	BOOL Underline;        // 4
+//	BOOL BrightFore;       // 90-97
+//	BOOL BrightBack;       // 100-107
 //	int  TextColor;        // 30-37,38,39
 //	BOOL Text256;          // 38
 //    int  BackColor;        // 40-47,48,49
@@ -459,6 +488,89 @@ void CEAnsi::GetFeatures(bool* pbAnsiAllowed, bool* pbSuppressBells)
 //} gDisplayParm = {};
 
 CEAnsi::DisplayParm CEAnsi::gDisplayParm = {};
+
+// void CEAnsi::DisplayParm::setWasSet(...) -- intentionally is not defined
+
+void CEAnsi::DisplayParm::Reset(const bool full)
+{
+	if (full)
+		*this = DisplayParm{};
+
+	WORD nDefColors = CEAnsi::GetDefaultTextAttr();
+	_TextColor = CONFORECOLOR(nDefColors);
+	_BackColor = CONBACKCOLOR(nDefColors);
+	_WasSet = TRUE;
+}
+void CEAnsi::DisplayParm::setBrightOrBold(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_BrightOrBold = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setItalic(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_Italic = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setUnderline(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_Underline = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setBrightFore(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_BrightFore = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setBrightBack(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_BrightBack = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setTextColor(const int val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_TextColor = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setText256(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_Text256 = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setBackColor(const int val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_BackColor = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setBack256(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_Back256 = val;
+	_ASSERTE(_WasSet==TRUE);
+}
+void CEAnsi::DisplayParm::setInverse(const BOOL val)
+{
+	if (!_WasSet)
+		Reset(false);
+	_Inverse = val;
+	_ASSERTE(_WasSet==TRUE);
+}
 
 //struct DisplayCursorPos
 //{
@@ -525,15 +637,9 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 {
 	WARNING("Эту функу нужно дергать при смене буферов, закрытии дескрипторов, и т.п.");
 
-	if (bReset || !gDisplayParm.WasSet)
+	if (bReset || !gDisplayParm.getWasSet())
 	{
-		if (bReset)
-			memset(&gDisplayParm, 0, sizeof(gDisplayParm));
-
-		WORD nDefColors = GetDefaultTextAttr();
-		gDisplayParm.TextColor = CONFORECOLOR(nDefColors);
-		gDisplayParm.BackColor = CONBACKCOLOR(nDefColors);
-		gDisplayParm.WasSet = TRUE;
+		gDisplayParm.Reset(bReset);
 	}
 
 	if (bApply)
@@ -573,20 +679,20 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 		int  BackColor;        // 40-47,48,49
 		BOOL Back256;          // 48
 
-		if (!gDisplayParm.Inverse)
+		//if (!gDisplayParm.Inverse)
 		{
-			TextColor = gDisplayParm.TextColor;
-			Text256 = gDisplayParm.Text256;
-			BackColor = gDisplayParm.BackColor;
-			Back256 = gDisplayParm.Back256;
+			TextColor = gDisplayParm.getTextColor();
+			Text256 = gDisplayParm.getText256();
+			BackColor = gDisplayParm.getBackColor();
+			Back256 = gDisplayParm.getBack256();
 		}
-		else
-		{
-			TextColor = gDisplayParm.BackColor;
-			Text256 = gDisplayParm.Back256;
-			BackColor = gDisplayParm.TextColor;
-			Back256 = gDisplayParm.Text256;
-		}
+		//else
+		//{
+		//	TextColor = gDisplayParm.BackColor;
+		//	Text256 = gDisplayParm.Back256;
+		//	BackColor = gDisplayParm.TextColor;
+		//	Back256 = gDisplayParm.Text256;
+		//}
 
 
 		if (Text256)
@@ -602,13 +708,6 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 					attr.Attributes.Flags |= CECF_FG_24BIT;
 				attr.Attributes.ForegroundColor = RgbMap[TextColor&0xFF];
 			}
-
-			if (gDisplayParm.BrightOrBold)
-				attr.Attributes.Flags |= CECF_FG_BOLD;
-			if (gDisplayParm.ItalicOrInverse)
-				attr.Attributes.Flags |= CECF_FG_ITALIC;
-			if (gDisplayParm.BackOrUnderline)
-				attr.Attributes.Flags |= CECF_FG_UNDERLINE;
 		}
 		else if (TextColor & 0x8)
 		{
@@ -619,8 +718,17 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 		else
 		{
 			attr.Attributes.ForegroundColor |= ClrMap[TextColor&0x7]
-				| (gDisplayParm.BrightOrBold ? 0x08 : 0);
+				| ((gDisplayParm.getBrightFore() | (gDisplayParm.getBrightOrBold() && !gDisplayParm.getBrightBack())) ? 0x08 : 0);
 		}
+
+		if (gDisplayParm.getBrightOrBold() && (Text256 | gDisplayParm.getBrightFore() | gDisplayParm.getBrightBack()))
+			attr.Attributes.Flags |= CECF_FG_BOLD;
+		if (gDisplayParm.getItalic())
+			attr.Attributes.Flags |= CECF_FG_ITALIC;
+		if (gDisplayParm.getUnderline())
+			attr.Attributes.Flags |= CECF_FG_UNDERLINE;
+		if (gDisplayParm.getInverse())
+			attr.Attributes.Flags |= CECF_REVERSE;
 
 		if (Back256)
 		{
@@ -645,7 +753,7 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 		else
 		{
 			attr.Attributes.BackgroundColor |= ClrMap[BackColor&0x7]
-				| ((gDisplayParm.BackOrUnderline && !Text256) ? 0x8 : 0);
+				| (gDisplayParm.getBrightBack() ? 0x8 : 0);
 		}
 
 
@@ -864,7 +972,7 @@ void CEAnsi::OnReadConsoleAfter(bool bFinal, bool bNoLineFeed)
 	if (!GetConsoleScreenBufferInfo(hConOut, &csbi))
 		goto wrap;
 
-	if (!FindConsoleRowId(hConOut, csbi.dwCursorPosition.Y, &nMarkedRow, &Test))
+	if (!FindConsoleRowId(hConOut, csbi.dwCursorPosition.Y, true, &nMarkedRow, &Test))
 		goto wrap;
 
 	for (int i = 1; i >= 0; i--)
@@ -911,6 +1019,57 @@ BOOL CEAnsi::WriteText(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, 
 	ExtWriteTextParm write = {sizeof(write), ewtf_Current|AddFlags, hConsoleOutput};
 	write.Private = (void*)(FARPROC)_WriteConsoleW;
 
+	LPCWSTR pszSrcBuffer = lpBuffer;
+	wchar_t cvtBuf[80], *pcvtBuf = NULL;
+	if (mCharSet && lpBuffer && nNumberOfCharsToWrite)
+	{
+		static wchar_t G0_DRAWING[31] = {
+			0x2666 /*♦*/, 0x2592 /*▒*/, 0x2192 /*→*/, 0x21A8 /*↨*/, 0x2190 /*←*/, 0x2193 /*↓*/, 0x00B0 /*°*/, 0x00B1 /*±*/,
+			0x00B6 /*¶*/, 0x2195 /*↕*/, 0x2518 /*┘*/, 0x2510 /*┐*/, 0x250C /*┌*/, 0x2514 /*└*/, 0x253C /*┼*/, 0x203E /*‾*/,
+			0x207B /*⁻*/, 0x2500 /*─*/, 0x208B /*₋*/, 0x005F /*_*/, 0x251C /*├*/, 0x2524 /*┤*/, 0x2534 /*┴*/, 0x252C /*┬*/,
+			0x2502 /*│*/, 0x2264 /*≤*/, 0x2265 /*≥*/, 0x03C0 /*π*/, 0x2260 /*≠*/, 0x00A3 /*£*/, 0x00B7 /*·*/
+		};
+		LPCWSTR pszMap = NULL;
+		switch (mCharSet)
+		{
+		case VTCS_DRAWING:
+			pszMap = G0_DRAWING;
+			break;
+		}
+		if (pszMap)
+		{
+			wchar_t* dst = NULL;
+			for (DWORD i = 0; i < nNumberOfCharsToWrite; ++i)
+			{
+				if (pszSrcBuffer[i] >= 0x60 && pszSrcBuffer[i] < 0x7F)
+				{
+					if (!pcvtBuf)
+					{
+						if (nNumberOfCharsToWrite <= countof(cvtBuf))
+						{
+							pcvtBuf = cvtBuf;
+						}
+						else
+						{
+							pcvtBuf = (wchar_t*)malloc(sizeof(*pcvtBuf) * nNumberOfCharsToWrite);
+							if (!pcvtBuf)
+								break;
+						}
+						lpBuffer = pcvtBuf;
+						dst = pcvtBuf;
+						if (i)
+							memmove(dst, pszSrcBuffer, i * sizeof(*dst));
+					}
+					dst[i] = pszMap[pszSrcBuffer[i] - 0x60];
+				}
+				else if (dst)
+				{
+					dst[i] = pszSrcBuffer[i];
+				}
+			}
+		}
+	}
+
 	GetFeatures(NULL, &mb_SuppressBells);
 	if (mb_SuppressBells)
 	{
@@ -932,38 +1091,128 @@ BOOL CEAnsi::WriteText(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, 
 		write.Region.left = write.Region.right = -1; // not used yet
 	}
 
-	if (gbWasXTermOutput)
-	{
-		// top - writes all lines using full console width
-		// and thereafter some ANSI-s and "\r\n"
-		int iDontWrap = 0;
-		for (DWORD n = 0; (n < nNumberOfCharsToWrite) && (iDontWrap < 3); n++)
+	if (gbWasXTermOutput && !gDisplayOpt.AutoLfNl)
+		write.Flags |= ewtf_NoLfNl;
+
+	DWORD nWriteFrom = 0, nWriteTo = nNumberOfCharsToWrite;
+
+	#ifdef GH_1402
+	static bool fishLineFeed = false;
+	struct ExtWriteTextCalls { const wchar_t* buffer; size_t count; };
+	const size_t ext_calls_max = 16;
+	static ExtWriteTextCalls ext_calls[ext_calls_max] = {};
+	static size_t ext_calls_count = 0;
+
+	auto count_chars = [&](const wchar_t test) -> unsigned {
+		unsigned count = 0;
+		for (DWORD n = nWriteFrom; n < nWriteTo; ++n)
 		{
-			iDontWrap |= (lpBuffer[n] == L'\r' || lpBuffer[n] == L'\n') ? 1 : 2;
+			if (lpBuffer[n] == test)
+				++count;
 		}
-		// If only printable chars are written
-		if (iDontWrap == 2)
+		return count;
+	};
+	#endif
+
+	if ((nNumberOfCharsToWrite == 1) && isConsoleBadDBCS())
+	{
+		if (lpBuffer[0] == ucLineFeed)
 		{
-			// ExtWriteText will check (AI) if it must not wrap&scroll
-			write.Flags |= ewtf_DontWrap;
+			static wchar_t dummy_buf[2] = L"%";
+			lpBuffer = dummy_buf;
 		}
 	}
 
-	//lbRc = _WriteConsoleW(hConsoleOutput, lpBuffer, nNumberOfCharsToWrite, &nTotalWritten, NULL);
-	write.Buffer = lpBuffer;
-	write.NumberOfCharsToWrite = nNumberOfCharsToWrite;
-
-	lbRc = ExtWriteText(&write);
-	if (lbRc)
+	while (nWriteTo > nWriteFrom && nWriteFrom < nNumberOfCharsToWrite)
 	{
-		if (write.NumberOfCharsWritten)
-			nTotalWritten += write.NumberOfCharsWritten;
-		if (write.ScrolledRowsUp > 0)
-			gDisplayCursor.StoredCursorPos.Y = max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
+		#ifdef GH_1402
+		bool curFishLineFeed = false;
+		if (count_chars(ucLineFeed) > 0)
+		{
+			if (!gbWasXTermOutput)
+			{
+				_ASSERTE(FALSE && "XTerm mode was not enabled!");
+				gbWasXTermOutput = true;
+			}
+			curFishLineFeed = true;
+		}
+		#endif
+
+		if (gbWasXTermOutput)
+		{
+			// On Win10 we may utilize DISABLE_NEWLINE_AUTO_RETURN flag, but it would
+			// complicate our code, because ConEmu support older Windows versions
+			write.Flags &= ~ewtf_DontWrap;
+			// top:  writes all lines using full console width
+			//       and thereafter some ANSI-s and "\r\n"
+			// fish: writes in one call "(Width-1)*Spaces,\r,Space,\r"
+			DWORD ChrSet = (lpBuffer[nWriteFrom] == L'\r' || lpBuffer[nWriteFrom] == L'\n') ? 1 : 2;
+			for (DWORD n = nWriteFrom+1; (n < nWriteTo); n++)
+			{
+				DWORD AddChrSet = (lpBuffer[n] == L'\r' || lpBuffer[n] == L'\n') ? 1 : 2;
+				if (ChrSet != AddChrSet)
+				{
+					// If only printable chars are written
+					// ExtWriteText will check (AI) if it must not wrap&scroll
+					if (ChrSet == 2)
+						write.Flags |= ewtf_DontWrap;
+					nWriteTo = n;
+					break;
+				}
+				// Expected to be the same
+				_ASSERTE(ChrSet == AddChrSet);
+				ChrSet |= AddChrSet;
+			}
+			// Perhaps, we shall do that always
+			if (ChrSet == 2)
+				write.Flags |= ewtf_DontWrap;
+		}
+		_ASSERTE(nWriteTo<=nNumberOfCharsToWrite);
+
+		//lbRc = _WriteConsoleW(hConsoleOutput, lpBuffer, nNumberOfCharsToWrite, &nTotalWritten, NULL);
+		write.Buffer = lpBuffer + nWriteFrom;
+		write.NumberOfCharsToWrite = nWriteTo - nWriteFrom;
+
+		#ifdef GH_1402
+		// For debugging purposes, we store ext_calls_max latest outputs
+		auto& ext_call = ext_calls[(ext_calls_count++) % ext_calls_max];
+		ext_call.buffer = write.Buffer;
+		ext_call.count = write.NumberOfCharsToWrite;
+		// Ensure we don't write more than a one LF character
+		if (curFishLineFeed)
+		{
+			unsigned ulf_chars = count_chars(ucLineFeed);
+			_ASSERTE(ulf_chars <= 1);
+			unsigned cr_chars = count_chars(L'\r');
+			unsigned lf_chars = count_chars(L'\n');
+			if (ulf_chars)
+				_ASSERTE((ulf_chars > 0) != ((cr_chars+lf_chars) > 0));
+			if (fishLineFeed && (count_chars(L' ') > 0))
+				_ASSERTE((write.Flags & ewtf_DontWrap) != 0);
+			if (ulf_chars > 0)
+				fishLineFeed = true;
+			if (cr_chars > 0)
+				fishLineFeed = false;
+		}
+		#endif
+
+		lbRc = ExtWriteText(&write);
+		if (lbRc)
+		{
+			if (write.NumberOfCharsWritten)
+				nTotalWritten += write.NumberOfCharsWritten;
+			if (write.ScrolledRowsUp > 0)
+				gDisplayCursor.StoredCursorPos.Y = std::max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
+		}
+
+		nWriteFrom = nWriteTo; nWriteTo = nNumberOfCharsToWrite;
 	}
 
 	if (lpNumberOfCharsWritten)
 		*lpNumberOfCharsWritten = nTotalWritten;
+
+	if (pcvtBuf && pcvtBuf != cvtBuf)
+		free(pcvtBuf);
 
 	return lbRc;
 }
@@ -1028,7 +1277,7 @@ BOOL CEAnsi::OurWriteConsoleA(HANDLE hConsoleOutput, const char *lpBuffer, DWORD
 		{
 			_ASSERTE((pDst < (buf+bufMax)) && "wchar_t buffer overflow while converting");
 			buf[(pDst - buf)] = 0; // It's not required, just to easify debugging
-			lbRc = OurWriteConsoleW(hConsoleOutput, buf, (pDst - buf), &nWritten, NULL);
+			lbRc = OurWriteConsoleW(hConsoleOutput, buf, DWORD(pDst - buf), &nWritten, NULL);
 			if (lbRc) nTotalWritten += nWritten;
 			pDst = buf;
 		}
@@ -1052,7 +1301,7 @@ BOOL CEAnsi::OurWriteConsoleA(HANDLE hConsoleOutput, const char *lpBuffer, DWORD
 	{
 		_ASSERTE((pDst < (buf+bufMax)) && "wchar_t buffer overflow while converting");
 		buf[(pDst - buf)] = 0; // It's not required, just to easify debugging
-		lbRc = OurWriteConsoleW(hConsoleOutput, buf, (pDst - buf), &nWritten, NULL);
+		lbRc = OurWriteConsoleW(hConsoleOutput, buf, DWORD(pDst - buf), &nWritten, NULL);
 		if (lbRc) nTotalWritten += nWritten;
 	}
 
@@ -1082,7 +1331,7 @@ BOOL CEAnsi::OurWriteConsoleW(HANDLE hConsoleOutput, const VOID *lpBuffer, DWORD
 	// Store prompt(?) for clink 0.1.1
 	if ((gnAllowClinkUsage == 1) && nNumberOfCharsToWrite && lpBuffer && gpszLastWriteConsole && gcchLastWriteConsoleMax)
 	{
-		size_t cchMax = min(gcchLastWriteConsoleMax-1,nNumberOfCharsToWrite);
+		size_t cchMax = std::min(gcchLastWriteConsoleMax-1,nNumberOfCharsToWrite);
 		gpszLastWriteConsole[cchMax] = 0;
 		wmemmove(gpszLastWriteConsole, (const wchar_t*)lpBuffer, cchMax);
 	}
@@ -1181,7 +1430,7 @@ BOOL CEAnsi::OurWriteConsoleW(HANDLE hConsoleOutput, const VOID *lpBuffer, DWORD
 		//	if (lpNumberOfCharsWritten)
 		//		*lpNumberOfCharsWritten = wrt.NumberOfCharsWritten;
 		//	if (wrt.ScrolledRowsUp > 0)
-		//		gDisplayCursor.StoredCursorPos.Y = max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)wrt.ScrolledRowsUp));
+		//		gDisplayCursor.StoredCursorPos.Y = std::max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)wrt.ScrolledRowsUp));
 		//}
 	}
 	goto wrap;
@@ -1235,7 +1484,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 		{
 			_ASSERTEX(gnPrevAnsiPart < 79);
 			INT_PTR nCurPrevLen = gnPrevAnsiPart;
-			INT_PTR nAdd = min((lpEnd-lpBuffer),(INT_PTR)countof(gsPrevAnsiPart)-nCurPrevLen-1);
+			INT_PTR nAdd = std::min((lpEnd-lpBuffer),(INT_PTR)countof(gsPrevAnsiPart)-nCurPrevLen-1);
 			// Need to check buffer overflow!!!
 			_ASSERTEX((INT_PTR)countof(gsPrevAnsiPart)>(nCurPrevLen+nAdd));
 			wmemcpy(gsPrevAnsiPart+nCurPrevLen, lpBuffer, nAdd);
@@ -1252,13 +1501,13 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 					if (lpReStart > gsPrevAnsiPart)
 					{
 						INT_PTR nSkipLen = (lpReStart - gsPrevAnsiPart); //DWORD nWritten;
-						_ASSERTEX(nSkipLen<=countof(gsPrevAnsiPart) && nSkipLen<=gnPrevAnsiPart);
+						_ASSERTEX(nSkipLen>0 && nSkipLen<=countof(gsPrevAnsiPart) && nSkipLen<=gnPrevAnsiPart);
 						DumpUnknownEscape(gsPrevAnsiPart, nSkipLen);
 
 						//WriteText(_WriteConsoleW, hConsoleOutput, gsPrevAnsiPart, nSkipLen, &nWritten);
 						_ASSERTEX(nSkipLen <= ((int)CEAnsi_MaxPrevPart - (int)cchPrevPart));
 						memmove(szPreDump, gsPrevAnsiPart, nSkipLen);
-						cchPrevPart += nSkipLen;
+						cchPrevPart += int(nSkipLen);
 
 						if (nSkipLen < gnPrevAnsiPart)
 						{
@@ -1335,6 +1584,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 					case L'E': // CR-LF
 					case L'D': // LF
 						// xterm?
+						lpStart = lpEscStart;
 						Code.First = 27;
 						Code.Second = *(++lpBuffer);
 						Code.ArgC = 0;
@@ -1352,6 +1602,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 					// Set lpSaveStart to current start of Esc sequence, it was set to beginning of buffer
 					_ASSERTEX(lpSaveStart <= lpBuffer);
 					lpSaveStart = lpBuffer;
+					_ASSERTEX(lpSaveStart == lpEscStart);
 
 					Code.First = 27;
 					Code.Second = *(++lpBuffer);
@@ -1361,7 +1612,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 
 					TODO("Bypass unrecognized ESC sequences to screen? Don't try to eliminate 'Possible' sequences?");
 					//if (((Code.Second < 64) || (Code.Second > 95)) && (Code.Second != 124/* '|' - vim-xterm-emulation */))
-					if (!wcschr(L"[](|", Code.Second))
+					if (!wcschr(L"[]|()%", Code.Second))
 					{
 						// Don't assert on rawdump of KeyEvents.exe Esc key presses
 						// 10:00:00 KEY_EVENT_RECORD: Dn, 1, Vk="VK_ESCAPE" [27/0x001B], Scan=0x0001 uChar=[U='\x1b' (0x001B): A='\x1b' (0x1B)]
@@ -1369,7 +1620,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 						//_ASSERTEX(bStandaloneEscChar && "Unsupported control sequence?");
 						if (!bStandaloneEscChar)
 						{
-							DumpKnownEscape(Code.pszEscStart, min(Code.nTotalLen,32), de_UnkControl);
+							DumpKnownEscape(Code.pszEscStart, std::min<size_t>(Code.nTotalLen, 32), de_UnkControl);
 						}
 						continue; // invalid code
 					}
@@ -1379,9 +1630,26 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 
 					switch (Code.Second)
 					{
+					case L'(':
+					case L')':
+					case L'%':
+					//case L'#':
+					//case L'*':
+					//case L'+':
+					//case L'-':
+					//case L'.':
+					//case L'/':
+						// VT G0/G1/G2/G3 character sets
+						lpStart = lpSaveStart;
+						Code.Action = *(lpBuffer++);
+						Code.Skip = 0;
+						Code.ArgSZ = NULL;
+						Code.cchArgSZ = 0;
+						lpEnd = lpBuffer;
+						iRc = 1;
+						goto wrap;
 					case L'|':
 						// vim-xterm-emulation
-					case L'(':
 					case L'[':
 						// Standard
 						Code.Skip = 0;
@@ -1704,7 +1972,8 @@ BOOL CEAnsi::ReverseLF(HANDLE hConsoleOutput, BOOL& bApply)
 		bApply = FALSE;
 	}
 
-	if (csbi.dwCursorPosition.Y == csbi.srWindow.Top)
+	if ((csbi.dwCursorPosition.Y == csbi.srWindow.Top)
+		|| (gDisplayOpt.ScrollRegion && csbi.dwCursorPosition.Y == gDisplayOpt.ScrollStart))
 	{
 		LinesInsert(hConsoleOutput, 1);
 	}
@@ -1734,14 +2003,16 @@ BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const int LinesCount)
 	if (gDisplayOpt.ScrollRegion)
 	{
 		_ASSERTEX(gDisplayOpt.ScrollStart>=0 && gDisplayOpt.ScrollEnd>=gDisplayOpt.ScrollStart);
-		TopLine = max(gDisplayOpt.ScrollStart,0);
-		BottomLine = max(gDisplayOpt.ScrollEnd,0);
+		TopLine = std::max<int>(gDisplayOpt.ScrollStart, 0);
+		BottomLine = std::max<int>(gDisplayOpt.ScrollEnd, 0);
 	}
 	else
 	{
-		TODO("What we need to scroll? Buffer or visible rect?");
+		// What we need to scroll? Buffer or visible rect?
 		TopLine = csbi.dwCursorPosition.Y;
-		BottomLine = csbi.dwSize.Y - 1;
+		BottomLine = (csbi.dwCursorPosition.Y <= csbi.srWindow.Bottom)
+			? csbi.srWindow.Bottom
+			: csbi.dwSize.Y - 1;
 	}
 
 	// Apply default color before scrolling!
@@ -1749,7 +2020,7 @@ BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const int LinesCount)
 
 	ExtScrollScreenParm scrl = {
 		sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
-		LinesCount, {}, L' ', {0, TopLine, 0, BottomLine}};
+		LinesCount, {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
 	BOOL lbRc = ExtScrollScreen(&scrl);
 	return lbRc;
 }
@@ -1774,9 +2045,11 @@ BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
 	}
 	else
 	{
-		TODO("What we need to scroll? Buffer or visible rect?");
+		// What we need to scroll? Buffer or visible rect?
 		TopLine = csbi.dwCursorPosition.Y;
-		BottomLine = csbi.dwSize.Y - 1;
+		BottomLine = (csbi.dwCursorPosition.Y <= csbi.srWindow.Bottom)
+			? csbi.srWindow.Bottom
+			: csbi.dwSize.Y - 1;
 	}
 
 	if (BottomLine < TopLine)
@@ -1790,7 +2063,7 @@ BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
 
 	ExtScrollScreenParm scrl = {
 		sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
-		-LinesCount, {}, L' ', {0, TopLine, 0, BottomLine}};
+		-LinesCount, {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
 	BOOL lbRc = ExtScrollScreen(&scrl);
 	return lbRc;
 }
@@ -1840,7 +2113,7 @@ void CEAnsi::EscCopyCtrlString(wchar_t* pszDst, LPCWSTR asMsg, INT_PTR cchMaxLen
 
 	if (cchMaxLen > 0)
 		wmemmove(pszDst, asMsg, cchMaxLen);
-	pszDst[max(cchMaxLen,0)] = 0;
+	pszDst[std::max<ssize_t>(cchMaxLen, 0)] = 0;
 }
 
 // ESC ] 9 ; 2 ; "txt" ST          Show GUI MessageBox ( txt ) for dubug purposes
@@ -1994,9 +2267,9 @@ void CEAnsi::DoPrintEnv(LPCWSTR asCmd, INT_PTR cchLen)
 			{
 				SYSTEMTIME st = {}; GetLocalTime(&st);
 				if (lstrcmpi(pszVarName, L"date") == 0)
-					_wsprintf(szValue, SKIPCOUNT(szValue) L"%u-%02u-%02u", st.wYear, st.wMonth, st.wDay);
+					swprintf_c(szValue, L"%u-%02u-%02u", st.wYear, st.wMonth, st.wDay);
 				else
-					_wsprintf(szValue, SKIPCOUNT(szValue) L"%u:%02u:%02u.%03u", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+					swprintf_c(szValue, L"%u:%02u:%02u.%03u", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 				nMax = lstrlen(szValue);
 			}
 			#if 0
@@ -2082,7 +2355,7 @@ void CEAnsi::ReportConsoleTitle()
 	_ASSERTEX(lstrlen(sTitle)==3);
 
 	DWORD nTitle = GetConsoleTitle(sTitle+3, MAX_PATH*2);
-	p = sTitle+3+min(nTitle,MAX_PATH*2);
+	p = sTitle + 3 + std::min<DWORD>(nTitle, MAX_PATH*2);
 	*(p++) = L'\x1B';
 	*(p++) = L'\\';
 	*(p++) = 0;
@@ -2124,7 +2397,7 @@ void CEAnsi::ReportTerminalPixelSize()
 
 	if (width > 0 && height > 0)
 	{
-		_wsprintf(szReport, SKIPCOUNT(szReport) L"\x1B[4;%u;%ut", (u32)height, (u32)width);
+		swprintf_c(szReport, L"\x1B[4;%u;%ut", (uint32_t)height, (uint32_t)width);
 		ReportString(szReport);
 	}
 }
@@ -2198,7 +2471,7 @@ BOOL CEAnsi::WriteAnsiCodes(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOut
 				//	if (lpNumberOfCharsWritten)
 				//		*lpNumberOfCharsWritten = write.NumberOfCharsWritten;
 				//	if (write.ScrolledRowsUp > 0)
-				//		gDisplayCursor.StoredCursorPos.Y = max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
+				//		gDisplayCursor.StoredCursorPos.Y = std::max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
 				//}
 			}
 
@@ -2258,10 +2531,26 @@ BOOL CEAnsi::WriteAnsiCodes(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOut
 						break;
 					case L'=':
 					case L'>':
-						// xterm "ESC ="
+						// xterm "ESC =" - Application Keypad (DECKPAM)
+						// xterm "ESC >" - Normal Keypad (DECKPNM)
+						DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+						break;
 					case L'(':
 						// xterm G0..G3?
-						DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+						switch (Code.Action)
+						{
+						case L'0':
+							mCharSet = VTCS_DRAWING;
+							//DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Comment);
+							break;
+						case L'B':
+							mCharSet = VTCS_DEFAULT;
+							//DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Comment);
+							break;
+						default:
+							mCharSet = VTCS_DEFAULT;
+							DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+						}
 						break;
 
 					default:
@@ -2296,7 +2585,7 @@ BOOL CEAnsi::WriteAnsiCodes(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOut
 				//	if (lpNumberOfCharsWritten)
 				//		*lpNumberOfCharsWritten = write.NumberOfCharsWritten;
 				//	if (write.ScrolledRowsUp > 0)
-				//		gDisplayCursor.StoredCursorPos.Y = max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
+				//		gDisplayCursor.StoredCursorPos.Y = std::max(0,((int)gDisplayCursor.StoredCursorPos.Y - (int)write.ScrolledRowsUp));
 				//}
 			}
 		}
@@ -2378,42 +2667,42 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 			case L'H':
 			case L'f':
 				// Set cursor position (1-based)
-				crNewPos.Y = (Code.ArgC > 0 && Code.ArgV[0]) ? (Code.ArgV[0] - 1) : 0;
-				crNewPos.X = (Code.ArgC > 1 && Code.ArgV[1]) ? (Code.ArgV[1] - 1) : 0;
+				crNewPos.Y = csbi.srWindow.Top + ((Code.ArgC > 0 && Code.ArgV[0]) ? (Code.ArgV[0] - 1) : 0);
+				crNewPos.X = ((Code.ArgC > 1 && Code.ArgV[1]) ? (Code.ArgV[1] - 1) : 0);
 				break;
 			case L'A':
 				// Cursor up by N rows
-				crNewPos.Y -= (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.Y -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				break;
 			case L'B':
 				// Cursor down by N rows
-				crNewPos.Y += (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.Y += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				break;
 			case L'C':
 				// Cursor right by N cols
-				crNewPos.X += (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.X += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				break;
 			case L'D':
 				// Cursor left by N cols
-				crNewPos.X -= (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.X -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				break;
 			case L'E':
 				// Moves cursor to beginning of the line n (default 1) lines down.
-				crNewPos.Y += (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.Y += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				crNewPos.X = 0;
 				break;
 			case L'F':
 				// Moves cursor to beginning of the line n (default 1) lines up.
-				crNewPos.Y -= (Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1;
+				crNewPos.Y -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
 				crNewPos.X = 0;
 				break;
 			case L'G':
 				// Moves the cursor to column n.
-				crNewPos.X = (Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0;
+				crNewPos.X = ((Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
 				break;
 			case L'd':
 				// Moves the cursor to line n.
-				crNewPos.Y = (Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0;
+				crNewPos.Y = csbi.srWindow.Top + ((Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
 				break;
 			#ifdef _DEBUG
 			default:
@@ -2482,7 +2771,7 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 				{
 					nScroll = -csbi.srWindow.Top;
 					cr0.X = csbi.dwCursorPosition.X;
-					cr0.Y = max(0,(csbi.dwCursorPosition.Y-csbi.srWindow.Top));
+					cr0.Y = std::max(0,(csbi.dwCursorPosition.Y-csbi.srWindow.Top));
 					resetCursor = true;
 				}
 				break;
@@ -2657,12 +2946,12 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 			//	  X10 Mouse Reporting (default off): Set reporting mode to 1 (or reset to
 			//	  0) -- see below.
 
-			//ESC [ ? 25 h
-			//	  DECTECM (default on): Make cursor visible.
-
 			//ESC [ ? 1000 h
 			//	  X11 Mouse Reporting (default off): Set reporting mode to 2 (or reset to
 			//	  0) -- see below.
+
+			//ESC [ ? 7711 h
+			//    mimic mintty code, same as "ESC ] 9 ; 12 ST"
 
 			switch (Code.ArgV[0])
 			{
@@ -2707,18 +2996,44 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 				}
 				break;
 			case 20:
-				// Ignored for now
-				gDisplayOpt.AutoLfNl = (Code.Action == L'h');
-				DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
-				break;
-			case 25:
+				if (Code.PvtLen == 0)
 				{
-					CONSOLE_CURSOR_INFO ci = {};
-					if (GetConsoleCursorInfo(hConsoleOutput, &ci))
+					gDisplayOpt.AutoLfNl = (Code.Action == L'h');
+					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+				}
+				else
+				{
+					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
+				}
+				break;
+			//ESC [ ? 12 h
+			//	  Start Blinking Cursor (att610)
+			case 12:
+			//ESC [ ? 25 h
+			//	  DECTECM (default on): Make cursor visible.
+			case 25:
+				if ((Code.PvtLen == 1) && (Code.Pvt[0] == L'?'))
+				{
+					for (int i = 0; i < Code.ArgC; ++i)
 					{
-						ci.bVisible = (Code.Action == L'h');
-						SetConsoleCursorInfo(hConsoleOutput, &ci);
+						if (Code.ArgV[i] == 25)
+						{
+							CONSOLE_CURSOR_INFO ci = {};
+							if (GetConsoleCursorInfo(hConsoleOutput, &ci))
+							{
+								ci.bVisible = (Code.Action == L'h');
+								SetConsoleCursorInfo(hConsoleOutput, &ci);
+							}
+						}
+						else
+						{
+							// DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+						}
 					}
+				}
+				else
+				{
+					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
 				}
 				break;
 			case 4:
@@ -2736,16 +3051,46 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 				else
 					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
 				break;
-			case 12:   /* SRM: set echo mode */
+			case 9:    /* X10_MOUSE */
 			case 1000: /* VT200_MOUSE */
 			case 1002: /* BTN_EVENT_MOUSE */
 			case 1003: /* ANY_EVENT_MOUSE */
 			case 1004: /* FOCUS_EVENT_MOUSE */
 			case 1005: /* Xterm's UTF8 encoding for mouse positions */
 			case 1006: /* Xterm's CSI-style mouse encoding */
-				// xmux/screen?
+			case 1015: /* Urxvt's CSI-style mouse encoding */
+				if ((Code.PvtLen == 1) && (Code.Pvt[0] == L'?'))
+				{
+					static DWORD LastMode = 0;
+					TermMouseMode ModeMask = (Code.ArgV[0] == 9) ? tmm_X10
+						: (Code.ArgV[0] == 1000) ? tmm_VT200
+						: (Code.ArgV[0] == 1002) ? tmm_BTN
+						: (Code.ArgV[0] == 1003) ? tmm_ANY
+						: (Code.ArgV[0] == 1004) ? tmm_FOCUS
+						: (Code.ArgV[0] == 1005) ? tmm_UTF8
+						: (Code.ArgV[0] == 1006) ? tmm_XTERM
+						: (Code.ArgV[0] == 1000) ? tmm_URXVT
+						: tmm_None;
+					DWORD Mode = (Code.Action == L'h')
+						? (LastMode | ModeMask)
+						: (LastMode & ~ModeMask);
+					LastMode = Mode;
+					ChangeTermMode(tmc_MouseMode, Mode);
+				}
+				else
+					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
+				break;
+			case 7786: /* 'V': Mousewheel reporting */
+			case 7787: /* 'W': Application mousewheel mode */
 				if ((Code.PvtLen == 1) && (Code.Pvt[0] == L'?'))
 					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored); // ignored for now
+				else
+					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
+				break;
+			case 1034:
+				// Interpret "meta" key, sets eighth bit. (enables/disables the eightBitInput resource).
+				if ((Code.PvtLen == 1) && (Code.Pvt[0] == L'?'))
+					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
 				else
 					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
 				break;
@@ -2788,6 +3133,16 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 					ChangeTermMode(tmc_BracketedPaste, (Code.Action == L'h'));
 				else
 					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
+				break;
+			case 7711:
+				if ((Code.Action == L'h') && (Code.PvtLen == 1) && (Code.Pvt[0] == L'?'))
+				{
+					StorePromptBegin();
+				}
+				else
+				{
+					DumpUnknownEscape(Code.pszEscStart, Code.nTotalLen);
+				}
 				break;
 			default:
 				DumpUnknownEscape(Code.pszEscStart,Code.nTotalLen);
@@ -2882,134 +3237,120 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 					ReSetDisplayParm(hConsoleOutput, TRUE, FALSE);
 					break;
 				case 1:
-					gDisplayParm.BrightOrBold = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					// Bold
+					gDisplayParm.setBrightOrBold(TRUE);
 					break;
 				case 2:
 					// Faint, decreased intensity (ISO 6429)
 				case 22:
 					// Normal (neither bold nor faint).
-					gDisplayParm.BrightOrBold = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBrightOrBold(FALSE);
 					break;
 				case 3:
-					gDisplayParm.ItalicOrInverse = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					// Italic
+					gDisplayParm.setItalic(TRUE);
 					break;
 				case 23:
-					// Not italicized (ISO 6429)
-					gDisplayParm.ItalicOrInverse = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					// Not italic
+					gDisplayParm.setItalic(FALSE);
+					break;
+				case 5: // #TODO ANSI Slow Blink (less than 150 per minute)
+				case 6: // #TODO ANSI Rapid Blink (150+ per minute)
+				case 25: // #TODO ANSI Blink Off
+					DumpKnownEscape(Code.pszEscStart,Code.nTotalLen,de_Ignored);
 					break;
 				case 4: // Underlined
-				case 5: // Blink
-					TODO("Check standard");
-					gDisplayParm.BackOrUnderline = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setUnderline(TRUE);
 					break;
 				case 24:
 					// Not underlined
-					gDisplayParm.BackOrUnderline = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setUnderline(FALSE);
 					break;
 				case 7:
 					// Reverse video
-					gDisplayParm.Inverse = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setInverse(TRUE);
 					break;
 				case 27:
 					// Positive (not inverse)
-					gDisplayParm.Inverse = FALSE;
-					gDisplayParm.WasSet = TRUE;
-					break;
-				case 25:
-					// Steady (not blinking)
-					DumpKnownEscape(Code.pszEscStart,Code.nTotalLen,de_Ignored);
+					gDisplayParm.setInverse(FALSE);
 					break;
 				case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37:
-					gDisplayParm.TextColor = (Code.ArgV[i] - 30);
-					if (gDisplayParm.BrightOrBold == 2)
-						gDisplayParm.BrightOrBold = FALSE;
-					else
-						gDisplayParm.BrightOrBold &= ~2;
-					gDisplayParm.Text256 = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setTextColor(Code.ArgV[i] - 30);
+					gDisplayParm.setBrightFore(FALSE);
+					gDisplayParm.setText256(FALSE);
 					break;
 				case 38:
 					// xterm-256 colors
 					// ESC [ 38 ; 5 ; I m -- set foreground to I (0..255) color from xterm palette
 					if (((i+2) < Code.ArgC) && (Code.ArgV[i+1] == 5))
 					{
-						gDisplayParm.TextColor = (Code.ArgV[i+2] & 0xFF);
-						gDisplayParm.Text256 = 1;
-						gDisplayParm.WasSet = TRUE;
+						gDisplayParm.setTextColor(Code.ArgV[i+2] & 0xFF);
+						gDisplayParm.setText256(1);
 						i += 2;
 					}
 					// xterm-256 colors
 					// ESC [ 38 ; 2 ; R ; G ; B m -- set foreground to RGB(R,G,B) 24-bit color
 					else if (((i+4) < Code.ArgC) && (Code.ArgV[i+1] == 2))
 					{
-						gDisplayParm.TextColor = RGB((Code.ArgV[i+2] & 0xFF),(Code.ArgV[i+3] & 0xFF),(Code.ArgV[i+4] & 0xFF));
-						gDisplayParm.Text256 = 2;
-						gDisplayParm.WasSet = TRUE;
+						gDisplayParm.setTextColor(RGB((Code.ArgV[i+2] & 0xFF),(Code.ArgV[i+3] & 0xFF),(Code.ArgV[i+4] & 0xFF)));
+						gDisplayParm.setText256(2);
 						i += 4;
 					}
 					break;
 				case 39:
 					// Reset
-					gDisplayParm.TextColor = CONFORECOLOR(GetDefaultTextAttr());
-					gDisplayParm.Text256 = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setTextColor(CONFORECOLOR(GetDefaultTextAttr()));
+					gDisplayParm.setBrightFore(FALSE);
+					gDisplayParm.setText256(FALSE);
 					break;
 				case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47:
-					gDisplayParm.BackColor = (Code.ArgV[i] - 40);
-					if (gDisplayParm.BackOrUnderline == 2)
-						gDisplayParm.BackOrUnderline = FALSE;
-					else
-						gDisplayParm.BackOrUnderline &= ~2;
-					gDisplayParm.Back256 = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBackColor(Code.ArgV[i] - 40);
+					gDisplayParm.setBrightBack(FALSE);
+					gDisplayParm.setBack256(FALSE);
 					break;
 				case 48:
 					// xterm-256 colors
 					// ESC [ 48 ; 5 ; I m -- set background to I (0..255) color from xterm palette
 					if (((i+2) < Code.ArgC) && (Code.ArgV[i+1] == 5))
 					{
-						gDisplayParm.BackColor = (Code.ArgV[i+2] & 0xFF);
-						gDisplayParm.Back256 = 1;
-						gDisplayParm.WasSet = TRUE;
+						gDisplayParm.setBackColor(Code.ArgV[i+2] & 0xFF);
+						gDisplayParm.setBack256(1);
 						i += 2;
 					}
 					// xterm-256 colors
 					// ESC [ 48 ; 2 ; R ; G ; B m -- set background to RGB(R,G,B) 24-bit color
 					else if (((i+4) < Code.ArgC) && (Code.ArgV[i+1] == 2))
 					{
-						gDisplayParm.BackColor = RGB((Code.ArgV[i+2] & 0xFF),(Code.ArgV[i+3] & 0xFF),(Code.ArgV[i+4] & 0xFF));
-						gDisplayParm.Back256 = 2;
-						gDisplayParm.WasSet = TRUE;
+						gDisplayParm.setBackColor(RGB((Code.ArgV[i+2] & 0xFF),(Code.ArgV[i+3] & 0xFF),(Code.ArgV[i+4] & 0xFF)));
+						gDisplayParm.setBack256(2);
 						i += 4;
 					}
 					break;
 				case 49:
 					// Reset
-					gDisplayParm.BackColor = CONBACKCOLOR(GetDefaultTextAttr());
-					gDisplayParm.Back256 = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBackColor(CONBACKCOLOR(GetDefaultTextAttr()));
+					gDisplayParm.setBrightBack(FALSE);
+					gDisplayParm.setBack256(FALSE);
 					break;
 				case 90: case 91: case 92: case 93: case 94: case 95: case 96: case 97:
-					gDisplayParm.TextColor = (Code.ArgV[i] - 90) | 0x8;
-					gDisplayParm.Text256 = FALSE;
-					gDisplayParm.BrightOrBold |= 2;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setTextColor((Code.ArgV[i] - 90) | 0x8);
+					gDisplayParm.setText256(FALSE);
+					gDisplayParm.setBrightFore(TRUE);
 					break;
 				case 100: case 101: case 102: case 103: case 104: case 105: case 106: case 107:
-					gDisplayParm.BackColor = (Code.ArgV[i] - 100) | 0x8;
-					gDisplayParm.Back256 = FALSE;
-					gDisplayParm.BackOrUnderline |= 2;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBackColor((Code.ArgV[i] - 100) | 0x8);
+					gDisplayParm.setBack256(FALSE);
+					gDisplayParm.setBrightBack(TRUE);
 					break;
 				case 10:
 					// Something strange and unknown... (received from ssh)
+					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+					break;
+				case 312:
+				case 315:
+				case 414:
+				case 3130:
+					// Something strange and unknown... (received from vim on WSL)
 					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
 					break;
 				default:
@@ -3059,6 +3400,17 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 			{
 				switch (Code.ArgV[i])
 				{
+				case 8:
+					// `ESC [ 8 ; height ; width t` --> Resize the text area to [height;width] in characters.
+					{
+						int height = -1, width = -1;
+						if (i < Code.ArgC)
+							height = Code.ArgV[++i];
+						if (i < Code.ArgC)
+							width = Code.ArgV[++i];
+						DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
+					}
+					break;
 				case 14:
 					// `ESC [ 1 4 t` --> Reports terminal window size in pixels as `CSI 4 ; height ; width t`.
 					ReportTerminalPixelSize();
@@ -3147,7 +3499,7 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 
 			int nCount = (Code.ArgC > 0) ? Code.ArgV[0] : 1;
 			int nScreenLeft = csbi.dwSize.X - csbi.dwCursorPosition.X - 1 + (csbi.dwSize.X * (csbi.dwSize.Y - csbi.dwCursorPosition.Y - 1));
-			int nChars = min(nCount,nScreenLeft);
+			int nChars = std::min(nCount,nScreenLeft);
 			COORD cr0 = csbi.dwCursorPosition;
 
 			if (nChars > 0)
@@ -3381,19 +3733,18 @@ void CEAnsi::WriteAnsiCode_VIM(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsole
 				switch (Code.ArgV[i])
 				{
 				case 7:
-					gDisplayParm.BrightOrBold = FALSE;
-					gDisplayParm.ItalicOrInverse = FALSE;
-					gDisplayParm.BackOrUnderline = FALSE;
-					gDisplayParm.Inverse = FALSE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBrightOrBold(FALSE);
+					gDisplayParm.setItalic(FALSE);
+					gDisplayParm.setUnderline(FALSE);
+					gDisplayParm.setBrightFore(FALSE);
+					gDisplayParm.setBrightBack(FALSE);
+					gDisplayParm.setInverse(FALSE);
 					break;
 				case 15:
-					gDisplayParm.BrightOrBold = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setBrightOrBold(TRUE);
 					break;
 				case 112:
-					gDisplayParm.Inverse = TRUE;
-					gDisplayParm.WasSet = TRUE;
+					gDisplayParm.setInverse(TRUE);
 					break;
 				case 143:
 					// What is this?
@@ -3629,7 +3980,7 @@ void CEAnsi::ChangeTermMode(TermModeCommand mode, DWORD value, DWORD nPID /*= 0*
 		pIn->dwData[0] = mode;
 		pIn->dwData[1] = value;
 		pIn->dwData[2] = nPID ? nPID : GetCurrentProcessId();
-		CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd);
+		CESERVER_REQ* pOut = ExecuteSrvCmd(gnServerPID, pIn, ghConWnd);
 		ExecuteFreeResult(pIn);
 		ExecuteFreeResult(pOut);
 	}
@@ -3643,7 +3994,7 @@ void CEAnsi::StartXTermMode(bool bStart)
 
 	// Remember last mode
 	gbWasXTermOutput = bStart;
-	ChangeTermMode(tmc_Keyboard, bStart ? te_xterm : te_win32);
+	ChangeTermMode(tmc_TerminalType, bStart ? te_xterm : te_win32);
 }
 
 // This is useful when user press Shift+Home,
@@ -3662,6 +4013,8 @@ void CEAnsi::StorePromptBegin()
 //static
 CEAnsi* CEAnsi::Object(bool bForceCreate /*= false*/)
 {
+	CLastErrorGuard errGuard;
+
 	if (!AnsiTlsIndex)
 	{
 		AnsiTlsIndex = TlsAlloc();

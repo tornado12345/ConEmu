@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DEBUGSTRDEL(s) DEBUGSTR(s)
 
+// Standard Windows' Tab control treats '&' as ‘underscore’ mark unfortunately
+#define USE_ESCAPE_AMPERSAND
+
 #include "Header.h"
 #include "TabID.h"
 #include "../common/MSection.h"
@@ -61,7 +64,7 @@ TabName::TabName(LPCWSTR asName)
 	nLen = 0; sz[0] = 0;
 	Set(asName);
 }
-LPCWSTR TabName::Set(LPCWSTR asName)
+LPCWSTR TabName::Set(LPCWSTR asName, bool escape /*= false*/)
 {
 	#ifdef _DEBUG
 	// For breakpoints only...
@@ -77,7 +80,31 @@ LPCWSTR TabName::Set(LPCWSTR asName)
 	}
 	#endif
 
+	#if !defined(USE_ESCAPE_AMPERSAND)
 	lstrcpynW(sz, asName ? asName : L"", countof(sz));
+	#else
+	wchar_t* pszDst = sz;
+	if (asName && *asName)
+	{
+		wchar_t* pszEnd = sz + countof(sz);
+		for (const wchar_t* pszSrc = asName; *pszSrc && (pszDst < pszEnd);)
+		{
+			if (escape && *pszSrc == L'&')
+			{
+				if ((pszDst + 2) >= pszEnd)
+					break;
+				*(pszDst++) = L'&';
+				*(pszDst++) = L'&';
+				++pszSrc;
+			}
+			else
+			{
+				*(pszDst++) = *(pszSrc++);
+			}
+		}
+	}
+	*pszDst = 0;
+	#endif
 
 	nLen = lstrlenW(sz);
 	return sz;
@@ -164,7 +191,7 @@ LPCWSTR CTabID::GetLabel()
 
 void CTabID::SetLabel(LPCWSTR asLabel)
 {
-	DrawInfo.Display.Set(asLabel);
+	DrawInfo.Display.Set(asLabel, true);
 }
 
 bool CTabID::Set(LPCWSTR asName, CEFarWindowType anType, int anPID, int anFarWindowID, int anViewEditID, CEFarWindowType anFlagMask /*= fwt_Any*/)
@@ -226,7 +253,7 @@ CTabID::~CTabID()
 {
 	#ifdef _DEBUG
 	wchar_t szDbg[120];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"~CTabID(PID=%u IDX=%u TYP=%u '",
+	swprintf_c(szDbg, L"~CTabID(PID=%u IDX=%u TYP=%u '",
 		Info.nPID, Info.nFarWindowID, (UINT)Type());
 	int nDbgLen = lstrlen(szDbg);
 	lstrcpyn(szDbg+nDbgLen, GetName(), countof(szDbg)-nDbgLen-5);
@@ -841,7 +868,7 @@ void CTabStack::UpdateAppend(HANDLE hUpdate, CTabID* pTab, BOOL abMoveFirst)
 		RequestSize(mn_UpdatePos+1, pUpdateLock);
 		if (nIndex != -1 && nIndex != mn_UpdatePos)
 		{
-			//_ASSERTE(nIndex > mn_UpdatePos); -- may happens when creating new split from active "far /e ..." tab
+			//_ASSERTE(nIndex > mn_UpdatePos); -- may happen when creating new split from active "far /e ..." tab
 			// Do NOT release tab here! Behavior can differs by arguments of UpdateEnd!
 			CTabID* p = mpp_Stack[mn_UpdatePos];
 			mpp_Stack[mn_UpdatePos] = mpp_Stack[nIndex];

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define HIDE_USE_EXCEPTION_INFO
 
-#include <windows.h>
 #include "Common.h"
 #include "ConsoleRead.h"
 #include "WObjects.h"
@@ -80,7 +79,7 @@ BOOL ReadConsoleOutputEx(HANDLE hOut, CHAR_INFO *pData, COORD bufSize, SMALL_REC
 	static bool bDBCS = false, bDBCS_Checked = false;
 	if (!bDBCS_Checked)
 	{
-		bDBCS = (GetSystemMetrics(SM_DBCSENABLED) != 0);
+		bDBCS = IsDbcs();
 		bDBCS_Checked = true;
 	}
 
@@ -269,7 +268,7 @@ BOOL ReadConsoleOutputEx(HANDLE hOut, CHAR_INFO *pData, COORD bufSize, SMALL_REC
 					// If caller want to know correction status
 					if (lpCursor && (lpCursor->Y == rgn.Top))
 					{
-						lpCursor->X = max(0, (lpCursor->X - iCellsSkipped));
+						lpCursor->X = std::max(0, (lpCursor->X - iCellsSkipped));
 					}
 				}
 
@@ -291,13 +290,80 @@ BOOL ReadConsoleOutputEx(HANDLE hOut, CHAR_INFO *pData, COORD bufSize, SMALL_REC
 	return lbRc;
 }
 
+// Returns true if the line is filled exclusively with spaces (0x20)
+bool IsConsoleLineEmpty(HANDLE hOut, SHORT row, SHORT len /*= -1*/)
+{
+	if (len <= 0)
+	{
+		CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+		if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+			return false;
+		len = csbi.dwSize.X;
+	}
+
+	CEStr lsLine;
+	COORD crRead = {0, row};
+	DWORD nRead = 0;
+	wchar_t* pch = lsLine.GetBuffer(len);
+	if (!pch || !ReadConsoleOutputCharacterW(hOut, pch, len, crRead, &nRead) || !nRead)
+		return false;
+	for (DWORD n = 0; n < nRead; ++n)
+	{
+		if (pch[n] != L' ')
+			return false;
+	}
+	return true;
+}
+
+bool IsWin10LegacyConsole()
+{
+	static bool bIsLegacy10 = false, bChecked = false;
+
+	if (!bChecked)
+	{
+		if (IsWin10())
+		{
+			HKEY hk;
+			LONG lrc;
+			bool bForceV2 = false;
+			DWORD value = 0, dwType = 0, dwSize = sizeof(value);
+
+			if (0 == (lrc = RegOpenKeyEx(HKEY_CURRENT_USER, L"Console", 0, KEY_READ, &hk)))
+			{
+				if (0 == (lrc = RegQueryValueEx(hk, L"ForceV2", NULL, &dwType, (LPBYTE)&value, &dwSize)))
+				{
+					bForceV2 = ((dwType == REG_DWORD) && dwSize && (value != 0));
+				}
+				RegCloseKey(hk);
+			}
+
+			bIsLegacy10 = !bForceV2;
+		}
+
+		bChecked = true;
+	}
+
+	return bIsLegacy10;
+}
+
 bool IsConsoleDoubleCellCP()
 {
 	static bool bDBCS = false, bDBCS_Checked = false;
 	if (!bDBCS_Checked)
 	{
-		bDBCS = (GetSystemMetrics(SM_DBCSENABLED) != 0);
+		bDBCS = IsWinDBCS();
 		bDBCS_Checked = true;
+		// gh-945: Perhaps it will be fixed in future Win10 builds?
+		if (!bDBCS && IsWin10())
+		{
+			OSVERSIONINFOEXW osvi = {sizeof(osvi), 10, 0, 14959};
+			DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL), VER_BUILDNUMBER, VER_GREATER_EQUAL);
+			BOOL ibIsWinOrHigher = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER, dwlConditionMask);
+			if (ibIsWinOrHigher)
+			{
+				bDBCS = true;
+			}
+		}
 	}
 
 	static bool  bDBCS_CP = false;
@@ -314,6 +380,7 @@ bool IsConsoleDoubleCellCP()
 		nCP = GetConsoleOutputCP();
 		#ifdef _DEBUG
 		nCP1 = GetConsoleCP();
+		// May occur in some case due race
 		_ASSERTE(nCP1==nCP);
 		//GetConsoleMode(hOut, &nMode);
 		#endif

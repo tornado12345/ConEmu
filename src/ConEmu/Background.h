@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2013 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@ class CBackground
 {
 public:
 	COORD    bgSize;
+	POINT    VConOffset;
 	HDC      hBgDc;
 
 	CBackground();

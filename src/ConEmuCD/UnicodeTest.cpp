@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,11 +31,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 
 #include "../common/Common.h"
+#include "../common/ConsoleRead.h"
 #include "../common/UnicodeChars.h"
 #include "../common/WCodePage.h"
 #include "../ConEmu/version.h"
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "UnicodeTest.h"
 
 void PrintConsoleInfo()
@@ -50,7 +51,7 @@ void PrintConsoleInfo()
 
 	wchar_t szMinor[8] = L""; lstrcpyn(szMinor, _T(MVV_4a), countof(szMinor));
 	//msprintf не умеет "%02u"
-	_wsprintf(szInfo, SKIPLEN(countof(szInfo))
+	swprintf_c(szInfo,
 		L"ConEmu %02u%02u%02u%s %s\r\n"
 		L"OS Version: %u.%u.%u (%u:%s)\r\n",
 		MVV_1, MVV_2, MVV_3, szMinor, WIN3264TEST(L"x86",L"x64"),
@@ -129,8 +130,12 @@ void PrintConsoleInfo()
 	DWORD nCP = GetConsoleCP();
 	DWORD nOutCP = GetConsoleOutputCP();
 	CPINFOEX cpinfo = {};
+	DWORD dwLayout = 0, dwLayoutRc = -1;
+	SetLastError(0);
+	IsKeyboardLayoutChanged(dwLayout, &dwLayoutRc);
 
-	msprintf(szInfo, countof(szInfo), L"ConsoleCP=%u, ConsoleOutputCP=%u\r\n", nCP, nOutCP);
+	msprintf(szInfo, countof(szInfo), L"ConsoleCP=%u, ConsoleOutputCP=%u, Layout=%08X (%s errcode=%u)\r\n",
+		nCP, nOutCP, dwLayout, dwLayoutRc ? L"failed" : L"OK", dwLayoutRc);
 	WriteConsoleW(hOut, szInfo, lstrlen(szInfo), &nTmp, NULL);
 
 	for (UINT i = 0; i <= 1; i++)
@@ -170,6 +175,8 @@ int CheckUnicodeFont()
 	// Print version and console information first
 	PrintConsoleInfo();
 
+	_ASSERTE(FALSE && "Continue to CheckUnicodeFont");
+
 	int iRc = CERR_UNICODE_CHK_FAILED;
 
 	HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
@@ -188,9 +195,13 @@ int CheckUnicodeFont()
 	DWORD nLen = lstrlen(szText), nWrite = 0, nRead = 0, nErr = 0;
 	WORD nDefColor = 7;
 	DWORD nColorLen = lstrlen(szColor);
-	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {}, csbi2 = {};
 	CONSOLE_CURSOR_INFO ci = {};
 	_ASSERTE(nLen<=35); // ниже на 2 буфер множится
+
+	DWORD nCurOutMode = 0;
+	GetConsoleMode(hOut, &nCurOutMode);
+	SetConsoleMode(hOut, ENABLE_PROCESSED_OUTPUT|ENABLE_WRAP_AT_EOL_OUTPUT);
 
 
 	struct WriteInvoke
@@ -223,11 +234,14 @@ int CheckUnicodeFont()
 
 	// Test of "Reverse video"
 	GetConsoleScreenBufferInfo(hOut, &csbi);
-	const WORD N = 0x07, H = N|COMMON_LVB_REVERSE_VIDEO;
+	const WORD N = 0x07, H = N|COMMON_LVB_REVERSE_VIDEO, E = 0x2007;
 	// "Normal" + ' ' + "Reverse"
 	CHAR_INFO cHighlight[] = {{{'N'},N},{{'o'},N},{{'r'},N},{{'m'},N},{{'a'},N},{{'l'},N},
 		{{' '},N},
-		{{'R'},H},{{'e'},H},{{'v'},H},{{'e'},H},{{'r'},H},{{'s'},H},{{'e'},H}};
+		{{'R'},H},{{'e'},H},{{'v'},H},{{'e'},H},{{'r'},H},{{'s'},H},{{'e'},H},
+		{{' '},N},
+		{{'E'},E},{{'x'},E},{{'t'},E},{{'r'},E},{{'a'},E},
+		{{' '},N}};
 	COORD crHiSize = {countof(cHighlight), 1}, cr0 = {};
 	COORD crBeforePos = csbi.dwCursorPosition, crAfterPos = {countof(cHighlight), csbi.dwCursorPosition.Y};
 	SMALL_RECT srHiPos = {0, csbi.dwCursorPosition.Y, crHiSize.X-1, csbi.dwCursorPosition.Y};
@@ -235,23 +249,42 @@ int CheckUnicodeFont()
 	WriteConsoleOutputW(hOut, cHighlight, crHiSize, cr0, &srHiPos);
 	GetConsoleScreenBufferInfo(hOut, &csbi);
 	ReadConsoleOutputAttribute(hOut, aRead, countof(cHighlight), crBeforePos, &nTmp);
-	msprintf(szInfo, countof(szInfo), L" x%X x%X ", static_cast<UINT>(aRead[0]), static_cast<UINT>(aRead[countof(cHighlight)-1]));
+	msprintf(szInfo, countof(szInfo), L"--> x%X x%X x%X", static_cast<UINT>(aRead[0]), static_cast<UINT>(aRead[7]), static_cast<UINT>(aRead[15]));
 	write(szInfo);
-	msprintf(szInfo, countof(szInfo), L"Normal:x%X ", static_cast<UINT>(csbi.wAttributes));
-	write(szInfo);
-	SetConsoleTextAttribute(hOut, H);
-	GetConsoleScreenBufferInfo(hOut, &csbi);
-	msprintf(szInfo, countof(szInfo), L"Reverse:x%X", static_cast<UINT>(csbi.wAttributes));
-	write(szInfo);
+	write(L"\r\n");
+	struct { const wchar_t* Label; WORD Attr; } AttrTests[] = {
+		{L"LVert", N|COMMON_LVB_GRID_LVERTICAL},
+		{L"RVert", N|COMMON_LVB_GRID_RVERTICAL},
+		{L"Extra", N|0x2000},
+		{L"Under", N|COMMON_LVB_UNDERSCORE},
+		{L"Horz", N|COMMON_LVB_GRID_HORIZONTAL},
+		{}
+	};
+	for (size_t i = 0; AttrTests[i].Label; ++i)
+	{
+		SetConsoleTextAttribute(hOut, AttrTests[i].Attr);
+		msprintf(szInfo, countof(szInfo), L"%s:x%04X", AttrTests[i].Label, static_cast<UINT>(AttrTests[i].Attr));
+		write(szInfo);
+		SetConsoleTextAttribute(hOut, N);
+		write(L" ");
+	}
 	SetConsoleTextAttribute(hOut, N);
 	write(L"\r\n");
 
-	write(L"\r\nCheck ");
+	write(L"\r\n" L"Check ");
 
 
 	if ((bInfo = GetConsoleScreenBufferInfo(hOut, &csbi)) != FALSE)
 	{
+		// First check console cursor offset, szText contains 5 CJK glyphs
+		if (WriteConsoleW(hOut, szText, nLen, &nWrite, NULL))
+		{
+			GetConsoleScreenBufferInfo(hOut, &csbi2);
+		}
+		// And continue to attribute check
 		COORD cr0 = {0,0};
+		WORD intens[17] = {}; for (size_t i = 0; i < countof(intens); ++i) intens[i] = N|FOREGROUND_INTENSITY; intens[countof(intens)-1] = 1;
+		WriteConsoleOutputAttribute(hOut, intens, countof(intens), csbi.dwCursorPosition, &nWrite);
 		if ((bWrite = WriteConsoleOutputCharacterW(hOut, szText, nLen, csbi.dwCursorPosition, &nWrite)) != FALSE)
 		{
 			if (((bRead = ReadConsoleOutputCharacterW(hOut, szCheck, nLen*2, csbi.dwCursorPosition, &nRead)) != FALSE)
@@ -295,7 +328,7 @@ int CheckUnicodeFont()
 	ptr = szInfo;
 	for (UINT i = 0; i < nLen*2; i++)
 	{
-		if (szCheck[i] <= L' ')
+		if (cRead[i].Char.UnicodeChar <= L' ')
 			break;
 		msprintf(ptr, countof(szInfo)-(ptr-szInfo), L" %c:x%X", cRead[i].Char.UnicodeChar, cRead[i].Attributes);
 		ptr += lstrlen(ptr);
@@ -305,32 +338,59 @@ int CheckUnicodeFont()
 	write(L"\r\n");
 
 
+	int cursor_diff = (csbi2.dwCursorPosition.X - (csbi.dwCursorPosition.X + nLen));
 	msprintf(szInfo, countof(szInfo),
-		L"Info: %u,%u,%u,%u,%u,%u,%u,%u\r\n"
+		L"Info: %u,%u,%u,%u %u,%u,%u,%u  Cursor={%i,%i}->{%i,%i} [%c%i]\r\n"
 		L"\r\n",
-		nErr, bInfo, bWrite, nWrite, bRead, bReadAttr, nRead, bBlkRead
+		nErr, bInfo, bWrite, nWrite,
+		bRead, bReadAttr, nRead, bBlkRead,
+		csbi.dwCursorPosition.X, csbi.dwCursorPosition.Y, csbi2.dwCursorPosition.X, csbi2.dwCursorPosition.Y,
+		(cursor_diff >= 0) ? L'+' : L'?', cursor_diff
 		);
 	write(szInfo);
 
-
+	// #WIN10 Unexpected glyphs width in Win10 - szMid line displayed narrower than console width
 	wchar_t szUpp[] = {ucBoxDblDownRight, ucBoxDblHorz, ucBoxDblDownDblHorz, ucBoxDblDownLeft, 0};
 	wchar_t szMid[] = {ucBoxDblVert, ucSpace, ucBoxDblVert, ucBoxDblVert, 0};
+	wchar_t szExt[] = {ucBoxDblVertRight, ucSpace, ucBoxDblUpDblHorz, ucBoxDblVertLeft, 0};
 	wchar_t szBot[] = {ucBoxDblUpRight, ucBoxDblHorz, ucBoxDblUpDblHorz, ucBoxDblUpLeft, 0};
 	wchar_t szChs[] = L"中文";
 	int nMid = csbi.dwSize.X / 2;
+	int nDbcsShift = IsConsoleDoubleCellCP() ? 2 : 0;
+	msprintf(szInfo, countof(szInfo),
+		L"Width: %i, Mid: %i, DblCell: %i\r\n",
+		csbi.dwSize.X, nMid, IsConsoleDoubleCellCP() ? 1 : 0);
+	write(szInfo);
+	SetConsoleMode(hOut, ENABLE_PROCESSED_OUTPUT);
 	write(szUpp, 1);
 		for (int X = 2; X < nMid; X++) write(szUpp+1, 1);
 		write(szUpp+2, 1);
 		for (int X = nMid+1; X < csbi.dwSize.X; X++) write(szUpp+1, 1);
-		write(szUpp+3, 1);
+		write(szUpp+3, 1); // the cursor is expected to be stuck at the end of console line
+		write(szUpp+3, 1); //
+		write(L"\r\n", 2); // and only now it shall goes to the begginning of the new line
+	SetConsoleMode(hOut, ENABLE_PROCESSED_OUTPUT|ENABLE_WRAP_AT_EOL_OUTPUT);
+	// Here are we write four CJK glyphs. Most weird and tricky because of inconsitence of CJK support in various Windows versions...
 	write(szMid, 1);
 		write(szChs, 2);
-		for (int X = 4; X < nMid; X++) write(szMid+1, 1);
+		for (int X = 4; X < nMid - nDbcsShift; X++) write(szMid+1, 1);
 		write(szMid+2, 1);
 		write(szChs, 1);
-		for (int X = nMid+3; X < csbi.dwSize.X; X++) write(szMid+1, 1);
+		for (int X = nMid+3; X < csbi.dwSize.X - nDbcsShift; X++) write(szMid+1, 1);
 		write(szChs+1, 1);
 		write(szMid+3, 1);
+	// Check for ENABLE_WRAP_AT_EOL_OUTPUT flag, if it works properly,
+	// AND "\r" does not go to new line, we expect that szExt will be
+	// overwritten by szBot completely.
+	write(szExt, 1);
+		for (int X = 2; X < nMid; X++) write(szBot+1, 1);
+		write(szExt+2, 1);
+		for (int X = nMid+1; X < csbi.dwSize.X; X++) write(szBot+1, 1);
+		SetConsoleMode(hOut, ENABLE_PROCESSED_OUTPUT);
+		write(L"#", 1); // this should be just overwritten by next (szExt+3)
+		write(szExt+3, 1);
+		write(L"\r", 1);
+	SetConsoleMode(hOut, ENABLE_PROCESSED_OUTPUT|ENABLE_WRAP_AT_EOL_OUTPUT);
 	write(szBot, 1);
 		for (int X = 2; X < nMid; X++) write(szBot+1, 1);
 		write(szBot+2, 1);

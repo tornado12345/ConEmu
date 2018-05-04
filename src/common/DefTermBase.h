@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2015 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -65,6 +65,7 @@ public:
 	ConEmuConsoleFlags nConsoleFlags; // Used for populating m_SrvMapping in ShellProcessor
 	wchar_t* pszConEmuExe; // Полный путь к ConEmu.exe
 	wchar_t* pszConEmuBaseDir; // %ConEmuBaseDir%
+	wchar_t* pszCfgFile; // " /LoadCfgFile "...""
 	wchar_t* pszConfigName; // " /CONFIG "...""
 	wchar_t* pszzHookedApps; // ASCIIZZ
 	bool     bExternalPointers;
@@ -82,6 +83,7 @@ public:
 		nConsoleFlags = CECF_Empty;
 		pszConEmuExe = NULL;
 		pszConEmuBaseDir = NULL;
+		pszCfgFile = NULL;
 		pszConfigName = NULL;
 		pszzHookedApps = NULL;
 		bExternalPointers = false;
@@ -96,6 +98,8 @@ public:
 				free(pszConEmuExe);
 			if (pszConEmuBaseDir)
 				free(pszConEmuBaseDir);
+			if (pszCfgFile)
+				free(pszCfgFile);
 			if (pszConfigName)
 				free(pszConfigName);
 			if (pszzHookedApps)
@@ -177,6 +181,7 @@ public:
 			{L"DefTerm-Flags",     &nConsoleFlags, sizeof(nConsoleFlags), REG_DWORD},
 			{L"DefTerm-ConEmuExe", &pszConEmuExe, 0, REG_SZ},
 			{L"DefTerm-BaseDir",   &pszConEmuBaseDir, 0, REG_SZ},
+			{L"DefTerm-CfgFile",   &pszCfgFile, 0, REG_SZ},
 			{L"DefTerm-Config",    &pszConfigName, 0, REG_SZ},
 			{L"DefTerm-AppList",   &pszzHookedApps, 0, REG_MULTI_SZ},
 		};
@@ -428,7 +433,7 @@ public:
 			bShellWnd = IsExplorerWindowClass(szClass);
 
 			#ifdef USEDEBUGSTRDEFTERM
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u %u %u '%s'", (DWORD)(DWORD_PTR)hFore, nForePID, (UINT)bShellTrayWnd, (UINT)bShellWnd, szClass);
+			swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u %u %u '%s'", (DWORD)(DWORD_PTR)hFore, nForePID, (UINT)bShellTrayWnd, (UINT)bShellWnd, szClass);
 			DEBUGSTRDEFTERM(szInfo);
 			#endif
 
@@ -438,7 +443,7 @@ public:
 				|| isConsoleClass(szClass))
 			{
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u ignored by class", (DWORD)(DWORD_PTR)hFore, nForePID);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u ignored by class", (DWORD)(DWORD_PTR)hFore, nForePID);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 				goto wrap;
@@ -453,7 +458,7 @@ public:
 			if (!GetProcessInfo(nForePID, &prc))
 			{
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u skipped, can't get process name", (DWORD)(DWORD_PTR)hFore, nForePID);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u skipped, can't get process name", (DWORD)(DWORD_PTR)hFore, nForePID);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 				goto wrap;
@@ -465,7 +470,7 @@ public:
 			{
 				// This is "System" process and may not be hooked
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u skipped, csrss.exe", (DWORD)(DWORD_PTR)hFore, nForePID);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u skipped, csrss.exe", (DWORD)(DWORD_PTR)hFore, nForePID);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 				goto wrap;
@@ -479,7 +484,7 @@ public:
 			{
 				mh_LastIgnoredWnd = hFore;
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u skipped, app is not monitored", (DWORD)(DWORD_PTR)hFore, nForePID);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u skipped, app is not monitored", (DWORD)(DWORD_PTR)hFore, nForePID);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 				goto wrap;
@@ -583,7 +588,7 @@ public:
 				m_Threads.push_back(th);
 
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground created TID=%u", nThreadId);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground created TID=%u", nThreadId);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 			}
@@ -606,7 +611,7 @@ public:
 			if (mh_LastCall == hFore)
 				mh_LastCall = NULL;
 			#ifdef USEDEBUGSTRDEFTERM
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"!!! DefTerm::CheckForeground skipped, x%08X is non-responsive !!!", (DWORD)(DWORD_PTR)hFore);
+			swprintf_c(szInfo, L"!!! DefTerm::CheckForeground skipped, x%08X is non-responsive !!!", (DWORD)(DWORD_PTR)hFore);
 			DEBUGSTRDEFTERM(szInfo);
 			#endif
 			goto wrap;
@@ -637,7 +642,7 @@ public:
 			{
 				bMonitored = false;
 				#ifdef USEDEBUGSTRDEFTERM
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"DefTerm::CheckForeground x%08X PID=%u skipped, already processed", (DWORD)(DWORD_PTR)hFore, nForePID);
+				swprintf_c(szInfo, L"DefTerm::CheckForeground x%08X PID=%u skipped, already processed", (DWORD)(DWORD_PTR)hFore, nForePID);
 				DEBUGSTRDEFTERM(szInfo);
 				#endif
 				break; // already hooked/processed
@@ -654,7 +659,7 @@ public:
 
 		_ASSERTE(isDefaultTerminalAllowed());
 
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"CheckForeground x%08X <<== trying to set hooks", LODWORD(hFore));
+		swprintf_c(szInfo, L"CheckForeground x%08X <<== trying to set hooks", LODWORD(hFore));
 		LogHookingStatus(nForePID, szInfo);
 
 		bNotified = NotifyHookingStatus(nForePID, prc.szExeFile[0] ? prc.szExeFile : szClass);
@@ -666,7 +671,7 @@ public:
 
 		ConhostLocker(false, lbConHostLocked);
 
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"CheckForeground x%08X <<== nResult=%i iHookerRc=%i", LODWORD(hFore), nResult, iHookerRc);
+		swprintf_c(szInfo, L"CheckForeground x%08X <<== nResult=%i iHookerRc=%i", LODWORD(hFore), nResult, iHookerRc);
 		LogHookingStatus(nForePID, szInfo);
 
 		if (iHookerRc != 0)
@@ -803,7 +808,7 @@ private:
 		{
 			// Failed to hook
 			nErrCode = GetLastError();
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"OpenProcess fails, code=%u", nErrCode);
+			swprintf_c(szInfo, L"OpenProcess fails, code=%u", nErrCode);
 			LogHookingStatus(nForePID, szInfo);
 
 			if (nErrCode == ERROR_ACCESS_DENIED)
@@ -818,7 +823,7 @@ private:
 			// Hooking was started from another process (most probably in agressive mode)
 			iRc = 0;
 			nResult = CERR_HOOKS_WAS_ALREADY_SET;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Mutex already exists");
+			swprintf_c(szInfo, L"Mutex already exists");
 			LogHookingStatus(nForePID, szInfo);
 			goto wrap;
 		}
@@ -841,7 +846,7 @@ private:
 			// Unsupported bitness?
 			CloseHandle(hProcess);
 			iRc = -2;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Unsupported process bitness (%i)", nBits);
+			swprintf_c(szInfo, L"Unsupported process bitness (%i)", nBits);
 			LogHookingStatus(nForePID, szInfo);
 			goto wrap;
 		}
@@ -867,13 +872,13 @@ private:
 			nErrCode = GetLastError();
 			CloseHandle(hProcess);
 			iRc = -3;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Fails to start service process, code=%u", nErrCode);
+			swprintf_c(szInfo, L"Fails to start service process, code=%u", nErrCode);
 			LogHookingStatus(nForePID, szInfo);
 			goto wrap;
 		}
 		CloseHandle(pi.hThread);
 
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Service process PID=%u started", pi.dwProcessId);
+		swprintf_c(szInfo, L"Service process PID=%u started", pi.dwProcessId);
 		LogHookingStatus(nForePID, szInfo);
 
 		// Waiting for result, to avoid multiple hooks processed (due to closed mutex)
@@ -889,7 +894,7 @@ private:
 		}
 		if (!GetExitCodeProcess(pi.hProcess, &nResult))
 			nResult = (DWORD)-1;
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Service process PID=%u finished with code=%u", pi.dwProcessId, nResult);
+		swprintf_c(szInfo, L"Service process PID=%u finished with code=%u", pi.dwProcessId, nResult);
 		LogHookingStatus(nForePID, szInfo);
 
 		CloseHandle(pi.hProcess);
@@ -1162,8 +1167,8 @@ protected:
 		return bRc;
 	};
 
-protected:
-	// exe-шник в списке обрабатываемых?
+public:
+	// Is exe-name or application window class name in user-defined list?
 	bool IsAppMonitored(LPCWSTR szExeFile)
 	{
 		bool bMonitored = false;

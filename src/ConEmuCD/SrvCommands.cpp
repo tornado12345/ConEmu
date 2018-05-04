@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //#define SHOW_INJECT_MSGBOX
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "../common/CmdLine.h"
 #include "../common/ConsoleAnnotation.h"
 #include "../common/ConsoleMixAttr.h"
@@ -108,7 +108,7 @@ void OnAltServerChanged(int nStep, StartStopType nStarted, DWORD nAltServerPID, 
 				// Переключаемся на "старый" (если был)
 				if (AS.bPrevFound && AS.info.nPrevPID)
 				{
-					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 					_ASSERTE(AS.info.hPrev!=NULL);
 					// Перевести нить монитора в обычный режим, закрыть gpSrv->hAltServer
 					// Активировать альтернативный сервер (повторно), отпустить его нити чтения
@@ -119,14 +119,14 @@ void OnAltServerChanged(int nStep, StartStopType nStarted, DWORD nAltServerPID, 
 				}
 				else
 				{
-					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 					_ASSERTE(AS.info.hPrev==NULL);
 					AS.AltServerChanged = true;
 				}
 			}
 			else
 			{
-				// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+				// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 				_ASSERTE(((nAltServerPID == gpSrv->dwAltServerPID) || !gpSrv->dwAltServerPID || ((nStarted != sst_AltServerStop) && (nAltServerPID != gpSrv->dwAltServerPID) && !AS.bPrevFound)) && "Expected active alt.server!");
 			}
 		}
@@ -211,7 +211,7 @@ void ForceFarResize()
 	}
 
 	wchar_t szLog[120];
-	_wsprintf(szLog, SKIPCOUNT(szLog) L"ForceFarResize: Size={%i,%i} Buf={%i,%i} Mouse={%i,%i}",
+	swprintf_c(szLog, L"ForceFarResize: Size={%i,%i} Buf={%i,%i} Mouse={%i,%i}",
 		sc.srWindow.Right-sc.srWindow.Left+1, sc.srWindow.Bottom-sc.srWindow.Top+1,
 		sc.dwSize.X, sc.dwSize.Y,
 		r.Event.MouseEvent.dwMousePosition.X, r.Event.MouseEvent.dwMousePosition.Y);
@@ -364,7 +364,7 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 		lstrcpynA(szCmdName, ":CECMD_UNLOCKSTATION", countof(szCmdName)); bForceWriteLog = true; break;
 	default:
 		_ASSERTE(FALSE && "Unnamed command");
-		_wsprintfA(szCmdName, SKIPCOUNT(szCmdName) ":UnnamedCmd(%u)", in.hdr.nCmd);
+		sprintf_c(szCmdName, ":UnnamedCmd(%u)", in.hdr.nCmd);
 	}
 
 	MCHKHEAP;
@@ -493,7 +493,7 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 
 				// Команду можно выполнить через плагин FARа
 				wchar_t szPipeName[128];
-				_wsprintf(szPipeName, SKIPLEN(countof(szPipeName)) CEPLUGINPIPENAME, L".", in.SetSize.dwFarPID);
+				swprintf_c(szPipeName, CEPLUGINPIPENAME, L".", in.SetSize.dwFarPID);
 				//DWORD nHILO = ((DWORD)crNewSize.X) | (((DWORD)(WORD)crNewSize.Y) << 16);
 				//pPlgIn = ExecuteNewCmd(CMD_SETSIZE, sizeof(CESERVER_REQ_HDR)+sizeof(nHILO));
 				pPlgIn = ExecuteNewCmd(CMD_REDRAWFAR, sizeof(CESERVER_REQ_HDR));
@@ -570,7 +570,7 @@ BOOL cmd_GetOutput(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		_ASSERTE(sizeof(CESERVER_CONSAVE_HDR) > sizeof(gpStoredOutput->hdr.hdr));
 		DWORD nSize = sizeof(CESERVER_CONSAVE_HDR)
-		              + min((int)gpStoredOutput->hdr.cbMaxOneBufferSize,
+		              + std::min((int)gpStoredOutput->hdr.cbMaxOneBufferSize,
 		                    (gpStoredOutput->hdr.sbi.dwSize.X*gpStoredOutput->hdr.sbi.dwSize.Y*2));
 		*out = ExecuteNewCmd(CECMD_GETOUTPUT, nSize);
 		if (*out)
@@ -640,8 +640,8 @@ BOOL cmd_FarLoaded(CESERVER_REQ& in, CESERVER_REQ** out)
 	#if 0
 	wchar_t szDbg[512], szExe[MAX_PATH], szTitle[512];
 	GetModuleFileName(NULL, szExe, countof(szExe));
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"cmd_FarLoaded: %s", PointToName(szExe));
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg))
+	swprintf_c(szTitle, L"cmd_FarLoaded: %s", PointToName(szExe));
+	swprintf_c(szDbg,
 		L"cmd_FarLoaded was received\nServerPID=%u, name=%s\nFarPID=%u\nRootPID=%u\nDisablingConfirm=%s",
 		GetCurrentProcessId(), PointToName(szExe), in.hdr.nSrcPID, gpSrv->dwRootProcess,
 		((gbAutoDisableConfirmExit || (gnConfirmExitParm == 1)) && gpSrv->dwRootProcess == in.dwData[0]) ? L"YES" :
@@ -691,7 +691,7 @@ BOOL cmd_PostConMsg(CESERVER_REQ& in, CESERVER_REQ** out)
 
 		#ifdef _DEBUG
 		wchar_t szDbg[255];
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"ConEmuC: %s(0x%08X, %s, CP:%i, HKL:0x%08I64X)\n",
+		swprintf_c(szDbg, L"ConEmuC: %s(0x%08X, %s, CP:%i, HKL:0x%08I64X)\n",
 		          in.Msg.bPost ? L"PostMessage" : L"SendMessage", LODWORD(hSendWnd),
 		          (in.Msg.nMsg == WM_INPUTLANGCHANGE) ? L"WM_INPUTLANGCHANGE" :
 		          (in.Msg.nMsg == WM_INPUTLANGCHANGEREQUEST) ? L"WM_INPUTLANGCHANGEREQUEST" :
@@ -704,7 +704,7 @@ BOOL cmd_PostConMsg(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (gpLogSize)
 		{
 			char szInfo[255];
-			_wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "ConEmuC: %s(0x%08X, %s, CP:%i, HKL:0x%08I64X)",
+			sprintf_c(szInfo, "ConEmuC: %s(0x%08X, %s, CP:%i, HKL:0x%08I64X)",
 			           in.Msg.bPost ? "PostMessage" : "SendMessage", LODWORD(hSendWnd), //-V205
 			           (in.Msg.nMsg == WM_INPUTLANGCHANGE) ? "WM_INPUTLANGCHANGE" :
 			           (in.Msg.nMsg == WM_INPUTLANGCHANGEREQUEST) ? "WM_INPUTLANGCHANGEREQUEST" :
@@ -747,7 +747,7 @@ BOOL cmd_PostConMsg(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		LRESULT lRc = SendMessage(hSendWnd, in.Msg.nMsg, (WPARAM)in.Msg.wParam, (LPARAM)in.Msg.lParam);
 		// Возвращаем результат
-		int nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(u64);
+		int nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(uint64_t);
 		*out = ExecuteNewCmd(CECMD_POSTCONMSG,nOutSize);
 
 		if (*out != NULL)
@@ -825,13 +825,13 @@ BOOL cmd_FarDetached(CESERVER_REQ& in, CESERVER_REQ** out)
 	gbAutoDisableConfirmExit = FALSE;
 	gbAlwaysConfirmExit = TRUE;
 
-	MSectionLock CS; CS.Lock(gpSrv->csProc);
-	UINT nPrevCount = gpSrv->nProcessCount;
+	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
+	UINT nPrevCount = gpSrv->processes->nProcessCount;
 	_ASSERTE(in.hdr.nSrcPID!=0);
 	DWORD nPID = in.hdr.nSrcPID;
 	DWORD nPrevAltServerPID = gpSrv->dwAltServerPID;
 
-	BOOL lbChanged = ProcessRemove(in.hdr.nSrcPID, nPrevCount, &CS);
+	BOOL lbChanged = gpSrv->processes->ProcessRemove(in.hdr.nSrcPID, nPrevCount, CS);
 
 	MSectionLock CsAlt;
 	CsAlt.Lock(gpSrv->csAltSrv, TRUE, 1000);
@@ -843,7 +843,7 @@ BOOL cmd_FarDetached(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	// ***
 	if (lbChanged)
-		ProcessCountChanged(TRUE, nPrevCount, &CS);
+		gpSrv->processes->ProcessCountChanged(TRUE, nPrevCount, CS);
 	CS.Unlock();
 	// ***
 
@@ -1060,6 +1060,9 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 	//}
 
 	gpSrv->bWasDetached = TRUE;
+	#ifdef _DEBUG
+	g_IgnoreSetLargeFont = true;
+	#endif
 	ghConEmuWnd = NULL;
 	SetConEmuWindows(NULL, NULL, NULL);
 	gnConEmuPID = 0;
@@ -1083,7 +1086,7 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		// Без мелькания консольного окошка почему-то пока не получается
 		// Наверх выносится ConEmu вместо "отцепленного" GUI приложения
-		EmergencyShow(ghConWnd);
+		EmergencyShow(ghConWnd, (int)in.dwData[2], (int)in.dwData[3]);
 	}
 
 	if (hGuiApp != NULL)
@@ -1099,6 +1102,8 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 		SetTerminateEvent(ste_CmdDetachCon);
 	}
 
+	gbAttachMode = am_None;
+
 	int nOutSize = sizeof(CESERVER_REQ_HDR);
 	*out = ExecuteNewCmd(CECMD_DETACHCON,nOutSize);
 	lbRc = (*out != NULL);
@@ -1110,25 +1115,25 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 
-	MSectionLock CS; CS.Lock(gpSrv->csProc);
+	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
 
-	UINT nPrevCount = gpSrv->nProcessCount;
+	UINT nPrevCount = gpSrv->processes->nProcessCount;
 	BOOL lbChanged = FALSE;
 
 	_ASSERTE(in.StartStop.dwPID!=0);
 	DWORD nPID = in.StartStop.dwPID;
 	DWORD nPrevAltServerPID = gpSrv->dwAltServerPID;
 
-	if (!gpSrv->nProcessStartTick && (gpSrv->dwRootProcess == in.StartStop.dwPID))
+	if (!gpSrv->processes->nProcessStartTick && (gpSrv->dwRootProcess == in.StartStop.dwPID))
 	{
-		gpSrv->nProcessStartTick = GetTickCount();
+		gpSrv->processes->nProcessStartTick = GetTickCount();
 	}
 
 	MSectionLock CsAlt;
 	if (((in.StartStop.nStarted == sst_AltServerStop) || (in.StartStop.nStarted == sst_AppStop))
 		&& in.StartStop.dwPID && (in.StartStop.dwPID == gpSrv->dwAltServerPID))
 	{
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 		_ASSERTE(GetCurrentThreadId() != gpSrv->dwRefreshThread);
 		CsAlt.Lock(gpSrv->csAltSrv, TRUE, 1000);
 	}
@@ -1138,44 +1143,44 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 	switch (in.StartStop.nStarted)
 	{
 		case sst_ServerStart:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(ServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AltServerStart:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(AltServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ServerStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(ServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AltServerStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(AltServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ComspecStart:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(ComspecStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ComspecStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(ComspecStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AppStart:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(AppStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AppStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(AppStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_App16Start:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(App16Start,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Start,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_App16Stop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"SRV received CECMD_CMDSTARTSTOP(App16Stop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Stop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		default:
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 			_ASSERTE(in.StartStop.nStarted==sst_ServerStart && "Unknown StartStop code!");
 	}
 
 	if (gpLogSize) { LogString(szDbg); } else { DEBUGSTRCMD(szDbg); }
 	DEBUGSTARTSTOPBOX(szDbg);
 
-	// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+	// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 	_ASSERTE(in.StartStop.dwPID!=0);
 
 
@@ -1195,7 +1200,7 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 	if (in.StartStop.nStarted == sst_AltServerStart)
 	{
 		// Перевести нить монитора в режим ожидания завершения AltServer, инициализировать gpSrv->dwAltServerPID, gpSrv->hAltServer
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 		_ASSERTE(in.StartStop.hServerProcessHandle!=0);
 
 		OnAltServerChanged(1, sst_AltServerStart, in.StartStop.dwPID, &in.StartStop, AS);
@@ -1205,9 +1210,9 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 			|| (in.StartStop.nStarted == sst_AppStart))
 	{
 		// Добавить процесс в список
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
-		_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
-		lbChanged = ProcessAdd(nPID, &CS);
+		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+		_ASSERTE(gpSrv->processes->pnProcesses[0] == gnSelfPID);
+		lbChanged = gpSrv->processes->ProcessAdd(nPID, CS);
 	}
 	else if ((in.StartStop.nStarted == sst_AltServerStop)
 			|| (in.StartStop.nStarted == sst_ComspecStop)
@@ -1217,9 +1222,9 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (nPID != gpSrv->dwRootProcess)
 		{
 			// Удалить процесс из списка
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
-			_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
-			lbChanged = ProcessRemove(nPID, nPrevCount, &CS);
+			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+			_ASSERTE(gpSrv->processes->pnProcesses[0] == gnSelfPID);
+			lbChanged = gpSrv->processes->ProcessRemove(nPID, nPrevCount, CS);
 		}
 		else
 		{
@@ -1241,19 +1246,19 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 		{
 			OnAltServerChanged(1, in.StartStop.nStarted, nAltPID, NULL, AS);
 
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 			_ASSERTE(in.StartStop.nStarted==sst_ComspecStop || in.StartStop.nOtherPID==AS.info.nPrevPID);
 		}
 	}
 	else
 	{
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->csProc в других потоках. Но ассертов быть не должно )
+		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
 		_ASSERTE(in.StartStop.nStarted==sst_AppStart || in.StartStop.nStarted==sst_AppStop || in.StartStop.nStarted==sst_ComspecStart || in.StartStop.nStarted==sst_ComspecStop);
 	}
 
 	// ***
 	if (lbChanged)
-		ProcessCountChanged(TRUE, nPrevCount, &CS);
+		gpSrv->processes->ProcessCountChanged(TRUE, nPrevCount, CS);
 	CS.Unlock();
 	// ***
 
@@ -1331,7 +1336,7 @@ BOOL cmd_TerminatePid(CESERVER_REQ& in, CESERVER_REQ** out)
 	BOOL lbRc = FALSE;
 	DWORD nErrCode = 0;
 	DWORD nCount = in.dwData[0];
-	LPDWORD pPID = in.dwData+1;
+	LPDWORD pPID = (LPDWORD)&(in.dwData[1]);
 
 	if (nCount == 1)
 		lbRc = TerminateOneProcess(pPID[0], nErrCode);
@@ -1361,7 +1366,7 @@ BOOL cmd_TerminatePid(CESERVER_REQ& in, CESERVER_REQ** out)
 BOOL cmd_AffinityPriority(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	size_t cbInSize = in.DataSize();
-	if (cbInSize < 2*sizeof(u64))
+	if (cbInSize < 2*sizeof(uint64_t))
 		return FALSE;
 
 	BOOL lbRc = FALSE;
@@ -1371,11 +1376,11 @@ BOOL cmd_AffinityPriority(CESERVER_REQ& in, CESERVER_REQ** out)
 	DWORD_PTR nAffinity = (DWORD_PTR)in.qwData[0];
 	DWORD nPriority = (DWORD)in.qwData[1];
 
-	MSectionLock CS; CS.Lock(gpSrv->csProc);
-	CheckProcessCount(TRUE);
-	for (UINT i = 0; i < gpSrv->nProcessCount; i++)
+	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
+	gpSrv->processes->CheckProcessCount(TRUE);
+	for (UINT i = 0; i < gpSrv->processes->nProcessCount; i++)
 	{
-		DWORD nPID = gpSrv->pnProcesses[i];
+		DWORD nPID = gpSrv->processes->pnProcesses[i];
 		if (nPID == gnSelfPID) continue;
 
 		HANDLE hProcess = OpenProcess(PROCESS_SET_INFORMATION, FALSE, nPID);
@@ -1464,6 +1469,89 @@ BOOL cmd_Pause(CESERVER_REQ& in, CESERVER_REQ** out)
 	return TRUE;
 }
 
+// CECMD_FINDNEXTROWID
+BOOL cmd_FindNextRowId(CESERVER_REQ& in, CESERVER_REQ** out)
+{
+	// IN:  dwData[0] - from row, dwData[1] - search upward (TRUE/FALSE)
+	// OUT: dwData[0] - found row or DWORD(-1), dwData[1] - rowid
+	size_t cbInSize = in.DataSize();
+	if ((cbInSize < sizeof(DWORD)*2) || !gpSrv || !gpSrv->pConsole)
+		return FALSE;
+
+	SHORT newRow = -1, newRowId = -1, findRow = -1;
+	CEConsoleMark rowMark, rowMark2;
+	SHORT fromRow = LOSHORT(in.dwData[0]);
+	bool  bUpWard = (in.dwData[1] != FALSE);
+
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	GetConsoleScreenBufferInfo(ghConOut, &csbi);
+
+	// Skip our first marked line
+	if (ReadConsoleRowId(ghConOut, fromRow, &rowMark2))
+	{
+		if (bUpWard && (fromRow > 0))
+		{
+			fromRow -= 1;
+			if (IsConsoleLineEmpty(ghConOut, fromRow, csbi.dwSize.X))
+				fromRow -= 1;
+		}
+		else if (!bUpWard && ((fromRow + 1) < csbi.dwSize.Y))
+		{
+			fromRow += 2;
+		}
+	}
+
+	if (!FindConsoleRowId(ghConOut, fromRow, bUpWard, &findRow, &rowMark))
+	{
+		newRow = bUpWard ? 0 : (csbi.dwSize.Y - 1);
+	}
+	else
+	{
+		newRow = findRow;
+		newRowId = rowMark.RowId;
+		// We mark two rows to ensure that tab-completion routine would not break our row mark
+		if (bUpWard)
+		{
+			if (newRow > 0)
+			{
+				if (ReadConsoleRowId(ghConOut, newRow - 1, &rowMark2))
+				{
+					// Line above the prompt may be empty, no sense to scroll to it
+					if (!IsConsoleLineEmpty(ghConOut, newRow - 1, csbi.dwSize.X))
+					{
+						newRow--;
+						newRowId = rowMark2.RowId;
+					}
+				}
+			}
+		}
+		else
+		{
+			if ((newRow + 1) < csbi.dwSize.Y)
+			{
+				if (IsConsoleLineEmpty(ghConOut, newRow, csbi.dwSize.X))
+				{
+					// We need the row below, but its rowid may be damaged (doesn't matter, just show it)
+					newRow++;
+					if (ReadConsoleRowId(ghConOut, newRow - 1, &rowMark2))
+						newRowId = rowMark2.RowId;
+				}
+			}
+		}
+	}
+
+	int nOutSize = sizeof(CESERVER_REQ_HDR) + 2*sizeof(DWORD);
+	*out = ExecuteNewCmd(CECMD_FINDNEXTROWID,nOutSize);
+
+	if (*out != NULL)
+	{
+		(*out)->dwData[0] = newRow;
+		(*out)->dwData[1] = newRowId;
+	}
+
+	return TRUE;
+}
+
 BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
@@ -1481,7 +1569,7 @@ BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 		// Вызывается два раза. Первый (при запуске exe) ahGuiWnd==NULL, второй - после фактического создания окна
 		if (gbAttachMode || (gpSrv->hRootProcessGui == NULL))
 		{
-			_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"GUI application (PID=%u) was attached to ConEmu:\n%s\n",
+			swprintf_c(szInfo, L"GUI application (PID=%u) was attached to ConEmu:\n%s\n",
 				in.AttachGuiApp.nPID, in.AttachGuiApp.sAppFilePathName);
 			_wprintf(szInfo);
 		}
@@ -1492,7 +1580,7 @@ BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 			GetWindowText(in.AttachGuiApp.hAppWindow, szTitle, countof(szTitle));
 			wchar_t szClass[MAX_PATH] = {};
 			GetClassName(in.AttachGuiApp.hAppWindow, szClass, countof(szClass));
-			_wsprintf(szInfo,  SKIPLEN(countof(szInfo))
+			swprintf_c(szInfo,
 				L"\nWindow (x%08X,Style=x%08X,Ex=x%X,Flags=x%X) was attached to ConEmu:\nTitle: \"%s\"\nClass: \"%s\"\n",
 				(DWORD)in.AttachGuiApp.hAppWindow, in.AttachGuiApp.Styles.nStyle, in.AttachGuiApp.Styles.nStyleEx, in.AttachGuiApp.nFlags, szTitle, szClass);
 			_wprintf(szInfo);
@@ -1508,7 +1596,7 @@ BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 		}
 		// Смысла в подтверждении нет - GUI приложение в консоль ничего не выводит
 		gbAlwaysConfirmExit = FALSE;
-		CheckProcessCount(TRUE);
+		gpSrv->processes->CheckProcessCount(TRUE);
 		lbRc = TRUE;
 	}
 
@@ -1614,9 +1702,9 @@ BOOL cmd_FreezeAltServer(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (gpLogSize)
 		{
 			if (in.dwData[0] == 1)
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"AltServer: freeze requested, new AltServer=%u", in.dwData[1]);
+				swprintf_c(szLog, L"AltServer: freeze requested, new AltServer=%u", in.dwData[1]);
 			else
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"AltServer: thaw requested, prev AltServer=%u", gpSrv->nPrevAltServer);
+				swprintf_c(szLog, L"AltServer: thaw requested, prev AltServer=%u", gpSrv->nPrevAltServer);
 			LogString(szLog);
 		}
 
@@ -1628,7 +1716,7 @@ BOOL cmd_FreezeAltServer(CESERVER_REQ& in, CESERVER_REQ** out)
 		}
 		else
 		{
-			klSwap(nPrevAltServer, gpSrv->nPrevAltServer);
+			std::swap(nPrevAltServer, gpSrv->nPrevAltServer);
 
 			ThawRefreshThread();
 
@@ -1638,7 +1726,7 @@ BOOL cmd_FreezeAltServer(CESERVER_REQ& in, CESERVER_REQ** out)
 			}
 			else
 			{
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"AltServer: Wrong gnRunMode=%u", gnRunMode);
+				swprintf_c(szLog, L"AltServer: Wrong gnRunMode=%u", gnRunMode);
 				LogString(szLog);
 				_ASSERTE(gnRunMode == RM_ALTSERVER);
 			}
@@ -1932,7 +2020,7 @@ BOOL cmd_AltBuffer(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (gpLogSize)
 		{
 			char szInfo[100];
-			_wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "cmd_AltBuffer: (%u) %s%s%s%s",
+			sprintf_c(szInfo, "cmd_AltBuffer: (%u) %s%s%s%s",
 				in.AltBuf.BufferHeight,
 				!in.AltBuf.AbFlags ? "AbFlags==0" :
 				(in.AltBuf.AbFlags & abf_SaveContents) ? " abf_SaveContents" : "",
@@ -2185,7 +2273,7 @@ BOOL cmd_PortableStarted(CESERVER_REQ& in, CESERVER_REQ** out)
 	if (in.DataSize() == sizeof(gpSrv->Portable))
 	{
 		gpSrv->Portable = in.PortableStarted;
-		CheckProcessCount(TRUE);
+		gpSrv->processes->CheckProcessCount(TRUE);
 		// For example, CommandPromptPortable.exe starts cmd.exe
 		CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_PORTABLESTART, sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_PORTABLESTARTED));
 		if (pIn)
@@ -2242,12 +2330,12 @@ BOOL cmd_SetTopLeft(CESERVER_REQ& in, CESERVER_REQ** out)
 	BOOL lbRc = TRUE;
 	BOOL lbGenRc = FALSE;
 
-	if (in.DataSize() >= sizeof(in.ReqConInfo.TopLeft))
+	if (in.DataSize() >= sizeof(in.ReqConInfo))
 	{
 		gpSrv->TopLeft = in.ReqConInfo.TopLeft;
 
 		// May be we can scroll the console down?
-		if (in.ReqConInfo.TopLeft.isLocked())
+		if (!in.ReqConInfo.VirtualOnly && in.ReqConInfo.TopLeft.isLocked())
 		{
 			// We need real (uncorrected) position
 			CONSOLE_SCREEN_BUFFER_INFO csbi = {};
@@ -2301,7 +2389,7 @@ BOOL cmd_PromptStarted(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		int iLen = lstrlen(in.PromptStarted.szExeName);
 		if (iLen > MAX_PATH) in.PromptStarted.szExeName[MAX_PATH] = 0;
-		_wsprintf(szStarted, SKIPCOUNT(szStarted) L"Prompt (Hook server) was started, PID=%u {%s}", in.hdr.nSrcPID, in.PromptStarted.szExeName);
+		swprintf_c(szStarted, L"Prompt (Hook server) was started, PID=%u {%s}", in.hdr.nSrcPID, in.PromptStarted.szExeName);
 		LogFunction(szStarted);
 	}
 
@@ -2367,7 +2455,7 @@ BOOL cmd_GetRootInfo(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	if (*out)
 	{
-		GetRootInfo(*out);
+		gpSrv->processes->GetRootInfo(*out);
 	}
 
 	lbRc = ((*out) != NULL);
@@ -2459,6 +2547,29 @@ bool ProcessAltSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out, BOOL& lbRc)
 }
 
 
+BOOL cmd_StartXTerm(CESERVER_REQ& in, CESERVER_REQ** out)
+{
+	BOOL lbRc = TRUE;
+
+	LogString("CECMD_STARTXTERM");
+
+	// We must add the PID immediately, otherwise the flag
+	// may be reseted unexpectedly due to "process termination"
+	if (in.DataSize() >= 3*sizeof(DWORD))
+	{
+		gpSrv->processes->StartStopXTermMode((TermModeCommand)in.dwData[0], in.dwData[1], in.dwData[2]);
+	}
+
+	// Inform the GUI
+	CESERVER_REQ* pGuiOut = ExecuteGuiCmd(ghConWnd, &in, ghConWnd);
+	ExecuteFreeResult(pGuiOut);
+
+	*out = ExecuteNewCmd(CECMD_STARTXTERM, sizeof(CESERVER_REQ_HDR));
+	lbRc = ((*out) != NULL);
+	return lbRc;
+}
+
+
 /// Main routine to process CECMD
 BOOL ProcessSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out)
 {
@@ -2473,6 +2584,10 @@ BOOL ProcessSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out)
 		case CECMD_CMDFINISHED:
 		{
 			lbRc = cmd_SetSizeXXX_CmdStartedFinished(in, out);
+		} break;
+		case CECMD_STARTXTERM:
+		{
+			lbRc = cmd_StartXTerm(in, out);
 		} break;
 		case CECMD_ATTACH2GUI:
 		{
@@ -2658,6 +2773,10 @@ BOOL ProcessSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out)
 		case CECMD_WRITETEXT:
 		{
 			lbRc = cmd_WriteText(in, out);
+		} break;
+		case CECMD_FINDNEXTROWID:
+		{
+			lbRc = cmd_FindNextRowId(in, out);
 		} break;
 		default:
 		{

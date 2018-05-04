@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -216,7 +216,7 @@ LPCWSTR GetMouseMsgName(UINT msg)
 	default:
 		{
 			static wchar_t szTmp[32] = L"";
-			_wsprintf(szTmp, SKIPCOUNT(szTmp) L"0x%X(%u)", msg, msg);
+			swprintf_c(szTmp, L"0x%X(%u)", msg, msg);
 			pszName = szTmp;
 		}
 	}
@@ -226,284 +226,9 @@ LPCWSTR GetMouseMsgName(UINT msg)
 LONG gnMessageNestingLevel = 0;
 
 #ifdef MSGLOGGER
-void DebugLogMessage(HWND h, UINT m, WPARAM w, LPARAM l, int posted, BOOL extra)
-{
-	if (bBlockDebugLog || (!bSendToFile && !IsDebuggerPresent()))
-		return;
 
-	static char szMess[32], szWP[32], szLP[48], szWhole[255];
-	//static SYSTEMTIME st;
-	szMess[0]=0; szWP[0]=0; szLP[0]=0; szWhole[0]=0;
-#define MSG1(s) case s: lstrcpyA(szMess, #s); break;
-#define MSG2(s) case s: lstrcpyA(szMess, #s);
-#define WP1(s) case s: lstrcpyA(szWP, #s); break;
-#define WP2(s) case s: lstrcpyA(szWP, #s);
+#include "DebugMsgLog.h"
 
-	switch (m)
-	{
-			MSG1(WM_NOTIFY);
-			MSG1(WM_PAINT);
-			MSG1(WM_TIMER);
-			MSG2(WM_SIZING);
-			{
-				switch(w)
-				{
-						WP1(WMSZ_RIGHT);
-						WP1(WMSZ_BOTTOM);
-						WP1(WMSZ_BOTTOMRIGHT);
-						WP1(WMSZ_LEFT);
-						WP1(WMSZ_TOP);
-						WP1(WMSZ_TOPLEFT);
-						WP1(WMSZ_TOPRIGHT);
-						WP1(WMSZ_BOTTOMLEFT);
-				}
-
-				break;
-			}
-
-			MSG2(WM_SIZE);
-			{
-				wsprintfA(szLP, "{%ix%i}", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-				break;
-			}
-			MSG2(WM_MOVE);
-			{
-				wsprintfA(szLP, "{%i,%i}", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-				break;
-			}
-			MSG1(WM_GETMINMAXINFO);
-			MSG2(WM_NCCALCSIZE);
-			{
-				if (l)
-				{
-					RECT r = w ? ((LPNCCALCSIZE_PARAMS)l)->rgrc[0] : *(LPRECT)l;
-					wsprintfA(szLP, "{%i,%i} {%ix%i}", r.left, r.top, LOGRECTSIZE(r));
-				}
-				break;
-			}
-
-			MSG2(WM_WINDOWPOSCHANGING);
-			{
-				wsprintfA(szLP, "{%i,%i} {%ix%i}", ((LPWINDOWPOS)l)->x, ((LPWINDOWPOS)l)->y, ((LPWINDOWPOS)l)->cx, ((LPWINDOWPOS)l)->cy);
-				break;
-			}
-			MSG2(WM_WINDOWPOSCHANGED);
-			{
-				wsprintfA(szLP, "{%i,%i} {%ix%i}", ((LPWINDOWPOS)l)->x, ((LPWINDOWPOS)l)->y, ((LPWINDOWPOS)l)->cx, ((LPWINDOWPOS)l)->cy);
-				break;
-			}
-
-			MSG1(WM_KEYDOWN);
-			MSG1(WM_KEYUP);
-			MSG1(WM_SYSKEYDOWN);
-			MSG1(WM_SYSKEYUP);
-			MSG2(WM_MOUSEWHEEL);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_ACTIVATE);
-
-			switch(w)
-			{
-					WP1(WA_ACTIVE);
-					WP1(WA_CLICKACTIVE);
-					WP1(WA_INACTIVE);
-			}
-
-			break;
-			MSG2(WM_ACTIVATEAPP);
-
-			if (w==0)
-				break;
-
-			break;
-			MSG2(WM_KILLFOCUS);
-			break;
-			MSG1(WM_SETFOCUS);
-			MSG2(WM_MOUSEMOVE);
-			//wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			//break;
-			return;
-			MSG2(WM_RBUTTONDOWN);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_RBUTTONUP);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_MBUTTONDOWN);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_MBUTTONUP);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_LBUTTONDOWN);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_LBUTTONUP);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_LBUTTONDBLCLK);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_MBUTTONDBLCLK);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG2(WM_RBUTTONDBLCLK);
-			wsprintfA(szLP, "%i:%i", GET_X_LPARAM(l), GET_Y_LPARAM(l));
-			break;
-			MSG1(WM_CLOSE);
-			MSG1(WM_CREATE);
-			MSG2(WM_SYSCOMMAND);
-			{
-				switch (w)
-				{
-						WP1(SC_MAXIMIZE_SECRET);
-						WP2(SC_RESTORE_SECRET);
-						break;
-						WP1(SC_CLOSE);
-						WP1(SC_MAXIMIZE);
-						WP2(SC_RESTORE);
-						break;
-						WP1(SC_PROPERTIES_SECRET);
-						WP1(ID_SETTINGS);
-						WP1(ID_HELP);
-						WP1(ID_ABOUT);
-						WP1(IDM_DONATE_LINK);
-						WP1(ID_TOTRAY);
-						WP1(ID_TOMONITOR);
-						WP1(ID_CONPROP);
-				}
-
-				break;
-			}
-			MSG1(WM_NCRBUTTONUP);
-			MSG1(WM_TRAYNOTIFY);
-			MSG1(WM_DESTROY);
-			MSG1(WM_INPUTLANGCHANGE);
-			MSG1(WM_INPUTLANGCHANGEREQUEST);
-			MSG1(WM_IME_NOTIFY);
-			MSG1(WM_VSCROLL);
-			MSG1(WM_NULL);
-			//default:
-			//  return;
-	}
-
-	if (bSendToDebugger || bSendToFile)
-	{
-		if (!szMess[0]) wsprintfA(szMess, "%i(x%02X)", m, m);
-
-		if (!szWP[0]) wsprintfA(szWP, "%i", (DWORD)w);
-
-		if (!szLP[0]) wsprintfA(szLP, "%i(0x%08X)", (int)l, (DWORD)l);
-
-		LPCSTR pszSrc = (posted < 0) ? "Recv" : (posted ? "Post" : "Send");
-
-		if (bSendToDebugger)
-		{
-			static SYSTEMTIME st;
-			GetLocalTime(&st);
-			wsprintfA(szWhole, "%02i:%02i.%03i %s%s: <%i> %s, %s, %s\n", st.wMinute, st.wSecond, st.wMilliseconds,
-				pszSrc, (extra ? "+" : ""), gnMessageNestingLevel, szMess, szWP, szLP);
-			OutputDebugStringA(szWhole);
-		}
-		else if (bSendToFile)
-		{
-			wsprintfA(szWhole, "%s%s: <%i> %s, %s, %s\n",
-				pszSrc, (extra ? "+" : ""), gnMessageNestingLevel, szMess, szWP, szLP);
-			DebugLogFile(szWhole);
-		}
-	}
-}
-void DebugLogPos(HWND hw, int x, int y, int w, int h, LPCSTR asFunc)
-{
-#ifdef MSGLOGGER
-
-	if (!x && !y && hw == ghConWnd)
-	{
-		if (!IsDebuggerPresent() && !isPressed(VK_LBUTTON))
-			x = x;
-	}
-
-#endif
-
-	if (bBlockDebugLog || (!bSendToFile && !IsDebuggerPresent()))
-		return;
-
-	if (bSendToDebugger)
-	{
-		wchar_t szPos[255];
-		static SYSTEMTIME st;
-		GetLocalTime(&st);
-		_wsprintf(szPos, SKIPLEN(countof(szPos)) L"%02i:%02i.%03i %s(%s, %i,%i,%i,%i)\n",
-		          st.wMinute, st.wSecond, st.wMilliseconds, asFunc,
-		          (hw==ghConWnd) ? L"Con" : L"Emu", x,y,w,h);
-		DEBUGSTRMOVE(szPos);
-	}
-	else if (bSendToFile)
-	{
-		char szPos[255];
-		wsprintfA(szPos, "%s(%s, %i,%i,%i,%i)\n",
-		          asFunc,
-		          (hw==ghConWnd) ? "Con" : "Emu", x,y,w,h);
-		DebugLogFile(szPos);
-	}
-}
-void DebugLogBufSize(HANDLE h, COORD sz)
-{
-	if (bBlockDebugLog || (!bSendToFile && !IsDebuggerPresent()))
-		return;
-
-	static char szSize[255];
-
-	if (bSendToDebugger)
-	{
-		static SYSTEMTIME st;
-		GetLocalTime(&st);
-		wsprintfA(szSize, "%02i:%02i.%03i ChangeBufferSize(%i,%i)\n",
-		          st.wMinute, st.wSecond, st.wMilliseconds,
-		          sz.X, sz.Y);
-		OutputDebugStringA(szSize);
-	}
-	else if (bSendToFile)
-	{
-		wsprintfA(szSize, "ChangeBufferSize(%i,%i)\n",
-		          sz.X, sz.Y);
-		DebugLogFile(szSize);
-	}
-}
-void DebugLogFile(LPCSTR asMessage)
-{
-	if (!bSendToFile)
-		return;
-
-	HANDLE hLogFile = INVALID_HANDLE_VALUE;
-
-	if (LogFilePath==NULL)
-	{
-		//WCHAR LogFilePath[MAX_PATH+1];
-		LogFilePath = (WCHAR*)calloc(MAX_PATH+1,sizeof(WCHAR));
-		GetModuleFileNameW(0,LogFilePath,MAX_PATH);
-		WCHAR* pszDot = wcsrchr(LogFilePath, L'.');
-		lstrcpyW(pszDot, L".log");
-		hLogFile = CreateFileW(LogFilePath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	}
-	else
-	{
-		hLogFile = CreateFileW(LogFilePath, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	}
-
-	if (hLogFile!=INVALID_HANDLE_VALUE)
-	{
-		DWORD dwSize=0;
-		SetFilePointer(hLogFile, 0, 0, FILE_END);
-		SYSTEMTIME st;
-		GetLocalTime(&st);
-		char szWhole[32];
-		wsprintfA(szWhole, "%02i:%02i:%02i.%03i ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-		WriteFile(hLogFile, szWhole, lstrlenA(szWhole), &dwSize, NULL);
-		WriteFile(hLogFile, asMessage, lstrlenA(asMessage), &dwSize, NULL);
-		CloseHandle(hLogFile);
-	}
-}
 BOOL POSTMESSAGE(HWND h,UINT m,WPARAM w,LPARAM l,BOOL extra)
 {
 	MCHKHEAP;
@@ -517,6 +242,7 @@ LRESULT SENDMESSAGE(HWND h,UINT m,WPARAM w,LPARAM l)
 	return SendMessage(h,m,w,l);
 }
 #endif
+
 #ifdef _DEBUG
 char gsz_MDEBUG_TRAP_MSG[3000];
 char gsz_MDEBUG_TRAP_MSG_APPEND[2000];
@@ -537,9 +263,9 @@ int MDEBUG_CHK = TRUE;
 #endif
 
 
-void LogString(LPCWSTR asInfo, bool abWriteTime /*= true*/, bool abWriteLine /*= true*/)
+bool LogString(LPCWSTR asInfo, bool abWriteTime /*= true*/, bool abWriteLine /*= true*/)
 {
-	gpConEmu->LogString(asInfo, abWriteTime, abWriteLine);
+	return gpConEmu->LogString(asInfo, abWriteTime, abWriteLine);
 }
 
 LPCWSTR GetWindowModeName(ConEmuWindowMode wm)
@@ -903,7 +629,7 @@ bool GetColorRef(LPCWSTR pszText, COLORREF* pCR)
 	return result;
 }
 
-wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote)
+wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote, LPCWSTR asMntPrefix /*= NULL*/)
 {
 	if (!asWinPath)
 	{
@@ -919,11 +645,27 @@ wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote)
 		}
 	}
 
-	size_t cchLen = _tcslen(asWinPath) + (bAutoQuote ? 3 : 1) + 1/*Possible space-termination on paste*/;
+	// Some chars must be escaped
+	const wchar_t* posixSpec = bAutoQuote ? L"$" : L" ()$";
+
+	size_t cchLen = _tcslen(asWinPath)
+		+ (bAutoQuote ? 3 : 1) // two or zero quotes + null-termination
+		+ (asMntPrefix ? _tcslen(asMntPrefix) : 0) // '/cygwin' or '/mnt' prefix
+		+ 1/*Possible space-termination on paste*/;
+	if (wcspbrk(asWinPath, posixSpec) != NULL)
+	{
+		for (const wchar_t *pch = asWinPath; *pch; ++pch)
+		{
+			if (wcschr(posixSpec, *pch))
+				++cchLen;
+		}
+	}
 	wchar_t* pszResult = (wchar_t*)malloc(cchLen*sizeof(*pszResult));
 	if (!pszResult)
 		return NULL;
 	wchar_t* psz = pszResult;
+
+	TODO("Replace quotation with escaping"); // e.g. instead of "/C/Program Files/" type /C/Program\ Files/
 
 	if (bAutoQuote)
 	{
@@ -934,10 +676,16 @@ wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote)
 		*(psz++) = *(asWinPath++);
 	}
 
+	// Drive letter!
 	if (asWinPath[0] && (asWinPath[1] == L':'))
 	{
+		// '/cygwin' or '/mnt' prefix
+		LPCWSTR pszPrefix = asMntPrefix;
+		if (pszPrefix)
+			while (*pszPrefix)
+				*(psz++) = *(pszPrefix++);
 		*(psz++) = L'/';
-		*(psz++) = asWinPath[0];
+		*(psz++) = static_cast<wchar_t>(tolower(asWinPath[0]));
 		asWinPath += 2;
 	}
 	else
@@ -955,6 +703,8 @@ wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote)
 		}
 		else
 		{
+			if (wcschr(posixSpec, *asWinPath))
+				*(psz++) = L'\\';
 			*(psz++) = *(asWinPath++);
 		}
 	}
@@ -975,36 +725,48 @@ wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote)
 // \\server\share/path/file
 // /cygdrive/C/Src/file.c
 // ..\folder/file.c
-wchar_t* MakeWinPath(LPCWSTR asAnyPath)
+LPCWSTR MakeWinPath(LPCWSTR asAnyPath, LPCWSTR pszMntPrefix, CEStr& szWinPath)
 {
 	// Drop spare prefix, point to "/" after "/cygdrive"
-	int iSkip = startswith(asAnyPath, L"/cygdrive/", true);
-	LPCWSTR pszSrc = asAnyPath + ((iSkip > 0) ? (iSkip-1) : 0);
+	int iSkip = startswith(asAnyPath, pszMntPrefix ? pszMntPrefix : L"/cygdrive", true);
+	if (iSkip > 0 && asAnyPath[iSkip] != L'/')
+		iSkip = 0;
+	LPCWSTR pszSrc = asAnyPath + ((iSkip > 0) ? iSkip : 0);
 
 	// Prepare buffer
 	int iLen = lstrlen(pszSrc);
 	if (iLen < 1)
 	{
 		_ASSERTE(lstrlen(pszSrc) > 0);
+		szWinPath.Clear();
 		return NULL;
+	}
+
+	// #CYGDRIVE In some cases we may try to select real location of "~" folder (cygwin and msys)
+	if (pszSrc[0] == L'~' && (pszSrc[1] == 0 || pszSrc[1] == L'/'))
+	{
+		szWinPath.Set(pszSrc);
+		return szWinPath;
 	}
 
 	// Диск в cygwin формате?
 	wchar_t cDrive = 0;
 	if ((pszSrc[0] == L'/' || pszSrc[0] == L'\\')
 		&& isDriveLetter(pszSrc[1])
-		&& (pszSrc[2] == L'/' || pszSrc[2] == L'\\'))
+		&& (pszSrc[2] == L'/' || pszSrc[2] == L'\\' || pszSrc[2] == 0))
 	{
 		cDrive = pszSrc[1];
 		CharUpperBuff(&cDrive, 1);
 		pszSrc += 2;
+		iLen++;
 	}
 
 	// Формируем буфер
-	wchar_t* pszRc = (wchar_t*)malloc((iLen+1)*sizeof(wchar_t));
+	wchar_t* pszRc = szWinPath.GetBuffer(iLen);
 	if (!pszRc)
 	{
 		_ASSERTE(pszRc && "malloc failed");
+		szWinPath.Clear();
 		return NULL;
 	}
 	// Make path
@@ -1013,9 +775,17 @@ wchar_t* MakeWinPath(LPCWSTR asAnyPath)
 	{
 		*(pszDst++) = cDrive;
 		*(pszDst++) = L':';
+		*(pszDst) = 0;
 		iLen -= 2;
 	}
-	_wcscpy_c(pszDst, iLen+1, pszSrc);
+	else
+	{
+		*(pszDst) = 0;
+	}
+	if (*pszSrc)
+		_wcscpy_c(pszDst, iLen+1, pszSrc);
+	else
+		_wcscpy_c(pszDst, iLen+1, L"\\");
 	// Convert slashes
 	pszDst = wcschr(pszDst, L'/');
 	while (pszDst)
@@ -1079,6 +849,7 @@ wchar_t* SelectFolder(LPCWSTR asTitle, LPCWSTR asDefFolder /*= NULL*/, HWND hPar
 		{
 			if (nFlags & sff_Cygwin)
 			{
+				//TODO: Favor current console GetMntPrefix()
 				pszResult = DupCygwinPath(szFolder, (nFlags & sff_AutoQuote));
 			}
 			else if ((nFlags & sff_AutoQuote) && (wcschr(szFolder, L' ') != NULL))
@@ -1137,6 +908,7 @@ wchar_t* SelectFile(LPCWSTR asTitle, LPCWSTR asDefFile /*= NULL*/, LPCWSTR asDef
 
 		if (nFlags & sff_Cygwin)
 		{
+			//TODO: Favor current console GetMntPrefix()
 			pszResult = DupCygwinPath(pszName, (nFlags & sff_AutoQuote));
 		}
 		else
@@ -1172,7 +944,7 @@ void StripWords(wchar_t* pszText, const wchar_t* pszWords)
 		int nLen = (int)(pszNext - pszWord);
 		if (nLen > 0)
 		{
-			lstrcpyn(dummy, pszWord, min((int)countof(dummy),(nLen+1)));
+			lstrcpyn(dummy, pszWord, std::min((int)countof(dummy),(nLen+1)));
 			wchar_t* pszFound;
 			while ((pszFound = StrStrI(pszText, dummy)) != NULL)
 			{
@@ -1301,7 +1073,22 @@ LRESULT CALLBACK AppWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam)
 			gpConEmu->setFocus();
 	}
 
-	result = DefWindowProc(hWnd, messg, wParam, lParam);
+	// gh-1306, gh-460
+	switch (messg)
+	{
+	case WM_WINDOWPOSCHANGING:
+		// AppWindow must be visible but always out-of-screen
+		if (lParam)
+		{
+			LPWINDOWPOS p = (LPWINDOWPOS)lParam;
+			p->flags &= ~SWP_NOMOVE;
+			p->x = p->y = WINDOWS_ICONIC_POS;
+		}
+		break;
+
+	default:
+		result = DefWindowProc(hWnd, messg, wParam, lParam);
+	}
 	return result;
 }
 
@@ -1357,7 +1144,7 @@ BOOL CheckCreateAppWindow()
 
 	//ghWnd = CreateWindow(szClassName, 0, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, gpSet->wndX, gpSet->wndY, cRect.right - cRect.left - 4, cRect.bottom - cRect.top - 4, NULL, NULL, (HINSTANCE)g_hInstance, NULL);
 	DWORD style = WS_OVERLAPPEDWINDOW | WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE;
-	int nWidth=100, nHeight=100, nX = -32000, nY = -32000;
+	int nWidth = 100, nHeight = 100, nX = WINDOWS_ICONIC_POS, nY = WINDOWS_ICONIC_POS;
 	DWORD exStyle = WS_EX_TOOLWINDOW|WS_EX_ACCEPTFILES;
 	// cRect.right - cRect.left - 4, cRect.bottom - cRect.top - 4; -- все равно это было не правильно
 	ghWndApp = CreateWindowEx(exStyle, gsClassNameApp, gpConEmu->GetDefaultTitle(), style, nX, nY, nWidth, nHeight, NULL, NULL, (HINSTANCE)g_hInstance, NULL);
@@ -1371,7 +1158,7 @@ BOOL CheckCreateAppWindow()
 	if (gpSet->isLogging())
 	{
 		wchar_t szCreated[128];
-		_wsprintf(szCreated, SKIPLEN(countof(szCreated)) L"App window created, HWND=0x%08X\r\n", LODWORD(ghWndApp));
+		swprintf_c(szCreated, L"App window created, HWND=0x%08X\r\n", LODWORD(ghWndApp));
 		gpConEmu->LogString(szCreated, false, false);
 	}
 
@@ -1381,9 +1168,8 @@ BOOL CheckCreateAppWindow()
 LRESULT CALLBACK SkipShowWindowProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam)
 {
 	LRESULT result = 0;
-	//static UINT nMsgBtnCreated = 0;
 
-	if (messg == WM_SETHOTKEY)
+	if (!gnWndSetHotkey && (messg == WM_SETHOTKEY))
 	{
 		gnWndSetHotkey = wParam;
 	}
@@ -1396,24 +1182,17 @@ LRESULT CALLBACK SkipShowWindowProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM
 			BeginPaint(hWnd, &ps);
 			EndPaint(hWnd, &ps);
 		}
-		return 0;
+		result = 0;
+		break;
 
 	case WM_ERASEBKGND:
-		return TRUE;
+		result = TRUE;
+		break;
 
-	//default:
-	//	if (!nMsgBtnCreated)
-	//	{
-	//		nMsgBtnCreated = RegisterWindowMessage(L"TaskbarButtonCreated");
-	//	}
-
-	//	if (messg == nMsgBtnCreated)
-	//	{
-	//		gpConEmu->Taskbar_DeleteTabXP(hWnd);
-	//	}
+	default:
+		result = DefWindowProc(hWnd, messg, wParam, lParam);
 	}
 
-	result = DefWindowProc(hWnd, messg, wParam, lParam);
 	return result;
 }
 
@@ -1463,7 +1242,7 @@ void SkipOneShowWindow()
 		if (gpSet->isLogging())
 		{
 			wchar_t szInfo[128];
-			_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"Skip window 0x%08X was created and destroyed", LODWORD(hSkip));
+			swprintf_c(szInfo, L"Skip window 0x%08X was created and destroyed", LODWORD(hSkip));
 			gpConEmu->LogString(szInfo);
 		}
 	}
@@ -1593,11 +1372,11 @@ void AssertBox(LPCTSTR szText, LPCTSTR szFile, UINT nLine, LPEXCEPTION_POINTERS 
 	// Prepare assertion message
 	{
 		wchar_t szDashes[] = L"-----------------------\r\n", szPID[80];
-		_wsprintf(szPID, SKIPCOUNT(szPID) L"PID=%u, TID=%u" WIN3264TEST(L"",L"64"), GetCurrentProcessId(), GetCurrentThreadId());
+		swprintf_c(szPID, L"PID=%u, TID=%u" WIN3264TEST(L"",L"64"), GetCurrentProcessId(), GetCurrentThreadId());
 		CEStr lsBuild(L"ConEmu ", (gpConEmu && gpConEmu->ms_ConEmuBuild) ? gpConEmu->ms_ConEmuBuild : L"<UnknownBuild>",
 			L" [", WIN3264TEST(L"32",L"64"), RELEASEDEBUGTEST(NULL,L"D"), L"] ");
 		CEStr lsAssertion(L"Assertion: ", lsBuild, szPID, L"\r\n");
-		CEStr lsWhere(L"\r\n", StripSourceRoot(szFile), L":", _ultow(nLine, szLine, 10), L"\r\n", szDashes);
+		CEStr lsWhere(L"\r\n", StripSourceRoot(szFile), L":", ultow_s(nLine, szLine, 10), L"\r\n", szDashes);
 		CEStr lsHeader(lsAssertion,
 			(gpConEmu && gpConEmu->ms_ConEmuExe) ? gpConEmu->ms_ConEmuExe : L"<NULL>",
 			lsWhere, szText, L"\r\n", szDashes, L"\r\n");
@@ -1624,7 +1403,7 @@ void AssertBox(LPCTSTR szText, LPCTSTR szFile, UINT nLine, LPEXCEPTION_POINTERS 
 			nPostCode = GetLastError();
 		}
 
-		_wsprintf(szCodes, SKIPLEN(countof(szCodes)) L"\r\nPreError=%i, PostError=%i, Result=%i", nPreCode, nPostCode, nRet);
+		swprintf_c(szCodes, L"\r\nPreError=%i, PostError=%i, Result=%i", nPreCode, nPostCode, nRet);
 		lstrmerge(&szFull.ms_Val, szCodes);
 	}
 
@@ -1683,7 +1462,7 @@ int DisplayLastError(LPCTSTR asLabel, DWORD dwError /* =0 */, DWORD dwMsgFlags /
 		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&lpMsgBuf, 0, NULL);
 		INT_PTR nLen = _tcslen(asLabel)+64+(lpMsgBuf ? _tcslen(lpMsgBuf) : 0);
 		out = new wchar_t[nLen];
-		_wsprintf(out, SKIPLEN(nLen) _T("%s\nLastError=0x%08X\n%s"), asLabel, dw, lpMsgBuf);
+		swprintf_c(out, nLen/*#SECURELEN*/, _T("%s\nLastError=0x%08X\n%s"), asLabel, dw, lpMsgBuf);
 	}
 
 	if (gbMessagingStarted) apiSetForegroundWindow(hParent ? hParent : ghWnd);
@@ -1709,7 +1488,7 @@ void WarnCreateWindowFail(LPCWSTR pszDescription, HWND hParent, DWORD nErrCode)
 
 	if (gpConEmu && gpConEmu->mp_Inside)
 	{
-		_wsprintf(szCreateFail, SKIPCOUNT(szCreateFail)
+		swprintf_c(szCreateFail,
 			L"Inside mode: Parent (%s): PID=%u ParentPID=%u HWND=x%p EXE=",
 			(::IsWindow(gpConEmu->mp_Inside->mh_InsideParentWND) ? L"Valid" : L"Invalid"),
 			gpConEmu->mp_Inside->m_InsideParentInfo.ParentPID,
@@ -1719,7 +1498,7 @@ void WarnCreateWindowFail(LPCWSTR pszDescription, HWND hParent, DWORD nErrCode)
 		LogString(lsLog);
 	}
 
-	_wsprintf(szCreateFail, SKIPCOUNT(szCreateFail)
+	swprintf_c(szCreateFail,
 		L"Create %s FAILED (code=%u)! Parent=x%p%s%s",
 		pszDescription ? pszDescription : L"window", nErrCode, (LPVOID)hParent,
 		(hParent ? (::IsWindow(hParent) ? L" Valid" : L" Invalid") : L""),
@@ -1745,20 +1524,20 @@ RECT CenterInParent(RECT rcDlg, HWND hParent)
 	GetNearestMonitorInfo(&mi, NULL, &rcParent);
 
 	RECT rcCenter = {
-		max(mi.rcWork.left, rcParent.left + (rcParent.right - rcParent.left - nWidth) / 2),
-		max(mi.rcWork.top, rcParent.top + (rcParent.bottom - rcParent.top - nHeight) / 2)
+		std::max(mi.rcWork.left, rcParent.left + (rcParent.right - rcParent.left - nWidth) / 2),
+		std::max(mi.rcWork.top, rcParent.top + (rcParent.bottom - rcParent.top - nHeight) / 2)
 	};
 
 	if (((rcCenter.left + nWidth) > mi.rcWork.right)
 		&& (rcCenter.left > mi.rcWork.left))
 	{
-		rcCenter.left = max(mi.rcWork.left, (mi.rcWork.right - nWidth));
+		rcCenter.left = std::max(mi.rcWork.left, (mi.rcWork.right - nWidth));
 	}
 
 	if (((rcCenter.top + nHeight) > mi.rcWork.bottom)
 		&& (rcCenter.top > mi.rcWork.top))
 	{
-		rcCenter.top = max(mi.rcWork.top, (mi.rcWork.bottom - nHeight));
+		rcCenter.top = std::max(mi.rcWork.top, (mi.rcWork.bottom - nHeight));
 	}
 
 	rcCenter.right = rcCenter.left + nWidth;
@@ -1808,7 +1587,7 @@ void MessageLoop()
 		#ifdef _DEBUG
 		if (Msg.message == WM_TIMER)
 		{
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"WM_TIMER(0x%08X,%u)\n", LODWORD(Msg.hwnd), Msg.wParam);
+			swprintf_c(szDbg, L"WM_TIMER(0x%08X,%u)\n", LODWORD(Msg.hwnd), Msg.wParam);
 			DEBUGSTRTIMER(szDbg);
 		}
 		#endif
@@ -1839,8 +1618,8 @@ bool PtMouseDblClickTest(const MSG& msg1, const MSG msg2)
 	}
 
 	// Check coord diff
-	POINT pt1 = {(i16)LOWORD(msg1.lParam), (i16)HIWORD(msg1.lParam)};
-	POINT pt2 = {(i16)LOWORD(msg2.lParam), (i16)HIWORD(msg2.lParam)};
+	POINT pt1 = {(int16_t)LOWORD(msg1.lParam), (int16_t)HIWORD(msg1.lParam)};
+	POINT pt2 = {(int16_t)LOWORD(msg2.lParam), (int16_t)HIWORD(msg2.lParam)};
 	// Due to mouse captures hwnd may differ
 	if (msg1.hwnd != msg2.hwnd)
 	{
@@ -2083,6 +1862,7 @@ static HRESULT _CreateShellLink(PCWSTR pszArguments, PCWSTR pszPrefix, PCWSTR ps
 
 	CEStr lsTempBuf;
 	LPCWSTR pszConEmuStartArgs = gpConEmu->MakeConEmuStartArgs(lsTempBuf);
+	_ASSERTE(!pszConEmuStartArgs || pszConEmuStartArgs[_tcslen(pszConEmuStartArgs)-1]==L' ');
 
 	wchar_t* pszBuf = NULL;
 	if (!pszArguments || !*pszArguments)
@@ -2104,7 +1884,6 @@ static HRESULT _CreateShellLink(PCWSTR pszArguments, PCWSTR pszPrefix, PCWSTR ps
 		}
 		if (pszConEmuStartArgs && *pszConEmuStartArgs)
 		{
-			_ASSERTE(pszConEmuStartArgs[_tcslen(pszConEmuStartArgs)-1]==L' ');
 			_wcscat_c(pszBuf, cchMax, pszConEmuStartArgs);
 		}
 		_wcscat_c(pszBuf, cchMax, L"-run ");
@@ -2151,7 +1930,7 @@ static HRESULT _CreateShellLink(PCWSTR pszArguments, PCWSTR pszPrefix, PCWSTR ps
 			CEStr szBatch;
 			LPCWSTR pszTemp = pszArguments;
 			LPCWSTR pszIcon = NULL;
-			RConStartArgs args;
+			RConStartArgsEx args;
 
 			while (NextArg(&pszTemp, szTmp) == 0)
 			{
@@ -2389,8 +2168,8 @@ bool UpdateWin7TaskList(bool bForce, bool bNoSuccMsg /*= false*/)
 		else
 		{
 			// cMinSlots actually must control only ‘last items’ in jump lists
-			if ((nHistoryCount > 0) && (nHistoryCount > klMax(cMinSlots,(UINT)3)))
-				nHistoryCount = klMax(cMinSlots,(UINT)3);
+			if ((nHistoryCount > 0) && (nHistoryCount > std::max(cMinSlots,(UINT)3)))
+				nHistoryCount = std::max(cMinSlots,(UINT)3);
 
 			// And we tries to add all Tasks with flag ‘Taskbar jump lists’
 
@@ -2609,6 +2388,17 @@ HRESULT UpdateAppUserModelID()
 	LPCWSTR pszConfigFile = gpConEmu->ConEmuXml(&bSpecialXmlFile);
 	LPCWSTR pszConfigName = gpSetCls->GetConfigName();
 
+	if (bSpecialXmlFile && pszConfigFile && *pszConfigFile)
+	{
+		CEStr szXmlFile;
+		if (gpConEmu->FindConEmuXml(szXmlFile)
+			&& (0 == szXmlFile.Compare(pszConfigFile, false)))
+		{
+			pszConfigFile = nullptr; // -loadcfgfile is the same as used by default, don't add path file to AppID
+			bSpecialXmlFile = false;
+		}
+	}
+
 	wchar_t szSuffix[64] = L"";
 
 	// Don't change the ID if application was started without arguments changing:
@@ -2653,7 +2443,7 @@ HRESULT UpdateAppUserModelID()
 	{
 		lstrmerge(&lsTempBuf.ms_Val, L"::Registry", szSuffix);
 	}
-	if (bSpecialXmlFile && pszConfigFile && *pszConfigFile)
+	else if (bSpecialXmlFile && pszConfigFile && *pszConfigFile)
 	{
 		lstrmerge(&lsTempBuf.ms_Val, L"::", pszConfigFile, szSuffix);
 	}
@@ -2707,7 +2497,7 @@ HRESULT UpdateAppUserModelID()
 
 	// Log the change
 	wchar_t szLog[200];
-	_wsprintf(szLog, SKIPCOUNT(szLog) L"AppUserModelID was changed to `%s` Result=x%08X", AppID.ms_Val, (DWORD)hr);
+	swprintf_c(szLog, L"AppUserModelID was changed to `%s` Result=x%08X", AppID.ms_Val, (DWORD)hr);
 	LogString(szLog);
 
 	return hr;
@@ -2816,7 +2606,7 @@ int CheckZoneIdentifiers(bool abAutoUnblock)
 		L"This may cause blocking or access denied errors!");
 
 	int iBtn = abAutoUnblock ? IDYES
-		: ConfirmDialog(lsMsg, L"Warning!", NULL, NULL, MB_YESNOCANCEL,
+		: ConfirmDialog(lsMsg, L"Warning!", NULL, NULL, MB_YESNOCANCEL, ghWnd,
 			L"Unblock and Continue", L"Let ConEmu try to unblock these files" L"\r\n" L"You may see SmartScreen and UAC confirmations",
 			L"Visit home page and Exit", CEZONEID /* https://conemu.github.io/en/ZoneId.html */,
 			L"Ignore and Continue", L"You may face further warnings");
@@ -3018,7 +2808,7 @@ int CheckForDebugArgs(LPCWSTR asCmdLine)
 	UINT iSleep = 0;
 
 	#if defined(SHOW_STARTED_MSGBOX)
-	debugm = true;
+	debug = true;
 	#elif defined(WAIT_STARTED_DEBUGGER)
 	debugw = true;
 	#endif
@@ -3049,7 +2839,7 @@ int CheckForDebugArgs(LPCWSTR asCmdLine)
 
 	if (debug)
 	{
-		wchar_t szTitle[128]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"Conemu started, PID=%i", GetCurrentProcessId());
+		wchar_t szTitle[128]; swprintf_c(szTitle, L"Conemu started, PID=%i", GetCurrentProcessId());
 		CEStr lsText(L"GetCommandLineW()\n", GetCommandLineW(), L"\n\n\n" L"lpCmdLine\n", asCmdLine);
 		MessageBox(NULL, lsText, szTitle, MB_OK|MB_ICONINFORMATION|MB_SETFOREGROUND|MB_SYSTEMMODAL);
 		nDbg = IsDebuggerPresent();
@@ -3084,7 +2874,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	int iMainRc = 0;
 
 	g_hInstance = hInstance;
-	ghWorkingModule = (u64)hInstance;
+	ghWorkingModule = hInstance;
 
 #ifdef _DEBUG
 	gbAllowChkHeap = true;
@@ -3118,6 +2908,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		CDpiAware::setProcessDPIAwareness();
 	}
 
+
+	// lpCmdLine is not a UNICODE string, that's why we have to use GetCommandLineW()
+	// However, cygwin breaks normal way of creating Windows' processes,
+	// and GetCommandLineW will be useless in cygwin's builds (returns only exe full path)
+	CEStr lsCvtCmdLine;
+	if (lpCmdLine && *lpCmdLine)
+	{
+		int iLen = lstrlenA(lpCmdLine);
+		MultiByteToWideChar(CP_ACP, 0, lpCmdLine, -1, lsCvtCmdLine.GetBuffer(iLen), iLen+1);
+	}
+	// Prepared command line
+	CEStr lsCommandLine;
+	#if !defined(__CYGWIN__)
+	lsCommandLine.Set(GetCommandLineW());
+	#else
+	lsCommandLine.Set(lsCvtCmdLine.ms_Val);
+	#endif
+	if (lsCommandLine.IsEmpty())
+	{
+		lsCommandLine.Set(L"");
+	}
+
+	// -debug, -debugi, -debugw
+	CheckForDebugArgs(lsCommandLine);
+
+
 	/* *** DEBUG PURPOSES */
 	gpStartEnv = LoadStartupEnvEx::Create();
 	if (gnOsVer >= 0x600)
@@ -3144,7 +2960,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	}
 
 
-	gbIsDBCS = IsDbcs();
+	gbIsDBCS = IsWinDBCS();
 	if (gbIsDBCS)
 	{
 		HKEY hk = NULL;
@@ -3152,7 +2968,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		DWORD nRights = KEY_READ|WIN3264TEST((IsWindows64() ? KEY_WOW64_64KEY : 0),0);
 		if (nOemCP && !RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Console\\TrueTypeFont", 0, nRights, &hk))
 		{
-			wchar_t szName[64]; _wsprintf(szName, SKIPLEN(countof(szName)) L"%u", nOemCP);
+			wchar_t szName[64]; swprintf_c(szName, L"%u", nOemCP);
 			wchar_t szVal[64] = {}; DWORD cbSize = sizeof(szVal)-2;
 			if (!RegQueryValueEx(hk, szName, NULL, NULL, (LPBYTE)szVal, &cbSize) && *szVal)
 			{
@@ -3182,21 +2998,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	CLngRc::Initialize();
 	gVConDcMap.Init(MAX_CONSOLE_COUNT,true);
 	gVConBkMap.Init(MAX_CONSOLE_COUNT,true);
-	/*int nCmp;
-	nCmp = StrCmpI(L" ", L"A"); // -1
-	nCmp = StrCmpI(L" ", L"+");
-	nCmp = StrCmpI(L" ", L"-");
-	nCmp = wcscmp(L" ", L"-");
-	nCmp = wcsicmp(L" ", L"-");
-	nCmp = lstrcmp(L" ", L"-");
-	nCmp = lstrcmpi(L" ", L"-");
-	nCmp = StrCmpI(L" ", L"\\");*/
 	gpLocalSecurity = LocalSecurity();
 
 	#ifdef _DEBUG
 	gAllowAssertThread = am_Thread;
-	//wchar_t szDbg[64];
-	//msprintf(szDbg, countof(szDbg), L"xx=0x%X.", 0);
 	#endif
 
 	#if defined(_DEBUG)
@@ -3211,49 +3016,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	// our icon (shortcut on the desktop or TaskBar)
 	gpStartEnv->hStartMon = GetStartupMonitor();
 
-//#ifdef _DEBUG
-//	wchar_t* pszShort = GetShortFileNameEx(L"T:\\VCProject\\FarPlugin\\ConEmu\\Maximus5\\Debug\\Far2x86\\ConEmu\\ConEmu.exe");
-//	if (pszShort) free(pszShort);
-//	pszShort = GetShortFileNameEx(L"\\\\MAX\\X-change\\GoogleDesktopEnterprise\\AdminGuide.pdf");
-//	if (pszShort) free(pszShort);
-//
-//
-//	DWORD ImageSubsystem, ImageBits;
-//	GetImageSubsystem(ImageSubsystem,ImageBits);
-//
-//	//wchar_t szConEmuBaseDir[MAX_PATH+1], szConEmuExe[MAX_PATH+1];
-//	//BOOL lbDbgFind = FindConEmuBaseDir(szConEmuBaseDir, szConEmuExe);
-//
-//	wchar_t szDebug[1024] = {};
-//	msprintf(szDebug, countof(szDebug), L"Test %u %i %s 0x%X %c 0x%08X*",
-//		987654321, -1234, L"abcdef", 0xAB1298, L'Z', 0xAB1298);
-//	msprintf(szDebug, countof(szDebug), L"<%c%c>%u.%s",
-//		'я', (wchar_t)0x44F, 0x44F, L"End");
-//#endif
 
-	// lpCmdLine is not a UNICODE string, that's why we have to use GetCommandLineW()
-	// However, cygwin breaks normal way of creating Windows' processes,
-	// and GetCommandLineW will be useless in cygwin's builds (returns only exe full path)
-	CEStr lsCvtCmdLine;
-	if (lpCmdLine && *lpCmdLine)
-	{
-		int iLen = lstrlenA(lpCmdLine);
-		MultiByteToWideChar(CP_ACP, 0, lpCmdLine, -1, lsCvtCmdLine.GetBuffer(iLen), iLen+1);
-	}
-	// Prepared command line
-	CEStr lsCommandLine;
-	#if !defined(__CYGWIN__)
-	lsCommandLine.Set(GetCommandLineW());
-	#else
-	lsCommandLine.Set(lsCvtCmdLine.ms_Val);
-	#endif
-	if (lsCommandLine.IsEmpty())
-	{
-		lsCommandLine.Set(L"");
-	}
-
-	// -debug, -debugi, -debugw
-	CheckForDebugArgs(lsCommandLine);
 
 #ifdef DEBUG_MSG_HOOKS
 	ghDbgHook = SetWindowsHookEx(WH_CALLWNDPROC, DbgCallWndProc, NULL, GetCurrentThreadId());
@@ -3348,7 +3111,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	{
 		// force this config as "new"
 		DEBUGSTRSTARTUP(L"Clear config was requested");
-		gpSet->IsConfigNew = true;
+		gpSetCls->IsConfigNew = true;
 		gpSet->InitVanilla();
 	}
 	else
@@ -3395,8 +3158,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	// Settings are loaded, fixup
 	slfFlags |= slf_OnStartupLoad | slf_AllowFastConfig
 		| (bNeedCreateVanilla ? slf_NeedCreateVanilla : slf_None)
-		| (gpSet->IsConfigPartial ? slf_DefaultTasks : slf_None)
-		| ((gpConEmu->opt.ResetSettings || gpSet->IsConfigNew) ? slf_DefaultSettings : slf_None);
+		| (gpSetCls->IsConfigPartial ? slf_DefaultTasks : slf_None)
+		| ((gpConEmu->opt.ResetSettings || gpSetCls->IsConfigNew) ? slf_DefaultSettings : slf_None);
 	// выполнить дополнительные действия в классе настроек здесь
 	DEBUGSTRSTARTUP(L"Config loaded, post checks");
 	gpSetCls->SettingsLoaded(slfFlags, gpConEmu->opt.runCommand);
@@ -3437,6 +3200,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	if (gpConEmu->mb_UpdateJumpListOnStartup && gpConEmu->opt.ExitAfterActionPrm)
 	{
 		DEBUGSTRSTARTUP(L"Updating Win7 task list");
+		OleInitializer ole(true); // gh-1478
 		if (!UpdateWin7TaskList(true/*bForce*/, true/*bNoSuccMsg*/))
 		{
 			if (!iMainRc) iMainRc = 10;
@@ -3593,14 +3357,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	//	}
 	//}
 
-	DEBUGSTRSTARTUPLOG(L"Registering local fonts");
+	gpConEmu->ReloadMonitorInfo();
+	if (gpStartEnv->hStartMon)
+		gpConEmu->SetRequestedMonitor(gpStartEnv->hStartMon);
 
-	gpFontMgr->RegisterFonts();
-	gpFontMgr->InitFont(
-		gpConEmu->opt.FontVal.GetStr(),
-		gpConEmu->opt.SizeVal.Exists ? gpConEmu->opt.SizeVal.GetInt() : -1,
-		gpConEmu->opt.ClearTypeVal.Exists ? gpConEmu->opt.ClearTypeVal.GetInt() : -1
-	);
 
 	// Forced window size or pos
 	// Call this AFTER SettingsLoaded because we (may be)
@@ -3626,6 +3386,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	if (gpSet->wndCascade)
 	{
+		// #SIZE_TODO the CSettings::GetOverallDpi() must be already called
 		gpConEmu->CascadedPosFix();
 	}
 
@@ -3815,7 +3576,7 @@ wrap:
 	// HeapDeinitialize() - Нельзя. Еще живут глобальные объекты
 	DEBUGSTRSTARTUP(L"WinMain exit");
 	// If TerminateThread was called at least once,
-	// normal process shutdown may hangs
+	// normal process shutdown may hang
 	if (wasTerminateThreadCalled())
 	{
 		TerminateProcess(GetCurrentProcess(), iMainRc);

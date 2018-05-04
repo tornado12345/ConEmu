@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "defines.h"
 
 struct MSectionLockSimple;
 //class  MSectionLock;
@@ -63,16 +63,20 @@ public:
 struct MSectionLockSimple
 {
 protected:
-	MSectionSimple* mp_S;
+	MSectionSimple* mp_S = nullptr;
 	#ifdef _DEBUG
-	DWORD mn_LockTID, mn_LockTick;
+	DWORD mn_LockTID = 0, mn_LockTick = 0;
 	#endif
-	bool mb_Locked;
+	bool mb_Locked = false;
 public:
 	BOOL Lock(MSectionSimple* apS, DWORD anTimeout=-1);
 	void Unlock();
 	BOOL isLocked();
 public:
 	MSectionLockSimple();
+	MSectionLockSimple(MSectionSimple& cs);
 	~MSectionLockSimple();
+
+	MSectionLockSimple(const MSectionLockSimple&) = delete;
+	MSectionLockSimple(MSectionLockSimple&&) = delete;
 };

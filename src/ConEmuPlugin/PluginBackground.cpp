@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,11 +40,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #undef HIDE_TODO
 
-//#include <stdio.h>
-#include <windows.h>
-//#include <windowsx.h>
-//#include <string.h>
-//#include <tchar.h>
 #include "../common/Common.h"
 #include "../common/MSection.h"
 #include "../common/MFileMapping.h"
@@ -611,7 +606,7 @@ void CPluginBackground::UpdateBackground()
 			szEmfFile[nLen++] = L'\\';
 			szEmfFile[nLen] = 0;
 		}
-		_wsprintf(szEmfFile+nLen, SKIPLEN(31) L"CeBack%u.emf", GetCurrentProcessId());
+		swprintf_c(szEmfFile+nLen, 31/*#SECURELEN*/, L"CeBack%u.emf", GetCurrentProcessId());
 		pszEmfFile = szEmfFile;
 		#endif
 
@@ -630,7 +625,7 @@ void CPluginBackground::UpdateBackground()
 			_ASSERTE(hdc!=NULL);
 			return;
 		}
-		_ASSERTE(pBits = NULL);
+		_ASSERTE(pBits == NULL);
 		hDib = CreateDIBSection(hScreen, (BITMAPINFO*)&bi, DIB_RGB_COLORS, (void**)&pBits, NULL, 0);
 	}
 	ReleaseDC(NULL, hScreen); hScreen = NULL;

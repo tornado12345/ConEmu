@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -91,7 +91,7 @@ LRESULT CSetPgViews::OnInitDialog(HWND hDlg, bool abInitial)
 	CSetDlgLists::FillListBoxItems(GetDlgItem(hDlg, tThumbMaxZoom), CSetDlgLists::eThumbMaxZoom, gpSet->ThSet.nMaxZoom, false);
 
 	// Colors
-	for(uint c = c32; c <= c34; c++)
+	for(unsigned c = c32; c <= c34; c++)
 		ColorSetEdit(hDlg, c);
 
 	nVal = gpSet->ThSet.crBackground.ColorIdx;
@@ -180,7 +180,8 @@ INT_PTR CSetPgViews::OnComboBox(HWND hDlg, WORD nCtrlId, WORD code)
 						gpSet->ThSet.Tiles.nFontHeight = val;
 					break;
 				case tThumbMaxZoom:
-					gpSet->ThSet.nMaxZoom = max(100,((nSel+1)*100));
+					gpSet->ThSet.nMaxZoom = std::max<UINT>(100, ((nSel+1)*100));
+					break;
 				default:
 					_ASSERTE(FALSE && "ListBox was not processed");
 			}

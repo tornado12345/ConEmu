@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/RgnDetect.h"
 #include "../common/Execute.h"
 #include "../common/PipeServer.h"
+#include "../common/WConsole.h"
 #include "../common/WUser.h"
 #include "RealServer.h"
 #include "RealConsole.h"
@@ -85,13 +86,13 @@ void CRealServer::Init(CRealConsole* apRCon)
 bool CRealServer::Start()
 {
 	DWORD nConWndID = (DWORD)(((DWORD_PTR)mp_RCon->hConWnd) & 0xFFFFFFFF);
-	_wsprintf(mp_RCon->ms_VConServer_Pipe, SKIPLEN(countof(mp_RCon->ms_VConServer_Pipe)) CEGUIPIPENAME, L".", nConWndID);
+	swprintf_c(mp_RCon->ms_VConServer_Pipe, CEGUIPIPENAME, L".", nConWndID);
 
 	if (!mh_GuiAttached)
 	{
 		wchar_t szEvent[64];
 
-		_wsprintf(szEvent, SKIPLEN(countof(szEvent)) CEGUIRCONSTARTED, nConWndID);
+		swprintf_c(szEvent, CEGUIRCONSTARTED, nConWndID);
 		//// Скорее всего событие в сервере еще не создано
 		//mh_GuiAttached = OpenEvent(EVENT_MODIFY_STATE, FALSE, mp_RCon->ms_VConServer_Pipe);
 		//// Вроде, когда используется run as administrator - event открыть не получается?
@@ -167,34 +168,36 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 	{
 		case sst_ServerStart:
 		case sst_ServerStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)\n",
+			swprintf_c(szDbg, L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)",
 				(nStarted==sst_ServerStart)?L"ServerStart":L"ServerStop", pIn->hdr.nCreateTick, pIn->StartStop.dwPID, pIn->hdr.nSrcPID);
 			break;
 		case sst_AltServerStart:
 		case sst_AltServerStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)\n",
+			swprintf_c(szDbg, L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)",
 				(nStarted==sst_AltServerStart)?L"AltServerStart":L"AltServerStop", pIn->hdr.nCreateTick, pIn->StartStop.dwPID, pIn->hdr.nSrcPID);
 			break;
 		case sst_ComspecStart:
 		case sst_ComspecStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)\n",
+			swprintf_c(szDbg, L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)",
 				(nStarted==sst_ComspecStart)?L"ComspecStart":L"ComspecStop", pIn->hdr.nCreateTick, pIn->StartStop.dwPID, pIn->hdr.nSrcPID);
 			break;
 		case sst_AppStart:
 		case sst_AppStop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)\n",
+			swprintf_c(szDbg, L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)",
 				(nStarted==sst_AppStart)?L"AppStart":L"AppStop", pIn->hdr.nCreateTick, pIn->StartStop.dwPID, pIn->hdr.nSrcPID);
 			break;
 		case sst_App16Start:
 		case sst_App16Stop:
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)\n",
+			swprintf_c(szDbg, L"GUI received CECMD_CMDSTARTSTOP(%s,%i,PID=%u,From=%u)",
 				(nStarted==sst_App16Start)?L"App16Start":L"App16Stop", pIn->hdr.nCreateTick, pIn->StartStop.dwPID, pIn->hdr.nSrcPID);
 			break;
 		default:
 			_ASSERTE(nStarted==sst_ServerStart && "Unknown start code");
+			szDbg[0] = 0;
 	}
 
-	mp_RCon->LogString(szDbg);
+	if (szDbg[0])
+		mp_RCon->LogString(szDbg);
 
 	_ASSERTE(pIn->StartStop.dwPID!=0);
 	DWORD nPID     = pIn->StartStop.dwPID;
@@ -225,7 +228,7 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 		for (UINT k = 0; !lbPushed && k <= 1; k++)
 		{
 			UINT iStart = !k ? mp_RCon->mn_TerminatedIdx : 0;
-			UINT iEnd = !k ? countof(mp_RCon->m_TerminatedPIDs) : min(mp_RCon->mn_TerminatedIdx,countof(mp_RCon->m_TerminatedPIDs));
+			UINT iEnd = !k ? countof(mp_RCon->m_TerminatedPIDs) : std::min<UINT>(mp_RCon->mn_TerminatedIdx,countof(mp_RCon->m_TerminatedPIDs));
 			// циклический буфер
 			for (UINT i = iStart; i < iEnd; i++)
 			{
@@ -293,7 +296,7 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 		if (nStarted == sst_ServerStart)
 		{
 			wchar_t szInfo[80];
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Console server started PID=%u...", nPID);
+			swprintf_c(szInfo, L"Console server started PID=%u...", nPID);
 			mp_RCon->SetConStatus(szInfo, CRealConsole::cso_ResetOnConsoleReady|CRealConsole::cso_Critical);
 
 			// Активным должен быть реальный буфер
@@ -499,7 +502,7 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 					// А вот если идет аттач внешних консолей - то размер будет отличаться (и это нормально)
 					_ASSERTE(mp_RCon->mb_WasStartDetached || mp_RCon->mn_DefaultBufferHeight == mp_RCon->mp_RBuf->GetBufferHeight()/*con.m_sbi.dwSize.Y*/ || mp_RCon->mp_RBuf->GetBufferHeight()/*con.m_sbi.dwSize.Y*/ == mp_RCon->TextHeight());
 
-					pOut->StartStopRet.nBufferHeight = max(mp_RCon->mp_RBuf->GetBufferHeight()/*con.m_sbi.dwSize.Y*/,mp_RCon->mn_DefaultBufferHeight);
+					pOut->StartStopRet.nBufferHeight = std::max<int>(mp_RCon->mp_RBuf->GetBufferHeight()/*con.m_sbi.dwSize.Y*/,mp_RCon->mn_DefaultBufferHeight);
 					_ASSERTE(mp_RCon->mp_RBuf->TextHeight()/*con.nTextHeight*/ >= 1);
 					pOut->StartStopRet.nHeight = mp_RCon->mp_RBuf->TextHeight()/*con.nTextHeight*/;
 					//111126 - убрал. выше буфер блокируется
@@ -648,7 +651,7 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 			}
 
 			#ifdef _DEBUG
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Returns normal window size begin at %i\n", GetTickCount());
+			swprintf_c(szDbg, L"Returns normal window size begin at %i\n", GetTickCount());
 			DEBUGSTRCMD(szDbg);
 			#endif
 
@@ -656,7 +659,7 @@ CESERVER_REQ* CRealServer::cmdStartStop(LPVOID pInst, CESERVER_REQ* pIn, UINT nD
 			mp_RCon->mp_RBuf->SetConsoleSize(crNewSize.X, crNewSize.Y, 0, CECMD_CMDFINISHED);
 
 			#ifdef _DEBUG
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Finished returns normal window size begin at %i\n", GetTickCount());
+			swprintf_c(szDbg, L"Finished returns normal window size begin at %i\n", GetTickCount());
 			DEBUGSTRCMD(szDbg);
 			#endif
 
@@ -1412,9 +1415,12 @@ CESERVER_REQ* CRealServer::cmdStartXTerm(LPVOID pInst, CESERVER_REQ* pIn, UINT n
 
 	switch (mode)
 	{
-	case tmc_Keyboard:
+	case tmc_TerminalType:
 		_ASSERTE(value == te_win32 || value == te_xterm);
 		mp_RCon->StartStopXTerm(nPID, (value != te_win32));
+		break;
+	case tmc_MouseMode:
+		mp_RCon->StartStopXMouse(nPID, (TermMouseMode)value);
 		break;
 	case tmc_BracketedPaste:
 		mp_RCon->StartStopBracketedPaste(nPID, (value != 0));
@@ -1424,6 +1430,18 @@ CESERVER_REQ* CRealServer::cmdStartXTerm(LPVOID pInst, CESERVER_REQ* pIn, UINT n
 		break;
 	case tmc_CursorShape:
 		mp_RCon->SetCursorShape((TermCursorShapes)value);
+		break;
+	case tmc_ConInMode:
+		// Some console application (not hooked?) changes ConInMode flag ENABLE_VIRTUAL_TERMINAL_INPUT
+		if ((mp_RCon->GetTermType() == te_xterm) != ((value & ENABLE_VIRTUAL_TERMINAL_INPUT) == ENABLE_VIRTUAL_TERMINAL_INPUT))
+		{
+			_ASSERTEX(mp_RCon->m_RootInfo.nPID == nPID); // expected PID at the moment
+			DWORD nRootPID = mp_RCon->m_RootInfo.nPID ? mp_RCon->m_RootInfo.nPID : nPID;
+			bool newXTerm = ((value & ENABLE_VIRTUAL_TERMINAL_INPUT) == ENABLE_VIRTUAL_TERMINAL_INPUT);
+			mp_RCon->StartStopXTerm(nRootPID, newXTerm);
+			if (newXTerm)
+				mp_RCon->StartStopAppCursorKeys(nRootPID, true);
+		}
 		break;
 	default:
 		bProcessed = FALSE;
@@ -1486,7 +1504,7 @@ CESERVER_REQ* CRealServer::cmdGetTaskCmd(LPVOID pInst, CESERVER_REQ* pIn, UINT n
 		LPCWSTR pszTemp = pTask->pszCommands;
 		if (0 == NextLine(&pszTemp, lsData))
 		{
-			RConStartArgs args;
+			RConStartArgsEx args;
 			LPCWSTR pszRaw = gpConEmu->ParseScriptLineOptions(lsData.ms_Val, NULL, NULL);
 			if (pszRaw)
 			{
@@ -1700,9 +1718,14 @@ BOOL CRealServer::ServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ* &
 		pOut = pRSrv->cmdIsAnsiExecAllowed(pInst, pIn, nDataSize);
 		break;
 	case CECMD_GETROOTINFO:
+		// Why 'GET' info?
 		_ASSERTE(!pIn->RootInfo.bRunning && pIn->RootInfo.nPID);
 		pRSrv->mp_RCon->UpdateRootInfo(pIn->RootInfo);
 		pOut = ExecuteNewCmd(CECMD_GETROOTINFO, sizeof(CESERVER_REQ_HDR));
+		break;
+	case CECMD_STARTCONNECTOR:
+		pRSrv->mp_RCon->SetMountRoot(pIn);
+		pOut = ExecuteNewCmd(CECMD_STARTCONNECTOR, sizeof(CESERVER_REQ_HDR));
 		break;
 	//else if (pIn->hdr.nCmd == CECMD_ASSERT)
 	//	pOut = cmdAssert(pInst, pIn, nDataSize);

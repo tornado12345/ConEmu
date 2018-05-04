@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/CmdLine.h"
 #include "../common/MStrDup.h"
 #include <stdlib.h>
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "MapDump.h"
 
 enum MapDumpEnum
@@ -50,51 +50,50 @@ enum MapDumpEnum
 static void DumpMember(const WORD& dwData, LPCWSTR szName, LPCWSTR szIndent)
 {
 	wchar_t szData[32]; CEStr lsLine;
-	lsLine = lstrmerge(szIndent, szName, L": ", _ultow(dwData, szData, 10), L"\r\n");
+	lsLine = lstrmerge(szIndent, szName, L": ", ultow_s(dwData, szData, 10), L"\r\n");
 	_wprintf(lsLine);
 }
 
 static void DumpMember(const DWORD& dwData, LPCWSTR szName, LPCWSTR szIndent)
 {
 	wchar_t szData[32]; CEStr lsLine;
-	lsLine = lstrmerge(szIndent, szName, L": ", _ultow(dwData, szData, 10), L"\r\n");
+	lsLine = lstrmerge(szIndent, szName, L": ", ultow_s(dwData, szData, 10), L"\r\n");
 	_wprintf(lsLine);
 }
 
 static void DumpMember(const int& iData, LPCWSTR szName, LPCWSTR szIndent)
 {
-	wchar_t szData[32]; CEStr lsLine;
-	lsLine = lstrmerge(szIndent, szName, L": ", _ltow(iData, szData, 10), L"\r\n");
+	wchar_t szData[32];
+	CEStr lsLine(szIndent, szName, L": ", ltow_s(iData, szData, 10), L"\r\n");
 	_wprintf(lsLine);
 }
 
 static void DumpMember(const wchar_t* pszData, LPCWSTR szName, LPCWSTR szIndent)
 {
-	CEStr lsLine;
-	lsLine = lstrmerge(szIndent, szName, L": `", pszData, L"`\r\n");
+	CEStr lsLine(szIndent, szName, L": `", pszData, L"`\r\n");
 	_wprintf(lsLine);
 }
 
-static void DumpMember(const u64& llData, LPCWSTR szName, LPCWSTR szIndent)
+static void DumpMember(const uint64_t& llData, LPCWSTR szName, LPCWSTR szIndent)
 {
-	wchar_t szData[64]; CEStr lsLine;
-	_wsprintf(szData, SKIPCOUNT(szData) L"0x%p", (LPVOID)llData);
-	lsLine = lstrmerge(szIndent, szName, L": ", szData, L"\r\n");
+	wchar_t szData[64];
+	swprintf_c(szData, L"0x%p", (LPVOID)llData);
+	CEStr lsLine(szIndent, szName, L": ", szData, L"\r\n");
 	_wprintf(lsLine);
 }
 
 static void DumpMember(const HWND2& hWnd, LPCWSTR szName, LPCWSTR szIndent)
 {
-	wchar_t szData[32]; CEStr lsLine;
-	_wsprintf(szData, SKIPCOUNT(szData) L"0x%08X", (DWORD)hWnd);
-	lsLine = lstrmerge(szIndent, szName, L": ", szData, L"\r\n");
+	wchar_t szData[32];
+	swprintf_c(szData, L"0x%08X", (DWORD)hWnd);
+	CEStr lsLine(szIndent, szName, L": ", szData, L"\r\n");
 	_wprintf(lsLine);
 }
 
 static void DumpMember(const CONSOLE_SCREEN_BUFFER_INFO& cs, LPCWSTR szName, LPCWSTR szIndent)
 {
 	wchar_t szText[255];
-	_wsprintf(szText, SKIPCOUNT(szText) L"%s%s: Size={%i,%i} Cursor={%i,%i} Attr=0x%02X Wnd={%i,%i}-{%i,%i} Max={%i,%i}\r\n",
+	swprintf_c(szText, L"%s%s: Size={%i,%i} Cursor={%i,%i} Attr=0x%02X Wnd={%i,%i}-{%i,%i} Max={%i,%i}\r\n",
 		szIndent, szName, cs.dwSize.X, cs.dwSize.Y, cs.dwCursorPosition.X, cs.dwCursorPosition.Y,
 		cs.wAttributes, cs.srWindow.Left, cs.srWindow.Top, cs.srWindow.Right, cs.srWindow.Bottom,
 		cs.dwMaximumWindowSize.X, cs.dwMaximumWindowSize.Y);
@@ -104,7 +103,7 @@ static void DumpMember(const CONSOLE_SCREEN_BUFFER_INFO& cs, LPCWSTR szName, LPC
 static void DumpMember(const COORD& cr, LPCWSTR szName, LPCWSTR szIndent)
 {
 	wchar_t szText[80];
-	_wsprintf(szText, SKIPCOUNT(szText) L"%s%s: {%i,%i}\r\n",
+	swprintf_c(szText, L"%s%s: {%i,%i}\r\n",
 		szIndent, szName, cr.X, cr.Y);
 	_wprintf(szText);
 }
@@ -124,7 +123,7 @@ static void DumpConsoleInfo(const ConEmuConsoleInfo& con, LPCWSTR szIndent)
 		wcscat_c(szFlags, L"|None");
 
 	wchar_t szLine[128];
-	_wsprintf(szLine, SKIPCOUNT(szLine) L" ConWnd=0x%08X DCWnd=0x%08X ChildGui=0x%08X SrvPID=%u %s\r\n",
+	swprintf_c(szLine, L" ConWnd=0x%08X DCWnd=0x%08X ChildGui=0x%08X SrvPID=%u %s\r\n",
 		(DWORD)con.Console, (DWORD)con.DCWindow, (DWORD)con.ChildGui, con.ServerPID, szFlags+1);
 	_wprintf(szLine);
 }
@@ -216,7 +215,7 @@ static void DumpStructPtr(void* ptrData, MapDumpEnum type, LPCWSTR szIndent)
 			{
 				if (!p->Consoles[i].ServerPID && !p->Consoles[i].Console && !p->Consoles[i].DCWindow && !p->Consoles[i].ChildGui)
 					continue;
-				_wsprintf(szText, SKIPCOUNT(szText) L"%s  [%2u]:", szIndent, i);
+				swprintf_c(szText, L"%s  [%2u]:", szIndent, i);
 				DumpConsoleInfo(p->Consoles[i], szText);
 			}
 			// ConEmuMainFont MainFont;
@@ -261,7 +260,7 @@ static void DumpStructPtr(void* ptrData, MapDumpEnum type, LPCWSTR szIndent)
 			dumpMember(nReadConsolePID);
 			dumpMember(nLastReadInputPID);
 			// WORD nPreReadRowID[2]
-			_wsprintf(szText, SKIPCOUNT(szText) L"%snPreReadRowID[]: [%u, %u]\r\n", szIndent, (DWORD)p->nPreReadRowID[0], (DWORD)p->nPreReadRowID[1]);
+			swprintf_c(szText, L"%snPreReadRowID[]: [%u, %u]\r\n", szIndent, (DWORD)p->nPreReadRowID[0], (DWORD)p->nPreReadRowID[1]);
 			_wprintf(szText);
 			dumpMember(csbiPreRead);
 			DumpAppFlags(p->nActiveAppFlags, L"nActiveAppFlags", szIndent);
@@ -323,8 +322,8 @@ int ProcessMapping(MFileMapping<T>& fileMap, MapDumpEnum type, LPCWSTR pszMapNam
 	{
 		wchar_t szReq[32] = L"", szGet[32] = L"";
 		lsMsg = lstrmerge(L"### WARNING ###",
-			L" ReqSize=", _ultow(strSize, szReq, 10),
-			L" MapSize=", _ultow(fileMap.Ptr()->cbSize, szGet, 10),
+			L" ReqSize=", ultow_s(strSize, szReq, 10),
+			L" MapSize=", ultow_s(fileMap.Ptr()->cbSize, szGet, 10),
 			L"\r\n");
 		_wprintf(lsMsg);
 	}
@@ -370,9 +369,9 @@ int DumpStructData(LPCWSTR asMappingName)
 			{
 				if (p->Consoles[i].Console)
 				{
-					_wsprintf(szMapName, SKIPCOUNT(szMapName) CECONMAPNAME, (DWORD)p->Consoles[i].Console);
+					swprintf_c(szMapName, CECONMAPNAME, (DWORD)p->Consoles[i].Console);
 					DumpStructData(szMapName);
-					_wsprintf(szMapName, SKIPCOUNT(szMapName) CECONAPPMAPNAME, (DWORD)p->Consoles[i].Console);
+					swprintf_c(szMapName, CECONAPPMAPNAME, (DWORD)p->Consoles[i].Console);
 					DumpStructData(szMapName);
 				}
 			}

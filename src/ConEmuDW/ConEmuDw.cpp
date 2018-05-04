@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SHOWDEBUGSTR
 
-#include <windows.h>
+#include "../common/defines.h"
 
 #ifdef _DEBUG
 //  Раскомментировать, чтобы сразу после запуска процесса (conemuc.exe) показать MessageBox, чтобы прицепиться дебаггером
@@ -170,7 +170,7 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved
 			{
 				//HeapInitialize();
 				ghOurModule = (HMODULE)hModule;
-				ghWorkingModule = (u64)hModule;
+				ghWorkingModule = hModule;
 				HeapInitialize();
 
 				#ifdef SHOW_STARTED_MSGBOX
@@ -602,7 +602,7 @@ void CloseBuffers()
 BOOL WINAPI GetTextAttributes(FarColor* Attributes)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::GetTextAttributes\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::GetTextAttributes\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -772,7 +772,7 @@ WORD Far2ConEmuColor(const FarColor* Attributes, AnnotationInfo& t)
 BOOL WINAPI SetTextAttributes(const FarColor* Attributes)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::SetTextAttributes\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::SetTextAttributes\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -870,7 +870,7 @@ enum CLEAR_REGION
 BOOL WINAPI ClearExtraRegions(const FarColor* Color, int Mode)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::ClearExtraRegions\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::ClearExtraRegions\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -911,7 +911,7 @@ BOOL WINAPI ClearExtraRegions(const FarColor* Color, int Mode)
 BOOL WINAPI ClearExtraRegionsOld(const FarColor* Color)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::ClearExtraRegionsOld\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::ClearExtraRegionsOld\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -921,7 +921,7 @@ BOOL WINAPI ClearExtraRegionsOld(const FarColor* Color)
 BOOL WINAPI ReadOutput(FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD BufferCoord, SMALL_RECT* ReadRegion)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::ReadOutput({%i,%i}-{%i,%i})\n", ReadRegion->Left, ReadRegion->Top, ReadRegion->Right, ReadRegion->Bottom);
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::ReadOutput({%i,%i}-{%i,%i})\n", ReadRegion->Left, ReadRegion->Top, ReadRegion->Right, ReadRegion->Bottom);
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -1076,7 +1076,7 @@ BOOL WINAPI ReadOutput(FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD BufferCoor
 BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD BufferCoord, SMALL_RECT* WriteRegion)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::WriteOutput({%i,%i}-{%i,%i})\n", WriteRegion->Left, WriteRegion->Top, WriteRegion->Right, WriteRegion->Bottom);
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::WriteOutput({%i,%i}-{%i,%i})\n", WriteRegion->Left, WriteRegion->Top, WriteRegion->Right, WriteRegion->Bottom);
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -1278,7 +1278,7 @@ BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD Buf
 BOOL WINAPI WriteText(HANDLE hConsoleOutput, const AnnotationInfo* Attributes, const wchar_t* Buffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::WriteText(chars=%u)\n", nNumberOfCharsToWrite);
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::WriteText(chars=%u)\n", nNumberOfCharsToWrite);
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -1364,7 +1364,7 @@ BOOL WINAPI WriteText(HANDLE hConsoleOutput, const AnnotationInfo* Attributes, c
 
 	// Обновить позицию курсора
 	_ASSERTE((csbi.dwCursorPosition.X+(int)nNumberOfCharsToWrite-1) < csbi.dwSize.X);
-	csbi.dwCursorPosition.X = (SHORT)max((csbi.dwSize.X-1),(csbi.dwCursorPosition.X+(int)nNumberOfCharsToWrite-1));
+	csbi.dwCursorPosition.X = (SHORT)std::max((csbi.dwSize.X-1),(csbi.dwCursorPosition.X+(int)nNumberOfCharsToWrite-1));
 	SetConsoleCursorPosition(h, csbi.dwCursorPosition);
 
 	#if 0
@@ -1408,7 +1408,7 @@ BOOL WINAPI WriteText(HANDLE hConsoleOutput, const AnnotationInfo* Attributes, c
 BOOL WINAPI Commit()
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::Commit\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::Commit\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -1673,14 +1673,14 @@ INT_PTR CALLBACK ColorDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 		else
 		{
 			// Поместить в координаты {X=37,Y=2} (0based)
-			int x = max(0,(38 - P->rcBuffer.Left));
+			int x = std::max(0,(38 - P->rcBuffer.Left));
 			int xShift = (P->rcParent.right - P->rcParent.left + 1) / (P->rcBuffer.Right - P->rcBuffer.Left + 1) * x;
 			if ((xShift + (rcDlg.right-rcDlg.left)) > P->rcParent.right)
-				xShift = max(P->rcParent.left, (P->rcParent.right - (rcDlg.right-rcDlg.left)));
-			int y = max(0,(2 - P->rcBuffer.Top));
+				xShift = std::max(P->rcParent.left, (P->rcParent.right - (rcDlg.right-rcDlg.left)));
+			int y = std::max(0,(2 - P->rcBuffer.Top));
 			int yShift = (P->rcParent.bottom - P->rcParent.top + 1) / (P->rcBuffer.Bottom - P->rcBuffer.Top + 1) * y;
 			if ((yShift + (rcDlg.bottom-rcDlg.top)) > P->rcParent.bottom)
-				yShift = max(P->rcParent.top, (P->rcParent.bottom - (rcDlg.bottom-rcDlg.top)));
+				yShift = std::max(P->rcParent.top, (P->rcParent.bottom - (rcDlg.bottom-rcDlg.top)));
 			//yShift += 32; //TODO: Табы, пока так
 			SetWindowPos(hwndDlg, hTop,
 				P->rcParent.left+xShift, P->rcParent.top+yShift,
@@ -1875,7 +1875,7 @@ void CopyShaded(FAR_CHAR_INFO* Src, FAR_CHAR_INFO* Dst)
 int  WINAPI GetColorDialog(FarColor* Color, BOOL Centered, BOOL AddTransparent)
 {
 	#ifdef _DEBUG
-	wchar_t szCall[100]; _wsprintf(szCall, SKIPCOUNT(szCall) L"ExtCon::GetColorDialog\n");
+	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::GetColorDialog\n");
 	DEBUGSTRCALL(szCall);
 	#endif
 
@@ -1998,7 +1998,7 @@ int  WINAPI GetColorDialog(FarColor* Color, BOOL Centered, BOOL AddTransparent)
 	{
 		Parm.rcBuffer = srWork;
 
-		int nWidth = Far3Color::Max(lstrlen(pszText),lstrlen(pszTitle))+10;
+		int nWidth = std::max(lstrlen(pszText), lstrlen(pszTitle))+10;
 		int nHeight = 6;
 		int nX = (srWork.Right - srWork.Left - nWidth) >> 1;
 		int nY = (srWork.Bottom - srWork.Top - nHeight) >> 1;

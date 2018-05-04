@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -82,7 +82,7 @@ int CFindPanel::GetMinWidth()
 {
 	if (!this || !mh_Pane)
 		return 0;
-	return klMax(80,(int)(SearchCtrlWidthMul*mn_RebarHeight));
+	return std::max(80,(int)(SearchCtrlWidthMul*mn_RebarHeight));
 }
 
 void CFindPanel::ResetSearch()
@@ -162,7 +162,7 @@ void CFindPanel::OnCreateFont()
 	lf.lfCharSet = gpSet->nTabFontCharSet;
 	lf.lfPitchAndFamily = DEFAULT_PITCH | FF_SWISS;
 	wcscpy_c(lf.lfFaceName, gpSet->sTabFontFace);
-	lf.lfHeight = -klMax(6,(int)(rcEdit.bottom - gpSetCls->EvalSize(3, esf_Vertical|esf_CanUseDpi)));
+	lf.lfHeight = -std::max(6,(int)(rcEdit.bottom - gpSetCls->EvalSize(3, esf_Vertical|esf_CanUseDpi)));
 	mh_Font = CreateFontIndirect(&lf);
 
 	SendMessage(mh_Edit, WM_SETFONT, (WPARAM)mh_Font, FALSE);
@@ -527,6 +527,15 @@ bool CFindPanel::IsAvailable(bool bFilled)
 
 	// Поиск не был запущен
 	return false;
+}
+
+void CFindPanel::Invalidate()
+{
+	// #SIZE_TODO When caption is hidden, the search field is not painted properly on startup when `-detached`
+	if (mh_Pane)
+		::InvalidateRect(mh_Pane, NULL, FALSE);
+	if (mh_Edit)
+		::InvalidateRect(mh_Edit, NULL, FALSE);
 }
 
 HWND CFindPanel::Activate(bool bActivate)

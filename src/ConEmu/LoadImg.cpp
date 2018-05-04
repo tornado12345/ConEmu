@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -179,7 +179,7 @@ static GdipCreateBitmapFromHBITMAP_t GdipCreateBitmapFromHBITMAP = NULL;
 //
 //			if (mp_Data)
 //			{
-//				dwRead = min(cb, max(0,(mn_DataLen-mn_DataPos)));
+//				dwRead = std::min(cb, std::max(0,(mn_DataLen-mn_DataPos)));
 //
 //				if (dwRead>0)
 //				{
@@ -219,7 +219,7 @@ static GdipCreateBitmapFromHBITMAP_t GdipCreateBitmapFromHBITMAP = NULL;
 //				{
 //					// Нужно увеличить буфер, но сохранить текущий размер
 //					DWORD lLastLen = mn_DataLen;
-//					ULARGE_INTEGER lNewSize; lNewSize.QuadPart = mn_DataSize + max((cb+1024), 256*1024);
+//					ULARGE_INTEGER lNewSize; lNewSize.QuadPart = mn_DataSize + std::max((cb+1024), 256*1024);
 //
 //					if (lNewSize.HighPart!=0)
 //						return S_FALSE;
@@ -669,7 +669,7 @@ BITMAPFILEHEADER* LoadImageEx(LPCWSTR asImgPath, BY_HANDLE_FILE_INFORMATION& inf
 				{
 					inf.nFileSizeLow += sizeof(bm); // BM
 
-					if (pBuf[0] == 'B' && pBuf[1] == 'M' && *(u32*)(pBuf + 0x0A) >= 0x36 && *(u32*)(pBuf + 0x0A) <= 0x436 && *(u32*)(pBuf + 0x0E) == 0x28 && !pBuf[0x1D] && !*(u32*)(pBuf + 0x1E))
+					if (pBuf[0] == 'B' && pBuf[1] == 'M' && *(uint32_t*)(pBuf + 0x0A) >= 0x36 && *(uint32_t*)(pBuf + 0x0A) <= 0x436 && *(uint32_t*)(pBuf + 0x0E) == 0x28 && !pBuf[0x1D] && !*(uint32_t*)(pBuf + 0x1E))
 					{
 						// OK
 					}

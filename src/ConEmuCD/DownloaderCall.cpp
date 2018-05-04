@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/WFiles.h"
 #include "../common/WThreads.h"
 #include "crc32.h"
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "ExitCodes.h"
 #include "DownloaderCall.h"
 
@@ -51,7 +51,7 @@ struct LineBuffer
 		// Enough storage?
 		if (!ptrData || ((cchMax - cchUsed) <= cbSize))
 		{
-			size_t cchNew = cchMax + max(8192,cbSize+1);
+			size_t cchNew = cchMax + std::max<size_t>(8192, cbSize+1);
 			char* ptrNew = (char*)realloc(ptrData, cchNew);
 			if (!ptrNew)
 				return; // memory allocation failed
@@ -240,7 +240,7 @@ protected:
 
 		while (nReadLeft)
 		{
-			nToRead = min(nBufSize, nReadLeft);
+			nToRead = std::min<DWORD>(nBufSize, nReadLeft);
 			if (!ReadFile(hFile, buf, nToRead, &nRead, NULL) || (nToRead != nRead))
 				goto wrap;
 			if (!CalcCRC(buf, nRead, crc))

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 #define BST(v) (int)(v & (BST_CHECKED|BST_INDETERMINATE)) // BST_UNCHECKED/BST_CHECKED/BST_INDETERMINATE
 
@@ -47,4 +47,6 @@ public:
 	static INT_PTR GetString(HWND hParent, WORD nCtrlId, wchar_t** ppszStr, LPCWSTR asNoDefault = NULL, bool abListBox = false);
 	static bool isHyperlinkCtrl(WORD nCtrlId);
 	static bool ProcessHyperlinkCtrl(HWND hDlg, WORD nCtrlId);
+	static bool OpenSettingsWiki(HWND hDlg, WORD nCtrlId);
+	static bool OpenHyperlink(CEStr& url, HWND hParent);
 };

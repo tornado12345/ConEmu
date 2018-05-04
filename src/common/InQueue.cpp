@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -92,6 +92,7 @@ BOOL InQueue::WriteInputQueue(const INPUT_RECORD *pr, BOOL bSetEvent /*= TRUE*/,
 		}
 
 		// OK
+		_ASSERTE(pSrc->EventType != 0);
 		*pNext = *(pSrc++);
 		this->pInputQueueWrite++;
 		InterlockedIncrement(&nUsedLen);
@@ -139,6 +140,7 @@ BOOL InQueue::ReadInputQueue(INPUT_RECORD *prs, DWORD *pCount, BOOL bNoRemove /*
 
 		while (n && pSrc < pEnd)
 		{
+			_ASSERTE(pSrc->EventType != 0);
 			*pDst = *pSrc; nCount++; pSrc++;
 			InterlockedDecrement(&nUsedLen);
 			//// Для приведения поведения к стандартному RealConsole&Far

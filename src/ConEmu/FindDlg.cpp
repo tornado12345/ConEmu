@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -54,9 +54,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 CEFindDlg::CEFindDlg()
 {
-	mh_FindDlg = NULL;
-	mp_Dlg = NULL;
-	mp_DpiAware = NULL;
 }
 
 void CEFindDlg::FindTextDialog()
@@ -85,8 +82,7 @@ void CEFindDlg::FindTextDialog()
 
 	gpConEmu->SkipOneAppsRelease(true);
 
-	if (!mp_DpiAware)
-		mp_DpiAware = new CDpiForDialog();
+	CDpiForDialog::Create(mp_DpiAware);
 
 	// (CreateDialog)
 	mp_Dlg = CDynDialog::ShowDialog(IDD_FIND, ghWnd, findTextProc, 0/*Param*/);
@@ -149,10 +145,10 @@ INT_PTR CEFindDlg::findTextProc(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lP
 			CRealConsole* pRCon = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : NULL;
 			RECT rcWnd = {}; GetWindowRect(pRCon->GetView(), &rcWnd);
 			RECT rcDlg = {}; GetWindowRect(hWnd2, &rcDlg);
-			int nShift = max(gpFontMgr->FontWidth(),gpFontMgr->FontHeight());
+			int nShift = std::max(gpFontMgr->FontWidth(),gpFontMgr->FontHeight());
 			int nWidth = rcDlg.right - rcDlg.left;
 			SetWindowPos(hWnd2, gpSet->isAlwaysOnTop ? HWND_TOPMOST : HWND_TOP,
-				max(rcWnd.left,(rcWnd.right-nShift-nWidth)), (rcWnd.top+nShift), 0,0,
+				std::max(rcWnd.left,(rcWnd.right-nShift-nWidth)), (rcWnd.top+nShift), 0,0,
 				SWP_NOSIZE);
 
 			gpConEmu->mp_Find->UpdateFindDlgAlpha(true);

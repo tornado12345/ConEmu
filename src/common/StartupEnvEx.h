@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include "MModule.h"
 #include "MStrDup.h"
 #include "StartupEnv.h"
 #include "WSession.h"
@@ -87,13 +88,14 @@ protected:
 			DWORD nRights = KEY_READ|WIN3264TEST((IsWindows64() ? KEY_WOW64_64KEY : 0),0);
 			if (0 == RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Console\\TrueTypeFont", 0, nRights, &hk))
 			{
-				bool bIsDBCS = (GetSystemMetrics(SM_DBCSENABLED) != 0);
+				bool bIsDBCS = IsWinDBCS();
 				DWORD idx = 0, cchName = countof(szName), cchValue = sizeof(szValue)-2, dwType;
 				LONG iRc;
 				wchar_t* psz = pszFonts;
 				while ((iRc = RegEnumValue(hk, idx++, szName, &cchName, NULL, &dwType, (LPBYTE)szValue, &cchValue)) == 0)
 				{
-					szName[min(countof(szName)-1,cchName)] = 0; szValue[min(countof(szValue)-1,cchValue/2)] = 0;
+					szName[std::min<size_t>(countof(szName)-1, cchName)] = 0;
+					szValue[std::min<size_t>(countof(szValue)-1,cchValue/2)] = 0;
 					int nNameLen = lstrlen(szName);
 					int nValLen = lstrlen(szValue);
 					int nLen = nNameLen+nValLen+3;
@@ -151,13 +153,39 @@ protected:
 		wchar_t* pszAutoruns = NULL;
 		HKEY hk = NULL;
 		if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Command Processor", 0, KEY_READ, &hk) == 0)
-			LoadAutorunsKey(hk, pszAutoruns, L"  HKCU: ");
+			LoadAutorunsKey(hk, pszAutoruns, L"  HKCU: "); // closes hk
 		bool bWin64 = IsWindows64();
 		if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Command Processor", 0, KEY_READ|(bWin64?KEY_WOW64_32KEY:0), &hk) == 0)
-			LoadAutorunsKey(hk, pszAutoruns, L"  HKLM32: ");
+			LoadAutorunsKey(hk, pszAutoruns, L"  HKLM32: "); // closes hk
 		if (bWin64 && RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Command Processor", 0, KEY_READ|KEY_WOW64_64KEY, &hk) == 0)
-			LoadAutorunsKey(hk, pszAutoruns, L"  HKLM64: ");
+			LoadAutorunsKey(hk, pszAutoruns, L"  HKLM64: "); // closes hk
 		return pszAutoruns;
+	}
+
+	static wchar_t* LoadWindowsBuild(const OSVERSIONINFOEXW& osv)
+	{
+		wchar_t* pszBuild = NULL;
+		if (IsWin10())
+		{
+			HKEY hk = NULL;
+			if (0 == RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &hk))
+			{
+				DWORD dwSize, UBR = 0, ubrType = 0, relType = 0;
+				wchar_t ReleaseId[128] = L"", szUBR[32];
+				LONG ubr = RegQueryValueEx(hk, L"UBR", NULL, &ubrType, (LPBYTE)&UBR, &(dwSize = sizeof(UBR)));
+				LONG rid = RegQueryValueEx(hk, L"ReleaseId", NULL, &relType, (LPBYTE)ReleaseId, &(dwSize = sizeof(ReleaseId)));
+				wchar_t* pszSP = osv.szCSDVersion[0] ? lstrmerge(L"; SP: ", osv.szCSDVersion) : NULL;
+				if (ubr == 0 && ubrType == REG_DWORD && UBR && rid == 0 && relType == REG_SZ && *ReleaseId)
+					pszBuild = lstrmerge(ReleaseId, L"; UBR: ", ultow_s(UBR, szUBR, 10), pszSP);
+				else if (rid == 0 && relType == REG_SZ && *ReleaseId)
+					pszBuild = lstrmerge(ReleaseId, pszSP);
+				else if (ubr == 0 && ubrType == REG_DWORD && UBR)
+					pszBuild = lstrmerge(ReleaseId, L"UBR(", ultow_s(UBR, szUBR, 10), L")", pszSP);
+				SafeFree(pszSP);
+				RegCloseKey(hk);
+			}
+		}
+		return pszBuild ? pszBuild : lstrdup(osv.szCSDVersion);
 	}
 
 	/*
@@ -262,9 +290,17 @@ public:
 		GetVersionEx((OSVERSIONINFOW*)&osv);
 		#pragma warning(default: 4996)
 
-		LPCWSTR pszReactOS = osv.szCSDVersion + lstrlen(osv.szCSDVersion) + 1;
-		if (!*pszReactOS)
-			pszReactOS++;
+		// if you're running on ReactOS, Version.szCSDVersion will contain two strings.
+		// The first string is the Windows compatible service pack number, "Service Pack 6".
+		// At the end of that string is a null byte. Following that null byte is the ReactOS
+		// version string (something like "ReactOS 0.2.5-RC1 (Build 20041227)".
+		// When running on Windows, there will be only one string in Version.szCSDVersion.
+		LPCWSTR pszReactOS = osv.szCSDVersion + lstrlen(osv.szCSDVersion); // points to '\0'
+		if ((pszReactOS + 10) < (osv.szCSDVersion + countof(osv.szCSDVersion)))
+		{
+			if (*(pszReactOS+1))
+				++pszReactOS;
+		}
 
 		HWND hConWnd = GetConsoleWindow();
 
@@ -276,54 +312,87 @@ public:
 			SYSTEMTIME st = {};
 			if (FileTimeToLocalFileTime(&CreationTime, &lft)
 				&& FileTimeToSystemTime(&lft, &st))
-					_wsprintf(szStartTime, SKIPLEN(countof(szStartTime))
+					swprintf_c(szStartTime,
 						L"%u-%02u-%02u %02u:%02u:%02u.%03u",
 						st.wYear, st.wMonth, st.wDay,
 						st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 		}
 
-		_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%u.%u.%u.x%u", osv.dwMajorVersion, osv.dwMinorVersion, osv.dwBuildNumber, bWin64 ? 64 : 32);
+		swprintf_c(szTitle, L"%u.%u.%u.x%u", osv.dwMajorVersion, osv.dwMinorVersion, osv.dwBuildNumber, bWin64 ? 64 : 32);
 		if ((osv.dwMajorVersion == 6) && (osv.dwMinorVersion == 3))
 		{
 			if (IsWin10())
 				wcscat_c(szTitle, L" !Win10!");
 		}
 
-		wchar_t szBuild[24], szVer4[8] = L"";
+		wchar_t szBuild[24], szVer4[8] = L"", szProdType[20];
 		lstrcpyn(szVer4, _T(MVV_4a), countof(szVer4));
 		// Same as ConsoleMain.cpp::SetWorkEnvVar()
-		_wsprintf(szBuild, SKIPCOUNT(szBuild) L"%02u%02u%02u%s%s",
+		swprintf_c(szBuild, L"%02u%02u%02u%s%s",
 			(MVV_1%100), MVV_2, MVV_3, szVer4[0]&&szVer4[1]?L"-":L"", szVer4);
+		if (osv.wProductType == VER_NT_WORKSTATION)
+			wcscpy_c(szProdType, L"workstation");
+		else if (osv.wProductType == VER_NT_SERVER)
+			wcscpy_c(szProdType, L"server");
+		else if (osv.wProductType == VER_NT_DOMAIN_CONTROLLER)
+			wcscpy_c(szProdType, L"domain");
+		else
+			swprintf_c(szProdType, L"%u", osv.wProductType);
 
-		_wsprintf(szSI, SKIPCOUNT(szSI) L"ConEmu %s [%u] Startup Info\r\n"
-			L"  OsVer: %s, Product: %u, SP: %u.%u, Suite: 0x%X, SM_SERVERR2: %u\r\n"
-			L"  CSDVersion: %s, ReactOS: %u (%s), Rsrv: %u\r\n"
+		wchar_t* pszWinBuild = LoadWindowsBuild(osv);
+		swprintf_c(szSI, L"ConEmu %s [%u] Startup Info\r\n"
+			L"  OsVer: %s, Product: %s, SP: %u.%u, Suite: 0x%X\r\n"
+			L"  Build: %s, ReactOS: %u%s%s%s, Rsrv: %u, SM_SERVERR2: %u\r\n"
 			L"  DBCS: %u, WINE: %u, PE: %u, Remote: %u, ACP: %u, OEMCP: %u, Admin: %u\r\n"
 			L"  StartTime: %s\r\n"
 			, szBuild, WIN3264TEST(32,64),
 			szTitle,
-			osv.wProductType, osv.wServicePackMajor, osv.wServicePackMinor, osv.wSuiteMask, GetSystemMetrics(89/*SM_SERVERR2*/),
-			osv.szCSDVersion, apStartEnv->bIsReactOS, pszReactOS, osv.wReserved,
+			szProdType, osv.wServicePackMajor, osv.wServicePackMinor, osv.wSuiteMask,
+			pszWinBuild ? pszWinBuild : L"", apStartEnv->bIsReactOS, *pszReactOS?L" (":L"", pszReactOS, *pszReactOS?L")":L"",
+				osv.wReserved, GetSystemMetrics(89/*SM_SERVERR2*/),
 			apStartEnv->bIsDbcs, apStartEnv->bIsWine, apStartEnv->bIsWinPE, apStartEnv->bIsRemote,
 			apStartEnv->nAnsiCP, apStartEnv->nOEMCP, apStartEnv->bIsAdmin,
 			szStartTime);
 		DumpEnvStr(szSI, lParam, true, false);
+		SafeFree(pszWinBuild);
+
+		bool is_themed = false, is_dwm = false;
+		if (IsWinXP())
+		{
+			MModule uxtheme(L"UxTheme.dll");
+			BOOL (WINAPI* _IsAppThemed)();
+			BOOL (WINAPI* _IsThemeActive)();
+			if (uxtheme.GetProcAddress("IsAppThemed", _IsAppThemed) && uxtheme.GetProcAddress("IsThemeActive", _IsThemeActive))
+				is_themed = _IsAppThemed() && _IsThemeActive();
+			if (IsWin7())
+			{
+				MModule dwm(L"dwmapi.dll");
+				HRESULT (WINAPI* _DwmIsCompositionEnabled)(BOOL *pfEnabled);
+				if (dwm.GetProcAddress("DwmIsCompositionEnabled", _DwmIsCompositionEnabled))
+				{
+					BOOL composition_enabled = FALSE;
+					is_dwm = (_DwmIsCompositionEnabled(&composition_enabled) == S_OK) && composition_enabled;
+				}
+			}
+		}
 
 		lstrcpyn(szDesktop, apStartEnv->si.lpDesktop ? apStartEnv->si.lpDesktop : L"<NULL>", countof(szDesktop));
 		lstrcpyn(szTitle, apStartEnv->si.lpTitle ? apStartEnv->si.lpTitle : L"<NULL>", countof(szTitle));
 
-		_wsprintf(szSI, SKIPLEN(countof(szSI))
-			L"  Desktop: %s%s%s, SessionId: %s, ConsoleSessionId: %u\r\n  Title: %s%s%s\r\n  Size: {%u,%u},{%u,%u}\r\n"
+		swprintf_c(szSI,
+			L"  Desktop: %s%s%s, SessionId: %s, ConsoleSessionId: %u, Theming: %u, DWM: %u\r\n"
+			L"  Title: %s%s%s\r\n  Size: {%u,%u},{%u,%u}\r\n"
 			L"  Flags: 0x%08X, ShowWindow: %u, ConHWnd: 0x%08X\r\n"
 			L"  char: %u, short: %u, int: %u, long: %u, u64: %u\r\n"
 			L"  Handles: 0x%08X, 0x%08X, 0x%08X\r\n"
 			,
 			apStartEnv->si.lpDesktop ? L"`" : L"", szDesktop, apStartEnv->si.lpDesktop ? L"`" : L"",
 			apiQuerySessionID(), apiGetConsoleSessionID(),
+			is_themed ? 1 : 0, is_dwm ? 1 : 0,
 			apStartEnv->si.lpTitle ? L"`" : L"", szTitle, apStartEnv->si.lpTitle ? L"`" : L"",
 			apStartEnv->si.dwX, apStartEnv->si.dwY, apStartEnv->si.dwXSize, apStartEnv->si.dwYSize,
 			apStartEnv->si.dwFlags, (DWORD)apStartEnv->si.wShowWindow, LODWORD(hConWnd),
-			LODWORD(sizeof(CHAR)), LODWORD(sizeof(short)), LODWORD(sizeof(int)), LODWORD(sizeof(long)), LODWORD(sizeof(u64)),
+			LODWORD(sizeof(CHAR)), LODWORD(sizeof(short)), LODWORD(sizeof(int)), LODWORD(sizeof(long)), LODWORD(sizeof(uint64_t)),
 			LODWORD(apStartEnv->si.hStdInput), LODWORD(apStartEnv->si.hStdOutput), LODWORD(apStartEnv->si.hStdError)
 			);
 		dumpEnvStr(szSI, false);
@@ -338,27 +407,27 @@ public:
 			{
 				ZeroStruct(szTitle);
 				if (pfnGetConsoleKeyboardLayoutName(szTitle))
-					_wsprintf(szSI, SKIPLEN(countof(szSI)) L"  Active console layout name: '%s'", szTitle);
+					swprintf_c(szSI, L"  Active console layout name: '%s'", szTitle);
 			}
 			if (!*szSI)
-				_wsprintf(szSI, SKIPLEN(countof(szSI)) L"  Active console layout: Unknown, code=%u", GetLastError());
+				swprintf_c(szSI, L"  Active console layout: Unknown, code=%u", GetLastError());
 			dumpEnvStr(szSI, true);
 		}
 
 		// PID & TID
-		_wsprintf(szSI, SKIPLEN(countof(szSI)) L"  Current PID: %u, TID: %u", GetCurrentProcessId(), GetCurrentThreadId());
+		swprintf_c(szSI, L"  Current PID: %u, TID: %u", GetCurrentProcessId(), GetCurrentThreadId());
 		dumpEnvStr(szSI, true);
 
 		// Текущий HKL (он может отличаться от GetConsoleKeyboardLayoutNameW
 		HKL hkl[32] = {NULL};
 		hkl[0] = GetKeyboardLayout(0);
-		_wsprintf(szSI, SKIPLEN(countof(szSI)) L"  Active HKL: " WIN3264TEST(L"0x%08X",L"0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hkl[0]));
+		swprintf_c(szSI, L"  Active HKL: " WIN3264TEST(L"0x%08X",L"0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hkl[0]));
 		dumpEnvStr(szSI, true);
 		// Установленные в системе HKL
 		UINT nHkl = GetKeyboardLayoutList(countof(hkl), hkl);
 		if (!nHkl || (nHkl > countof(hkl)))
 		{
-			_wsprintf(szSI, SKIPLEN(countof(szSI)) L"  GetKeyboardLayoutList failed, code=%u", GetLastError());
+			swprintf_c(szSI, L"  GetKeyboardLayoutList failed, code=%u", GetLastError());
 			dumpEnvStr(szSI, true);
 		}
 		else
@@ -369,7 +438,7 @@ public:
 
 			for (UINT i = 0; i < nHkl; i++)
 			{
-				_wsprintf(szSI+iLen, SKIPLEN(18) WIN3264TEST(L" 0x%08X",L" 0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hkl[i]));
+				swprintf_c(szSI+iLen, 18/*#SECURELEN*/, WIN3264TEST(L" 0x%08X",L" 0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hkl[i]));
 				iLen += lstrlen(szSI+iLen);
 			}
 			dumpEnvStr(szSI, true);
@@ -407,7 +476,7 @@ public:
 		RECT rcFore = {0}; if (hFore) GetWindowRect(hFore, &rcFore);
 		if (hFore) GetClassName(hFore, szDesktop, countof(szDesktop)-1); else szDesktop[0] = 0;
 		if (hFore) GetWindowText(hFore, szTitle, countof(szTitle)-1); else szTitle[0] = 0;
-		_wsprintf(szSI, SKIPLEN(countof(szSI)) L"Foreground: x%08X {%i,%i}-{%i,%i} '%s' - %s", (DWORD)(DWORD_PTR)hFore, LOGRECTCOORDS(rcFore), szDesktop, szTitle);
+		swprintf_c(szSI, L"Foreground: x%08X {%i,%i}-{%i,%i} '%s' - %s", (DWORD)(DWORD_PTR)hFore, LOGRECTCOORDS(rcFore), szDesktop, szTitle);
 		dumpEnvStr(szSI, true);
 
 		POINT ptCur = {0}; GetCursorPos(&ptCur);
@@ -416,7 +485,7 @@ public:
 		HMONITOR hMonFromStart = apStartEnv->hStartMon;
 		if (!hMonFromStart || !GetMonitorInfo(hMonFromStart, &mon))
 			hMonFromStart = NULL;
-		_wsprintf(szSI, SKIPLEN(countof(szSI))
+		swprintf_c(szSI,
 			L"MouseCursor: {%i,%i} MouseMonitor: %08X StartMonitor: %08X",
 			ptCur.x, ptCur.y, LODWORD(hMonFromMouse), LODWORD(hMonFromStart));
 		dumpEnvStr(szSI, true);
@@ -430,7 +499,7 @@ public:
 		int nDevCaps = GetDeviceCaps(hdcScreen,RASTERCAPS);
 		int nDpiX = GetDeviceCaps(hdcScreen, LOGPIXELSX);
 		int nDpiY = GetDeviceCaps(hdcScreen, LOGPIXELSY);
-		_wsprintf(szSI, SKIPLEN(countof(szSI))
+		swprintf_c(szSI,
 			L"Display: bpp=%i, planes=%i, align=%i, vrefr=%i, shade=x%08X, rast=x%08X, dpi=%ix%i, per-mon-dpi=%u",
 			apStartEnv->nBPP, nPlanes, nAlignment, nVRefr, nShadeCaps, nDevCaps, nDpiX, nDpiY, apStartEnv->bIsPerMonitorDpi);
 		ReleaseDC(NULL, hdcScreen);
@@ -446,13 +515,13 @@ public:
 				if (p->dpis[j].x || p->dpis[j].y)
 				{
 					wchar_t szDpi[32];
-					_wsprintf(szDpi, SKIPLEN(countof(szDpi))
+					swprintf_c(szDpi,
 						szDesktop[0] ? L";{%i,%i}" : L"{%i,%i}",
 						p->dpis[j].x, p->dpis[j].y);
 					wcscat_c(szDesktop, szDpi);
 				}
 			}
-			_wsprintf(szSI, SKIPLEN(countof(szSI))
+			swprintf_c(szSI,
 				L"  %08X: {%i,%i}-{%i,%i} (%ix%i), Working: {%i,%i}-{%i,%i} (%ix%i), dpi: %s `%s`%s",
 				(DWORD)(DWORD_PTR)p->hMon,
 				LOGRECTCOORDS(p->rcMonitor), LOGRECTSIZE(p->rcMonitor),
@@ -473,7 +542,7 @@ public:
 				{
 					DWORD_PTR ptrStart = (DWORD_PTR)mi.modBaseAddr;
 					DWORD_PTR ptrEnd = (DWORD_PTR)mi.modBaseAddr + (DWORD_PTR)(mi.modBaseSize ? (mi.modBaseSize-1) : 0);
-					_wsprintf(szSI, SKIPLEN(countof(szSI))
+					swprintf_c(szSI,
 						L"  " WIN3264TEST(L"%08X-%08X",L"%08X%08X-%08X%08X") L" %8X %s",
 						WIN3264WSPRINT(ptrStart), WIN3264WSPRINT(ptrEnd), mi.modBaseSize, mi.szExePath);
 					dumpEnvStr(szSI, true);

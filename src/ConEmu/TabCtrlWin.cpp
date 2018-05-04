@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,10 +31,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SHOWDEBUGSTR
 
-#define DEBUGSTRTABS(l,i,s) // { wchar_t szLbl[80]; _wsprintf(szLbl,SKIPLEN(countof(szLbl)) L"CTabPanelWin(%s,%i): ",l,i+1); wchar_t* pszDbg = lstrmerge(szLbl,s); DEBUGSTR(pszDbg); SafeFree(pszDbg); }
+#define DEBUGSTRTABS(l,i,s) // { wchar_t szLbl[80]; swprintf_c(szLbl, L"CTabPanelWin(%s,%i): ",l,i+1); wchar_t* pszDbg = lstrmerge(szLbl,s); DEBUGSTR(pszDbg); SafeFree(pszDbg); }
 #define DEBUGSTRSEL(s) //DEBUGSTR(s)
+#define DEBUGSTRSIZE(s) //DEBUGSTR(s)
+#define DEBUGSTRPANE(s) //DEBUGSTR(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "header.h"
 #include "TabBar.h"
 #include "TabCtrlBase.h"
@@ -117,12 +119,18 @@ LRESULT CTabPanelWin::ReBarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 		case WM_WINDOWPOSCHANGING:
 		{
 			LPWINDOWPOS pos = (LPWINDOWPOS)lParam;
-			if (mn_TabHeight)
-			{
-				pos->cy = mn_TabHeight;
-				return 0;
-			}
-			break;
+			RECT rcRebar = gpConEmu->RebarRect();
+			pos->x = rcRebar.left;
+			pos->y = rcRebar.top;
+			pos->cx = RectWidth(rcRebar);
+			pos->cy = RectHeight(rcRebar);
+			return 0;
+			//if (mn_TabHeight)
+			//{
+			//	pos->cy = mn_TabHeight;
+			//	return 0;
+			//}
+			//break;
 		}
 		case WM_WINDOWPOSCHANGED:
 		{
@@ -353,7 +361,17 @@ RECT CTabPanelWin::GetRect()
 	RECT rcWnd = {-32000, -32000, -32000+300, -32000+100};
 	if (ghWnd)
 	{
-		rcWnd = gpConEmu->GetGuiClientRect();
+		rcWnd = gpConEmu->RebarRect();
+		if (IsRectEmpty(&rcWnd))
+		{
+			_ASSERTE(!IsRectEmpty(&rcWnd));
+			gpConEmu->RequestRecalc();
+			rcWnd = gpConEmu->RebarRect();
+			if (IsRectEmpty(&rcWnd))
+			{
+				rcWnd = gpConEmu->ClientRect();
+			}
+		}
 	}
 	else
 	{
@@ -379,7 +397,7 @@ void CTabPanelWin::CreateRebar()
 								|WS_CLIPSIBLINGS|WS_CLIPCHILDREN
 								|/*CCS_NORESIZE|*/CCS_NOPARENTALIGN
 								|RBS_FIXEDORDER|RBS_AUTOSIZE|/*RBS_VARHEIGHT|*/CCS_NODIVIDER,
-								0,0,rcWnd.right,16, ghWnd, NULL, g_hInstance, NULL);
+								rcWnd.left, rcWnd.top, RectWidth(rcWnd), RectHeight(rcWnd), ghWnd, NULL, g_hInstance, NULL);
 	if (mh_Rebar == NULL)
 	{
 		return;
@@ -446,22 +464,14 @@ HWND CTabPanelWin::CreateTabbar()
 	if (mh_Tabbar)
 		return mh_Tabbar; // Уже создали
 
-	RECT rcClient = {-32000, -32000, -32000+300, -32000+100};
-	if (ghWnd)
-	{
-		rcClient = gpConEmu->GetGuiClientRect();
-	}
-	else
-	{
-		_ASSERTE(ghWnd!=NULL && "ConEmu main window must be created already!");
-	}
+	RECT rcClient = GetRect();
 
 	int nHeightExpected = QueryTabbarHeight();
 
 	DWORD nPlacement = TCS_SINGLELINE|WS_VISIBLE|WS_CHILD;
 
-	mh_Tabbar = CreateWindow(WC_TABCONTROL, NULL, nPlacement | WS_CLIPSIBLINGS | TCS_FOCUSNEVER, 0, 0,
-	                         rcClient.right, 0, mh_Rebar, NULL, g_hInstance, NULL);
+	mh_Tabbar = CreateWindow(WC_TABCONTROL, NULL, nPlacement | WS_CLIPSIBLINGS | TCS_FOCUSNEVER,
+							0, 0, RectWidth(rcClient), RectHeight(rcClient), mh_Rebar, NULL, g_hInstance, NULL);
 
 	if (mh_Tabbar == NULL)
 	{
@@ -498,8 +508,9 @@ HWND CTabPanelWin::CreateTabbar()
 
 	// And log it
 	wchar_t szInfo[100];
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Created tab height=%i", iHeight);
+	swprintf_c(szInfo, L"Created tab height=%i", iHeight);
 	LogString(szInfo);
+	DEBUGSTRSIZE(szInfo);
 
 	return mh_Tabbar;
 }
@@ -533,7 +544,7 @@ HWND CTabPanelWin::CreateToolbar()
 	// Preferred size of button?
 	int nPrefSize = mn_TabHeight - 10;
 	// Use it but not less than 14 pix
-	int nBtnSize = max(nOriginalSize, nPrefSize);
+	int nBtnSize = std::max(nOriginalSize, nPrefSize);
 
 	// But use fixed size for some ranges...
 	int nSize125 = nOriginalSize * 125 / 100;
@@ -543,8 +554,9 @@ HWND CTabPanelWin::CreateToolbar()
 		nBtnSize = nOriginalSize;
 
 	wchar_t szLog[100];
-	_wsprintf(szLog, SKIPCOUNT(szLog) L"Creating toolbar for size %i px", nBtnSize);
+	swprintf_c(szLog, L"Creating toolbar for size %i px", nBtnSize);
 	gpConEmu->LogString(szLog);
+	DEBUGSTRSIZE(szLog);
 
 	SendMessage(mh_Toolbar, TB_SETBITMAPSIZE, 0, MAKELONG(nBtnSize,nBtnSize));
 
@@ -597,10 +609,11 @@ HWND CTabPanelWin::CreateToolbar()
 	btn.iBitmap = nFirst + BID_SYSMENU_IDX; btn.idCommand = TID_SYSMENU; btn.fsState = TBSTATE_ENABLED;
 	SendMessage(mh_Toolbar, TB_ADDBUTTONS, 1, (LPARAM)&btn);
 	// Separator before min/max/close
-	sep.fsState |= TBSTATE_HIDDEN; sep.idCommand = TID_MINIMIZE_SEP;
+	BYTE bHideBtn = (!gpConEmu->isCaptionHidden() || gpConEmu->isInside()) ? TBSTATE_HIDDEN : 0;
+	sep.fsState |= bHideBtn; sep.idCommand = TID_MINIMIZE_SEP;
 	SendMessage(mh_Toolbar, TB_ADDBUTTONS, 1, (LPARAM)&sep);
 	// Min,Max,Close
-	btn.iBitmap = nFirst + BID_MINIMIZE_IDX; btn.idCommand = TID_MINIMIZE; btn.fsState = TBSTATE_ENABLED|TBSTATE_HIDDEN;
+	btn.iBitmap = nFirst + BID_MINIMIZE_IDX; btn.idCommand = TID_MINIMIZE; btn.fsState = TBSTATE_ENABLED|bHideBtn;
 	SendMessage(mh_Toolbar, TB_ADDBUTTONS, 1, (LPARAM)&btn);
 	btn.iBitmap = nFirst + ((gpConEmu->GetWindowMode() != wmNormal) ? BID_MAXIMIZE_IDX : BID_RESTORE_IDX); btn.idCommand = TID_MAXIMIZE;
 	SendMessage(mh_Toolbar, TB_ADDBUTTONS, 1, (LPARAM)&btn);
@@ -667,8 +680,8 @@ bool CTabPanelWin::GetTabRect(int nTabIdx, RECT* rcTab)
 	TabCtrl_GetItemRect(mh_Tabbar, nTabIdx, rcTab);
 	MapWindowPoints(mh_Tabbar, NULL, (LPPOINT)rcTab, 2);
 	RECT rcBar = {}; GetWindowRect(mh_Rebar, &rcBar);
-	rcTab->bottom = min(rcTab->bottom, rcBar.bottom);
-	rcTab->left = max(rcTab->left-2, rcBar.left);
+	rcTab->bottom = std::min(rcTab->bottom, rcBar.bottom);
+	rcTab->left = std::max(rcTab->left-2, rcBar.left);
 
 	return true;
 }
@@ -818,7 +831,7 @@ int CTabPanelWin::SelectTabInt(int i)
 	mb_ChangeAllowed = true;
 
 	wchar_t szInfo[120];
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"SelectTabInt Tab=%i CurTab=%i", i+1, iCurSel+1);
+	swprintf_c(szInfo, L"SelectTabInt Tab=%i CurTab=%i", i+1, iCurSel+1);
 	if (gpSet->isLogging()) { LogString(szInfo); } else { DEBUGSTRSEL(szInfo); }
 
 	if (i != iCurSel)    // Меняем выделение, только если оно реально меняется
@@ -856,9 +869,6 @@ void CTabPanelWin::DeleteItemInt(int I)
 
 void CTabPanelWin::ShowBar(bool bShow)
 {
-	RECT client = {};
-	if (bShow)
-		client = gpConEmu->GetGuiClientRect(); // нас интересует ширина окна
 	int nShow = bShow ? SW_SHOW : SW_HIDE;
 
 	if (mh_Rebar)
@@ -874,22 +884,15 @@ void CTabPanelWin::ShowBar(bool bShow)
 
 void CTabPanelWin::RepositionInt()
 {
-	RECT client, self;
-	client = gpConEmu->GetGuiClientRect();
-	GetWindowRect(mh_Tabbar, &self);
+	RECT rebarRect = gpConEmu->RebarRect();
 
 	if (mh_Rebar)
 	{
+		wchar_t szLog[120];
 		// Rebar location (top/bottom)
-		if (gpSet->nTabsLocation == 1)
-		{
-			int nStatusHeight = gpSet->isStatusBarShow ? gpSet->StatusBarHeight() : 0;
-			MoveWindow(mh_Rebar, 0, client.bottom-nStatusHeight-mn_TabHeight, client.right, mn_TabHeight, 1);
-		}
-		else
-		{
-			MoveWindow(mh_Rebar, 0, 0, client.right, mn_TabHeight, 1);
-		}
+		msprintf(szLog, countof(szLog), L"New ReBar position {%i,%i}-{%i,%i} {%i*%i}", LOGRECTCOORDS(rebarRect), LOGRECTSIZE(rebarRect));
+		LogString(szLog); DEBUGSTRSIZE(szLog);
+		MoveWindow(mh_Rebar, rebarRect.left, rebarRect.top, RectWidth(rebarRect), RectHeight(rebarRect), TRUE);
 
 		// Visible panes
 		bool bRebarChanged = false;
@@ -911,7 +914,7 @@ void CTabPanelWin::RepositionInt()
 			{
 			case rbi_TabBar:
 				Panes[i].hChild = mh_Tabbar;
-				Panes[i].iPaneMinWidth = max(150,mn_TabHeight*5);
+				Panes[i].iPaneMinWidth = std::max(150,mn_TabHeight*5);
 				break;
 			case rbi_FindBar:
 				if (mp_Find && ((Panes[i].hChild = mp_Find->GetHWND()) != NULL))
@@ -935,7 +938,7 @@ void CTabPanelWin::RepositionInt()
 		}
 
 		// Check what panes are fit
-		if (iAllWidth > client.right)
+		if (iAllWidth > RectWidth(rebarRect))
 		{
 			// Firstly we hide find-pane
 			if (Panes[1].iPaneMinWidth > 0)
@@ -944,10 +947,17 @@ void CTabPanelWin::RepositionInt()
 				Panes[1].iPaneMinWidth = 0;
 			}
 			// If that is not enough - hide toolbar
-			if (iAllWidth > client.right)
+			if (iAllWidth > RectWidth(rebarRect))
 			{
 				Panes[2].iPaneMinWidth = 0;
 			}
+		}
+
+		// Log desired widths
+		for (size_t i = 0; i < countof(Panes); i++)
+		{
+			msprintf(szLog, countof(szLog), L"Req pane width: Pane=%i width=%i needshow=%i", Panes[i].iPaneID, Panes[i].iPaneMinWidth, Panes[i].bNeedShow);
+			LogString(szLog); DEBUGSTRPANE(szLog);
 		}
 
 		// Run through and hide don't fit panes
@@ -964,12 +974,18 @@ void CTabPanelWin::RepositionInt()
 			{
 				if (Panes[i].iPaneMinWidth == 0)
 				{
+					msprintf(szLog, countof(szLog), L"Pane=%i is hidden", Panes[i].iPaneID);
+					LogString(szLog); DEBUGSTRPANE(szLog);
+
 					SendMessage(mh_Rebar, RB_SHOWBAND, nPaneIndex, 0);
 					bRebarChanged = true;
 				}
 			}
 			else if (Panes[i].iPaneMinWidth > 0)
 			{
+				msprintf(szLog, countof(szLog), L"Pane=%i is showing", Panes[i].iPaneID);
+				LogString(szLog); DEBUGSTRPANE(szLog);
+
 				Panes[i].bNeedShow = true;
 			}
 		}
@@ -1015,7 +1031,7 @@ void CTabPanelWin::RepositionInt()
 
 void CTabPanelWin::UpdateToolbarPos()
 {
-	if (mh_Toolbar && gpSet->isMultiShowButtons)
+	if (mh_Toolbar && gpSet->isMultiShowButtons && mp_Owner->IsTabsActive())
 	{
 		SIZE sz;
 		SendMessage(mh_Toolbar, TB_GETMAXSIZE, 0, (LPARAM)&sz);
@@ -1030,6 +1046,10 @@ void CTabPanelWin::UpdateToolbarPos()
 				INT_PTR nBarIndex = SendMessage(mh_Rebar, RB_IDTOINDEX, rbi_ToolBar, 0);
 				if (nBarIndex >= 0)
 				{
+					wchar_t szLog[120];
+					msprintf(szLog, countof(szLog), L"Ajust ToolBar size to {%i,%i} Last width was %i", sz.cx, sz.cy, mn_LastToolbarWidth);
+					LogString(szLog); DEBUGSTRSIZE(szLog);
+
 					REBARBANDINFO rbBand= {REBARBANDINFO_SIZE}; // не используем size, т.к. приходит "новый" размер из висты и в XP обламываемся
 					rbBand.fMask  = RBBIM_SIZE | RBBIM_CHILDSIZE;
 					// Update band options.
@@ -1063,7 +1083,7 @@ bool CTabPanelWin::OnNotifyInt(LPNMHDR nmhdr, LRESULT& lResult)
 		int lnNewTab = GetCurSelInt();
 
 		wchar_t szInfo[120];
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"WinApi tab was changed: NewTab=%i", lnNewTab+1);
+		swprintf_c(szInfo, L"WinApi tab was changed: NewTab=%i", lnNewTab+1);
 		if (gpSet->isLogging()) { LogString(szInfo); } else { DEBUGSTRSEL(szInfo); }
 
 		bool bRollbackTabs = false, bRefreshTabs = false;
@@ -1270,6 +1290,9 @@ bool CTabPanelWin::ShowSearchPane(bool bShow, bool bCtrlOnly /*= false*/)
 
 	if (bShow && gpSet->isMultiShowSearch)
 	{
+		if (!mh_Rebar)
+			goto wrap; // created only as band in ReBar
+
 		_ASSERTE(isMainThread());
 		if (!IsSearchShownInt(false))
 		{
@@ -1370,6 +1393,10 @@ void CTabPanelWin::ShowToolsPane(bool bShow)
 			SIZE sz = {0,0};
 			SendMessage(mh_Toolbar, TB_GETMAXSIZE, 0, (LPARAM)&sz);
 
+			wchar_t szLog[120];
+			msprintf(szLog, countof(szLog), L"Create ToolBar with size {%i,%i} Last width was %i", sz.cx, sz.cy, mn_LastToolbarWidth);
+			LogString(szLog); DEBUGSTRSIZE(szLog);
+
 			rbBand.wID        = rbi_ToolBar;
 			rbBand.hwndChild  = mh_Toolbar;
 			rbBand.cx = rbBand.cxMinChild = rbBand.cxIdeal = mn_LastToolbarWidth = sz.cx;
@@ -1407,7 +1434,9 @@ int CTabPanelWin::QueryTabbarHeight()
 	//	hTabs = CreateTabbar(true);
 	//}
 
-	if (mh_Tabbar && IsWindow(mh_Tabbar))
+	// #DPI while jumping from high-dpi to low-dpi mon mh_Tabbar is re-created during jump (window was not moved yet?) and we have incorrect rcClient
+	/*
+	if (mh_Tabbar && IsWindow(mh_Tabbar) && !IsWin10())
 	{
 		// нас интересует смещение клиентской области. Т.е. начало - из 0. Остальное не важно
 		RECT rcClient = MakeRect(600, 400);
@@ -1416,12 +1445,23 @@ int CTabPanelWin::QueryTabbarHeight()
 		mn_TabHeight = rcClient.top - (gpConEmu->IsThemed() ? 0 : 2) - (gpSet->FontUseUnits ? 1 : 0);
 	}
 	else
+	*/
 	{
-		// Не будем создавать TabBar. Все равно вне окно ConEmu оценка получается неточной
+		// Размеры таба через TabCtrl_AdjustRect считаются криво при прыжках по мониторам
 		//_ASSERTE((hTabs!=NULL) && "Creating of a dummy tab control failed");
+		RECT rcTab = gpConEmu->RebarRect();
+		// #SIZE_TODO Use RebarRect() instead of calculation
 		int lfHeight = gpSetCls->EvalSize(gpSet->nTabFontHeight, esf_Vertical|esf_CanUseDpi|esf_CanUseUnits);
-		mn_TabHeight = gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, lfHeight, gpSet->nTabFontCharSet)
+		int newHeight = gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, lfHeight, gpSet->nTabFontCharSet)
 			+ gpSetCls->EvalSize((lfHeight < 0) ? 8 : 9, esf_Vertical);
+		if (mn_TabHeight != newHeight)
+		{
+			wchar_t szInfo[100];
+			msprintf(szInfo, countof(szInfo), L"CTabPanelWin::mn_TabHeight changed from %i to %i", mn_TabHeight, newHeight);
+			LogString(szInfo);
+			DEBUGSTRSIZE(szInfo);
+			mn_TabHeight = newHeight;
+		}
 	}
 
 	//if (bDummyCreate && hTabs)
@@ -1438,6 +1478,8 @@ void CTabPanelWin::InvalidateBar()
 	if (this && mh_Rebar)
 	{
 		InvalidateRect(mh_Rebar, NULL, TRUE);
+		if (mp_Find)
+			mp_Find->Invalidate();
 	}
 }
 
@@ -1447,23 +1489,11 @@ void CTabPanelWin::RePaintInt()
 		return;
 
 	RECT client, self;
-	client = gpConEmu->GetGuiClientRect();
+	client = gpConEmu->RebarRect();
 	GetWindowRect(mh_Rebar, &self);
 	MapWindowPoints(NULL, ghWnd, (LPPOINT)&self, 2);
 
-	int nNewY;
-	if (gpSet->nTabsLocation == 1)
-	{
-		int nStatusHeight = gpSet->isStatusBarShow ? gpSet->StatusBarHeight() : 0;
-		nNewY = client.bottom-nStatusHeight-(self.bottom-self.top);
-	}
-	else
-	{
-		nNewY = 0;
-	}
-
-	if ((client.right != (self.right - self.left))
-		|| (nNewY != self.top))
+	if (client != self)
 	{
 		RepositionInt();
 
@@ -1486,7 +1516,7 @@ LRESULT CTabPanelWin::TabHitTest(bool abForce /*= false*/, int* pnOverTabHit /*=
 	if (pnOverTabHit)
 		*pnOverTabHit = -1;
 
-	if (gpSet->isTabs && (abForce || gpSet->isCaptionHidden()))
+	if (gpSet->isTabs && (abForce || gpConEmu->isCaptionHidden()))
 	{
 		if (mp_Owner->IsTabsShown())
 		{

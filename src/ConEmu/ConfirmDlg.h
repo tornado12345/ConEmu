@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -51,7 +51,7 @@ int ConfirmCloseConsoles(const ConfirmCloseParam& Parm);
 
 // Universal
 int ConfirmDialog(LPCWSTR asMessage,
-	LPCWSTR asMainLabel, LPCWSTR asCaption, LPCWSTR asUrl, UINT uType,
+	LPCWSTR asMainLabel, LPCWSTR asCaption, LPCWSTR asUrl, UINT uType, HWND ahParent,
 	LPCWSTR asBtn1Name = NULL, LPCWSTR asBtn1Hint = NULL,
 	LPCWSTR asBtn2Name = NULL, LPCWSTR asBtn2Hint = NULL,
 	LPCWSTR asBtn3Name = NULL, LPCWSTR asBtn3Hint = NULL);

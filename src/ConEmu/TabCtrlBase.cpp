@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRWARN(s) DEBUGSTR(s)
 #define DEBUGSTRSEL(s) DEBUGSTR(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "header.h"
 #include "TabBar.h"
 #include "TabCtrlBase.h"
@@ -89,7 +89,7 @@ void CTabPanelBase::UpdateTabFontInt()
 	gpFontMgr->EvalLogfontSizes(lf, gpSet->nTabFontHeight, 0);
 
 	wchar_t szInfo[100];
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Creating tab font name='%s' height=%i", lf.lfFaceName, lf.lfHeight);
+	swprintf_c(szInfo, L"Creating tab font name='%s' height=%i", lf.lfFaceName, lf.lfHeight);
 	LogString(szInfo);
 
 	// CreateFont
@@ -210,7 +210,7 @@ bool CTabPanelBase::FarSendChangeTab(int tabIndex, CVConGuard* rpVCon /*= NULL*/
 	static DWORD nLastTick = 0; DWORD nCurTick = GetTickCount();
 	wchar_t szInfo[120];
 	int iTickDelta = nLastTick ? (int)(nCurTick - nLastTick) : -1;
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Change tab requested: Tab=%i VCon=%i Wnd=%i Delta=%i",
+	swprintf_c(szInfo, L"Change tab requested: Tab=%i VCon=%i Wnd=%i Delta=%i",
 		tabIndex+1, VCon.VCon() ? VCon->Index() : -1, wndIndex, iTickDelta);
 	if (gpSet->isLogging()) { LogString(szInfo); } else { DEBUGSTRSEL(szInfo); }
 	// _ASSERTE((iTickDelta==-1 || iTickDelta>=250) && "Suspicious fast tab switching, may be not intended by user"); -- may occurs while closing all tabs or window
@@ -291,8 +291,8 @@ LRESULT CTabPanelBase::OnMouseRebar(UINT uMsg, int x, int y)
 
 	if (uMsg == WM_LBUTTONDBLCLK)
 	{
-		if ((gpSet->nTabBarDblClickAction == 2)
-			|| ((gpSet->nTabBarDblClickAction == 1) && gpSet->isCaptionHidden()))
+		if ((gpSet->nTabBarDblClickAction == TabBarDblClick::MaxRestoreWindow)
+			|| ((gpSet->nTabBarDblClickAction == TabBarDblClick::Auto) && gpConEmu->isCaptionHidden()))
 		{
 			LogString(L"ToolBar: ReBar double click: DoMaximizeRestore");
 			// Чтобы клик случайно не провалился в консоль
@@ -300,8 +300,8 @@ LRESULT CTabPanelBase::OnMouseRebar(UINT uMsg, int x, int y)
 			// Аналог AltF9
 			gpConEmu->DoMaximizeRestore();
 		}
-		else if ((gpSet->nTabBarDblClickAction == 3)
-			|| ((gpSet->nTabBarDblClickAction == 1) && !gpSet->isCaptionHidden()))
+		else if ((gpSet->nTabBarDblClickAction == TabBarDblClick::OpenNewShell)
+			|| ((gpSet->nTabBarDblClickAction == TabBarDblClick::Auto) && !gpConEmu->isCaptionHidden()))
 		{
 			LogString(L"ToolBar: ReBar double click: RecreateAction");
 			gpConEmu->RecreateAction(cra_CreateTab/*FALSE*/, gpSet->isMultiNewConfirm || isPressed(VK_SHIFT));
@@ -402,9 +402,9 @@ void CTabPanelBase::DoTabDrag(UINT uMsg)
 
 		// Если текущий таб короче нового - то нужны доп.проверки
 		// чтобы при драге таб не стал мельтешить вправо/влево
-		iHoverWidth = (max(rcHover.right,rcNew.right) - min(rcHover.left,rcNew.left));
+		iHoverWidth = (std::max(rcHover.right,rcNew.right) - std::min(rcHover.left,rcNew.left));
 		_ASSERTE(iHoverWidth>0);
-		iActiveWidth = (max(rcActive.right,rcOld.right) - min(rcActive.left,rcOld.left));
+		iActiveWidth = (std::max(rcActive.right,rcOld.right) - std::min(rcActive.left,rcOld.left));
 		_ASSERTE(iActiveWidth>0);
 
 		if (iActiveWidth < iHoverWidth)
@@ -466,7 +466,7 @@ LRESULT CTabPanelBase::OnMouseTabbar(UINT uMsg, int nTabIdx, int x, int y)
 			int lnCurTab = GetCurSelInt();
 			if (lnCurTab != nTabIdx)
 			{
-				_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Tab was LeftClicked Tab=%i OldTab=%i InSelChange=%i", nTabIdx+1, lnCurTab+1, mn_InSelChange);
+				swprintf_c(szInfo, L"Tab was LeftClicked Tab=%i OldTab=%i InSelChange=%i", nTabIdx+1, lnCurTab+1, mn_InSelChange);
 				if (gpSet->isLogging()) { LogString(szInfo); } else { DEBUGSTRSEL(szInfo); }
 
 				if (mn_InSelChange == 0)
@@ -543,23 +543,26 @@ LRESULT CTabPanelBase::OnMouseTabbar(UINT uMsg, int nTabIdx, int x, int y)
 					{
 						switch (gpSet->nTabBtnDblClickAction)
 						{
-						case 1:
+						case TabBtnDblClick::MaxRestoreWindow:
 							// Чтобы клик случайно не провалился в консоль
 							gpConEmu->mouse.state |= MOUSE_SIZING_DBLCKL;
 							// Аналог AltF9
 							gpConEmu->DoMaximizeRestore();
 							break;
-						case 2:
+						case TabBtnDblClick::CloseTab:
 							VCon->RCon()->CloseTab();
 							break;
-						case 3:
+						case TabBtnDblClick::RestartTab:
 							gpConEmu->mp_Menu->ExecPopupMenuCmd(tmp_None, VCon.VCon(), IDM_RESTART);
 							break;
-						case 4:
+						case TabBtnDblClick::DuplicateTab:
 							gpConEmu->mp_Menu->ExecPopupMenuCmd(tmp_None, VCon.VCon(), IDM_DUPLICATE);
 							break;
-						case 5:
+						case TabBtnDblClick::MaxRestorePane:
 							CVConGroup::PaneMaximizeRestore(VCon.VCon());
+							break;
+						case TabBtnDblClick::RenameTab:
+							VCon->RCon()->DoRenameTab();
 							break;
 						#ifdef _DEBUG
 						default:
@@ -664,7 +667,7 @@ bool CTabPanelBase::OnSetCursorRebar()
 	if (gpSet->isTabs
 		&& !(gpSet->isQuakeStyle && gpSet->wndCascade) // Quake можно двигать по горизонтали
 		&& (gpConEmu->GetWindowMode() == wmNormal)
-		&& gpSet->isCaptionHidden())
+		&& gpConEmu->isCaptionHidden())
 	{
 		POINT ptCur = {};
 		GetCursorPos(&ptCur);

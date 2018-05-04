@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -201,7 +201,6 @@ class CTabBarClass
 		void SwitchRollback();
 
 		// Из Samples\Tabs
-		bool ProcessNcTabMouseEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT &lResult) { return false; };
 		bool ProcessTabKeyboardEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT &lResult) { return false; };
 		bool Toolbar_GetBtnRect(int nCmd, RECT* rcBtnRect);
 		int  GetHoverTab() { return -1; };

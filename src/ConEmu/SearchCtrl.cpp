@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -229,7 +229,7 @@ static LRESULT EditIconHintPaint(HWND hEditCtrl, CEIconHintInfo* p, UINT Msg = W
 			{
 				dh.pIcon->GetSizeForHeight(ih, iw, ih);
 				int X1 = rcClient.right - iw - 1;
-				int Y1 = max(0,((rcClient.bottom-rcClient.top-ih)/2));
+				int Y1 = std::max<int>(0,((rcClient.bottom-rcClient.top-ih)/2));
 
 				dh.pIcon->PaintButton(-1, hdc, X1, Y1, iw, ih);
 

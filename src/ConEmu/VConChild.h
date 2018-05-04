@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#define SKIP_HIDE_TIMER
 //#define SKIP_ALL_FILLRECT
 class CVirtualConsole;
 class CRealConsole;
@@ -71,6 +70,7 @@ class CConEmuChild
 
 		void SetRedraw(bool abRedrawEnabled);
 
+		RECT CalcDCMargins(const RECT& arcBack);
 		void SetVConSizePos(const RECT& arcBack, bool abReSize = true);
 		void SetVConSizePos(const RECT& arcBack, const RECT& arcDC, bool abReSize = true);
 		void OnVConSizePosChanged(); // Status bar columns
@@ -142,14 +142,11 @@ class CConEmuChild
 		bool mb_ScrollDisabled, mb_ScrollVisible, mb_Scroll2Visible, mb_ScrollAutoPopup, mb_VTracking;
 		CTimer m_TScrollShow; // TIMER_SCROLL_SHOW
 		CTimer m_TScrollHide; // TIMER_SCROLL_HIDE
-		#ifndef SKIP_HIDE_TIMER
-		CTimer m_TScrollCheck; // TIMER_SCROLL_CHECK
-		#endif
 
 		BYTE m_LastAlwaysShowScrollbar;
 		SCROLLINFO m_si;
 	public:
-		bool CheckMouseOverScroll(bool abCheckVisible = false);
+		bool CheckMouseOverScroll();
 	protected:
 		bool CheckScrollAutoPopup();
 		void ShowScroll(bool abImmediate);

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -191,7 +191,7 @@ public:
 			if (apRef)
 				apRef->AddRef();
 
-			klSwap(mp_Ref, apRef);
+			std::swap(mp_Ref, apRef);
 
 			if (apRef)
 				apRef->Release();
@@ -217,8 +217,14 @@ public:
 	};
 
 	// Ptr, No Asserts
-	T* Ptr()
+	T* Ptr() const
 	{
 		return mp_Ref;
+	};
+
+	// Validation, No Assers
+	operator bool() const
+	{
+		return (mp_Ref != NULL);
 	};
 };

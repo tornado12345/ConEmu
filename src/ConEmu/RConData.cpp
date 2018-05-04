@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,39 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRTRUEMOD(s) //DEBUGSTR(s)
 
 
+
+void ConsoleLinePtr::clear()
+{
+	pChar = NULL;
+	pAttr = NULL;
+	pAttrEx = NULL;
+	nLen = 0;
+}
+
+bool ConsoleLinePtr::get(int index, wchar_t& chr, CharAttr& atr)
+{
+	if (index < 0 || index > nLen)
+		return false;
+	if (!pChar || !(pAttr || pAttrEx))
+		return false;
+
+	chr = pChar[index];
+
+	if (pAttrEx != NULL)
+	{
+		atr = pAttrEx[index];
+	}
+	else if (pAttr)
+	{
+	}
+
+	_ASSERTE(FALSE && "Complete ConsoleLinePtr::get"); // #TODO
+	return false;
+}
+
+
+
+
 bool CRConDataGuard::isValid(size_t anCellsRequired /*= 0*/)
 {
 	if (!mp_Ref || !mp_Ref->isValid(false, anCellsRequired))
@@ -53,12 +86,13 @@ bool CRConDataGuard::isValid(size_t anCellsRequired /*= 0*/)
 
 /////////////////////////////////////////////////
 
-CRConData* CRConData::Allocate(CRealConsole* apRCon, size_t anMaxCells)
+bool CRConData::Allocate(CRConDataGuard& data, CRealConsole* apRCon, size_t anMaxCells)
 {
 	if (!anMaxCells)
 	{
 		_ASSERTE(anMaxCells > 0);
-		return NULL;
+		data.Release();
+		return false;
 	}
 
 	// Allocate slightly more than requested, to avoid
@@ -69,18 +103,36 @@ CRConData* CRConData::Allocate(CRealConsole* apRCon, size_t anMaxCells)
 	if (!p
 		|| !(p->pConChar = (wchar_t*)calloc(cchNewCharMaxPlus, sizeof(*p->pConChar)))
 		|| !(p->pConAttr = (WORD*)calloc(cchNewCharMaxPlus, sizeof(*p->pConAttr)))
-		|| !(p->pDataCmp = (CHAR_INFO*)calloc(cchNewCharMaxPlus, sizeof(p->pDataCmp))))
+		|| !(p->pDataCmp = (CHAR_INFO*)calloc(cchNewCharMaxPlus, sizeof(*p->pDataCmp))))
 	{
 		if (p)
 			delete p;
 		p = NULL;
+		data.Release();
+		return false;
 	}
 	else
 	{
 		p->nMaxCells = cchNewCharMaxPlus;
 	}
 
-	return p;
+	data.Attach(p);
+	p->Release();
+	return true;
+}
+
+bool CRConData::Allocate(CRConDataGuard& data, CRealConsole* apRCon, wchar_t* apszBlock1, CharAttr* apcaBlock1, const CONSOLE_SCREEN_BUFFER_INFO& asbi, const COORD& acrSize)
+{
+	if (!apszBlock1 || acrSize.X <= 0 || acrSize.Y <= 0)
+	{
+		_ASSERTE(apszBlock1 && acrSize.X > 0 && acrSize.Y > 0);
+		data.Release();
+		return false;
+	}
+	CRConData* p = new CRConData(apRCon, apszBlock1, apcaBlock1, asbi, acrSize);
+	data.Attach(p);
+	p->Release();
+	return true;
 }
 
 CRConData::CRConData(CRealConsole* apRCon)
@@ -90,8 +142,25 @@ CRConData::CRConData(CRealConsole* apRCon)
 	, pConChar(NULL)
 	, pConAttr(NULL)
 	, pDataCmp(NULL)
+	, m_sbi()
+	, bExternal(false)
+	, pszBlock1(NULL)
+	, pcaBlock1(NULL)
 {
-	ZeroStruct(m_sbi);
+}
+
+CRConData::CRConData(CRealConsole* apRCon, wchar_t* apszBlock1, CharAttr* apcaBlock1, const CONSOLE_SCREEN_BUFFER_INFO& sbi, const COORD& acrSize)
+	: mp_RCon(apRCon)
+	, nMaxCells(acrSize.X * acrSize.Y)
+	, nWidth(acrSize.X), nHeight(acrSize.Y)
+	, pConChar(NULL)
+	, pConAttr(NULL)
+	, pDataCmp(NULL)
+	, m_sbi(sbi)
+	, bExternal(true)
+	, pszBlock1(apszBlock1)
+	, pcaBlock1(apcaBlock1)
+{
 }
 
 CRConData::~CRConData()
@@ -99,6 +168,7 @@ CRConData::~CRConData()
 	SafeFree(pConChar);
 	SafeFree(pConAttr);
 	SafeFree(pDataCmp);
+	// pszBlock1 & pcaBlock1 are external pointers (loading console data from dumps)
 }
 
 bool CRConData::isValid(bool bCheckSizes, size_t anCellsRequired)
@@ -132,11 +202,11 @@ void CRConData::FinalRelease()
 // nWidth & nHeight - dimension which VCon want to display
 UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, UINT anHeight,
 	wchar_t wSetChar, CharAttr lcaDef, CharAttr *lcaTable, CharAttr *lcaTableExt,
-	bool bFade, bool bExtendColors, BYTE nExtendColorIdx, bool bExtendFonts)
+	bool bFade, bool bExtendFonts)
 {
 	TODO("Во время ресайза консоль может подглючивать - отдает не то что нужно...");
 	//_ASSERTE(*con.pConChar!=ucBoxDblVert);
-	UINT nYMax = klMin(anHeight,nHeight);
+	UINT nYMax = std::min(anHeight,nHeight);
 
 	MFileMapping<AnnotationHeader>& TrueMap = mp_RCon->m_TrueColorerMap;
 	const AnnotationInfo *pTrueData = mp_RCon->mp_TrueColorerData;
@@ -190,7 +260,7 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 			{
 				//_ASSERTE(nShiftRows>=0);
 				wchar_t szLog[200];
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"!!! CRealBuffer::GetConsoleData !!! "
+				swprintf_c(szLog, L"!!! CRealBuffer::GetConsoleData !!! "
 					L"nShiftRows=%i nWidth=%i nHeight=%i Rect={%i,%i}-{%i,%i} Buf={%i,%i}",
 					lnShiftRows, anWidth, anHeight,
 					m_sbi.srWindow.Left, m_sbi.srWindow.Top, m_sbi.srWindow.Right, m_sbi.srWindow.Bottom,
@@ -216,40 +286,11 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 	}
 	#endif
 
-	DWORD cbLineSize = min(cbDstLineSize,cbSrcLineSize);
+	DWORD cbLineSize = std::min(cbDstLineSize,cbSrcLineSize);
 	int nCharsLeft = (anWidth > nWidth) ? (anWidth - nWidth) : 0;
 	//int nY, nX;
-	//120331 - Нехорошо заменять на "черный" с самого начала
-	BYTE attrBackLast = 0;
 	UINT nExtendStartsY = 0;
 	//int nPrevDlgBorder = -1;
-
-	bool lbStoreBackLast = false;
-	if (bExtendColors)
-	{
-		BYTE FirstBackAttr = lcaTable[(*pnSrc) & 0xFF].nBackIdx;
-		if (FirstBackAttr != nExtendColorIdx)
-			attrBackLast = FirstBackAttr;
-
-		const CEFAR_INFO_MAPPING* pFarInfo = lbIsFar ? mp_RCon->GetFarInfo() : NULL;
-		if (pFarInfo)
-		{
-			// Если в качестве цвета "расширения" выбран цвет панелей - значит
-			// пользователь просто настроил "другую" палитру для панелей фара.
-			// К сожалению, таким образом нельзя заменить только цвета для элемента под курсором.
-			if (CONBACKCOLOR(pFarInfo->nFarColors[col_PanelText]) != nExtendColorIdx)
-				lbStoreBackLast = true;
-			else
-				attrBackLast = FirstBackAttr;
-
-			if (pFarInfo->FarInterfaceSettings.AlwaysShowMenuBar || mp_RCon->isEditor() || mp_RCon->isViewer())
-				nExtendStartsY = 1; // пропустить обработку строки меню
-		}
-		else
-		{
-			lbStoreBackLast = true;
-		}
-	}
 
 	// Собственно данные
 	for (UINT nY = 0; nY < nYMax; nY++)
@@ -270,6 +311,8 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 		// it's shown using monochrome (gray on black)
 		bool bForceMono = (mp_RCon->mn_InRecreate != 0);
 
+		bool has_rowid = (cnSrcLineLen >= ROWID_USED_CELLS) && (GetRowIdFromAttrs(pnSrc) != 0);
+
 		int iTail = cnSrcLineLen;
 		wchar_t* pch = pszDst;
 		for (UINT nX = 0;
@@ -279,11 +322,14 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 			CharAttr& lca = pcaDst[nX];
 			bool hasTrueColor = false;
 			bool hasFont = false;
+			bool inversed = false;
+			bool is_rowid = has_rowid && (nX < ROWID_USED_CELLS);
 
 			// If not "mono" we need only lower byte with color indexes
 			if (!bForceMono)
 			{
-				if (((*pnSrc) & COMMON_LVB_REVERSE_VIDEO) && (((*pnSrc) & CHANGED_CONATTR) == COMMON_LVB_REVERSE_VIDEO))
+				inversed = !is_rowid && ((*pnSrc) & COMMON_LVB_REVERSE_VIDEO);
+				if (inversed)
 					PalIndex = MAKECONCOLOR(CONBACKCOLOR(*pnSrc), CONFORECOLOR(*pnSrc)); // Inverse
 				else
 					PalIndex = ((*pnSrc) & 0xFF);
@@ -291,6 +337,8 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 			TODO("OPTIMIZE: lca = lcaTable[PalIndex];");
 			lca = lcaTable[PalIndex];
 			TODO("OPTIMIZE: вынести проверку bExtendColors за циклы");
+
+			lca.ConAttr = *pnSrc;
 
 			bool bPair = (iTail > 0);
 			ucs32 wwch = ucs32_from_wchar(pch, bPair);
@@ -319,24 +367,32 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 				}
 				else
 				{
-					TODO("OPTIMIZE: доступ к битовым полям тяжело идет...");
+					if (pcolSrc->style & AI_STYLE_REVERSE)
+						inversed = true;
 
 					if (pcolSrc->fg_valid)
 					{
 						hasTrueColor = true;
 						hasFont = true;
 						lca.nFontIndex = fnt_Normal; //bold/italic/underline will be set below
-						lca.crForeColor = bFade ? gpSet->GetFadeColor(pcolSrc->fg_color) : pcolSrc->fg_color;
 
-						if (pcolSrc->bk_valid)
-							lca.crBackColor = bFade ? gpSet->GetFadeColor(pcolSrc->bk_color) : pcolSrc->bk_color;
+						unsigned fore = bFade ? gpSet->GetFadeColor(pcolSrc->fg_color) : pcolSrc->fg_color;
+						unsigned back = pcolSrc->bk_valid
+							? (bFade ? gpSet->GetFadeColor(pcolSrc->bk_color) : pcolSrc->bk_color)
+							: (lca.crBackColor);
+						lca.crForeColor = inversed ? back : fore;
+						lca.crBackColor = inversed ? fore : back;
 					}
 					else if (pcolSrc->bk_valid)
 					{
 						hasTrueColor = true;
 						hasFont = true;
 						lca.nFontIndex = fnt_Normal; //bold/italic/underline will be set below
-						lca.crBackColor = bFade ? gpSet->GetFadeColor(pcolSrc->bk_color) : pcolSrc->bk_color;
+						unsigned back = bFade ? gpSet->GetFadeColor(pcolSrc->bk_color) : pcolSrc->bk_color;;
+						if (inversed)
+							lca.crForeColor = back;
+						else
+							lca.crBackColor = back;
 					}
 
 					// nFontIndex: 0 - normal, 1 - bold, 2 - italic, 3 - bold&italic,..., 4 - underline, ...
@@ -348,31 +404,9 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 				}
 			}
 
-			if (!hasFont
-				&& ((*pnSrc) & COMMON_LVB_UNDERSCORE)
-				&& ((nX >= ROWID_USED_CELLS) || !((*pnSrc) & (CHANGED_CONATTR & ~COMMON_LVB_UNDERSCORE)))
-				)
+			if (!hasFont && !is_rowid && ((*pnSrc) & COMMON_LVB_UNDERSCORE))
 			{
 				lca.nFontIndex = fnt_Underline;
-			}
-
-			if (!hasTrueColor && bExtendColors && (nY >= nExtendStartsY))
-			{
-				if (lca.nBackIdx == nExtendColorIdx)
-				{
-					// Have to change the color to adjacent(?) cell
-					lca.nBackIdx = attrBackLast;
-					// For the background nExtendColorIdx we use upper
-					// palette range for text: 16..31 instead of 0..15
-					lca.nForeIdx += 0x10;
-					lca.crForeColor = lca.crOrigForeColor = mp_RCon->mp_Palette->m_Colors[lca.nForeIdx];
-					lca.crBackColor = lca.crOrigBackColor = mp_RCon->mp_Palette->m_Colors[lca.nBackIdx];
-				}
-				else if (lbStoreBackLast)
-				{
-					// Remember last "normal" background
-					attrBackLast = lca.nBackIdx;
-				}
 			}
 
 			switch (get_wcwidth(wwch))
@@ -426,6 +460,39 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 	return nYMax;
 }
 
+bool CRConData::GetConsoleLine(int nLine, ConsoleLinePtr& rpLine) const
+{
+	if (!bExternal)
+	{
+		if ((nLine < 0) || (static_cast<UINT>(nLine) >= nHeight)
+			|| ((size_t)((nLine + 1) * nWidth) > nMaxCells))
+		{
+			// _ASSERTE((nLine >= 0) && (nLine < nHeight) && ((size_t)((nLine + 1) * nWidth) > nMaxCells));
+			return false;
+		}
+
+		size_t lineShift = nLine * nWidth;
+		rpLine.pChar = pConChar ? (pConChar + lineShift) : NULL;
+		rpLine.pAttr = pConAttr ? (pConAttr + lineShift) : NULL;
+		rpLine.nLen = nWidth;
+	}
+	else
+	{
+		if ((nLine < 0) || (static_cast<UINT>(nLine) >= nHeight))
+		{
+			// _ASSERTE((nLine >= 0) && (nLine < nHeight));
+			return false;
+		}
+
+		size_t lineShift = ((m_sbi.srWindow.Top + nLine) * nWidth) + m_sbi.srWindow.Left;
+		rpLine.pChar = pszBlock1 ? (pszBlock1 + lineShift) : NULL;
+		rpLine.pAttrEx = pcaBlock1 ? (pcaBlock1 + lineShift) : NULL;
+		rpLine.nLen = nWidth;
+	}
+
+	return true;
+}
+
 bool CRConData::FindPanels(bool& bLeftPanel, RECT& rLeftPanel, RECT& rLeftPanelFull, bool& bRightPanel, RECT& rRightPanel, RECT& rRightPanelFull)
 {
 	rLeftPanel = rLeftPanelFull = rRightPanel = rRightPanelFull = MakeRect(-1,-1);
@@ -434,7 +501,7 @@ bool CRConData::FindPanels(bool& bLeftPanel, RECT& rLeftPanel, RECT& rLeftPanelF
 	if (!isValid(true, nWidth*nHeight))
 		return false;
 
-	uint nY = 0;
+	unsigned nY = 0;
 	BOOL lbIsMenu = FALSE;
 
 	if (pConChar[0] == L' ')
@@ -468,7 +535,7 @@ bool CRConData::FindPanels(bool& bLeftPanel, RECT& rLeftPanel, RECT& rLeftPanelF
 			nY ++; // скорее всего, первая строка - меню, при включенной записи макроса
 	}
 
-	uint nIdx = nY*nWidth;
+	unsigned nIdx = nY*nWidth;
 	// Левая панель
 	BOOL bFirstCharOk = (nY == 0)
 		&& (
@@ -526,7 +593,7 @@ bool CRConData::FindPanels(bool& bLeftPanel, RECT& rLeftPanel, RECT& rLeftPanelF
 				// МОЖЕТ быть закрыто AltHistory
 				/*&& pConChar[nIdx+i+nWidth] == ucBoxDblVert*/)
 			{
-				uint nBottom = nHeight - 1;
+				unsigned nBottom = nHeight - 1;
 
 				while(nBottom > 4) //-V112
 				{
@@ -603,19 +670,19 @@ bool CRConData::FindPanels(bool& bLeftPanel, RECT& rLeftPanel, RECT& rLeftPanelF
 				int iMinFindX = bLeftPanel ? (rLeftPanelFull.right+1) : 0;
 				for(int i=nWidth-3; !bRightPanel && i>=iMinFindX; i--)
 				{
-					// ищем левую границу правой панели
+					// we look for LEFT edge of the RIGHT panel
 					if (pConChar[nIdx+i] == ucBoxDblDownRight
 						&& (((pConChar[nIdx+i+1] == ucBoxDblHorz || pConChar[nIdx+i+1] == L' ') && bFarShowColNames)
-							|| pConChar[nIdx+i+1] == ucBoxSinglDownDblHorz // правый угол панели
+							|| pConChar[nIdx+i+1] == ucBoxSinglDownDblHorz // right corner
 							|| pConChar[nIdx+i+1] == ucBoxDblDownDblHorz
-							|| (pConChar[nIdx+i-1] == L']' && pConChar[nIdx+i-2] == L'\\') // ScreenGadgets, default
+							|| ((i > 10) && (pConChar[nIdx+i-1] == L']' && pConChar[nIdx+i-2] == L'\\')) // ScreenGadgets, default: "╔[◄|►]...[…][\]╗╔[◄|►]═══"
 							|| (!bFarShowColNames && !(pConChar[nIdx+i+1] == ucBoxDblHorz || pConChar[nIdx+i+1] == L' ')
 								&& pConChar[nIdx+i+1] != ucBoxSinglDownDblHorz && pConChar[nIdx+i+1] != ucBoxDblDownDblHorz)
 							)
-						// МОЖЕТ быть закрыто AltHistory
+						// May be covered by AltHistory
 						/*&& pConChar[nIdx+i+nWidth] == ucBoxDblVert*/)
 					{
-						uint nBottom = nHeight - 1;
+						unsigned nBottom = nHeight - 1;
 
 						while(nBottom > 4) //-V112
 						{

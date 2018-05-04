@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -85,7 +85,7 @@ LRESULT CSetPgTasks::OnInitDialog(HWND hDlg, bool abForceReload)
 	const CommandTasks* pGrp = NULL;
 	while ((pGrp = gpSet->CmdTaskGet(nGroup)))
 	{
-		_wsprintf(szItem, SKIPLEN(countof(szItem)) L"%i\t", nGroup+1);
+		swprintf_c(szItem, L"%i\t", nGroup+1);
 		int nPrefix = lstrlen(szItem);
 		lstrcpyn(szItem+nPrefix, pGrp->pszName, countof(szItem)-nPrefix);
 

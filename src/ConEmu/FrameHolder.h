@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,22 +30,36 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Header.h"
 
+class CConEmuMain;
 
 class CFrameHolder
 {
 private:
-	BOOL mb_Initialized;
-	BOOL mb_WasGlassDraw;
-	bool mb_AllowPreserveClient;// по возможности(!) - разрешить сохранение клиентской области (имеет приоритет перед mb_DontPreserveClient)
-	bool mb_DontPreserveClient; // запретить сохранение клиентской области при ресайзе
-	LONG mn_InNcPaint;
+	CConEmuMain* mp_ConEmu;
+	bool mb_Initialized = false;
+	#if defined(CONEMU_TABBAR_EX)
+	bool mb_WasGlassDraw = false;
+	#endif
+	bool mb_AllowPreserveClient = false;// по возможности(!) - разрешить сохранение клиентской области (имеет приоритет перед mb_DontPreserveClient)
+	bool mb_DontPreserveClient = false; // запретить сохранение клиентской области при ресайзе
+	LONG mn_InNcPaint = 0;
+	POINT ptLastNcClick = {};
+	int mn_WinCaptionHeight = 0, mn_FrameWidth = 0, mn_FrameHeight = 0, mn_OurCaptionHeight = 0, mn_CaptionDragHeight = 0;
+	RECT mrc_NcClientMargins = {};
+	int mn_RedrawLockCount = 0;
+	bool mb_RedrawRequested = false;
+
+	#if 0
+	void PaintFrame2k(HWND hWnd, HDC hdc, RECT &cr);
+	#endif
+
 public:
-	BOOL mb_NcActive;
-public:
+	bool mb_NcActive = true;
 	//TODO: Во время анимации Maximize/Restore/Minimize заголовок отрисовывается
 	//TODO: системой, в итоге мелькает текст и срезаются табы
 	//TODO: Сделаем, пока, чтобы текст хотя бы не мелькал...
-	BOOL mb_NcAnimate;
+	bool mb_NcAnimate = false;
+
 public:
 	CFrameHolder();
 	virtual ~CFrameHolder();
@@ -60,41 +74,40 @@ public:
 	//virtual void ShowSysmenu(int x=-32000, int y=-32000, bool bAlignUp = false) = 0;
 	//virtual void ShowTabMenu(int anConsole, int anTab, int x, int y) = 0;
 	//virtual void OnPaintClient(HDC hdc/*, int width, int height*/) = 0;
-	virtual void CalculateTabPosition(const RECT &rcWindow, const RECT &rcCaption, RECT* rcTabs);
-	virtual void CalculateCaptionPosition(const RECT &rcWindow, RECT* rcCaption);
-protected:
-	// internal messages processing
-	LRESULT OnDwmMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	LRESULT OnNcHitTest(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	//LRESULT OnNcLButtonDown(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	LRESULT OnNcCalcSize(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	LRESULT OnNcActivate(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	LRESULT OnNcPaint(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	LRESULT OnPaint(HWND hWnd, HDC hdc, UINT uMsg);
-	// NC helpers
-	LRESULT NC_Wrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	// NC Invalidating
-	void NC_Redraw();
-	int mn_RedrawLockCount;
-	bool mb_RedrawRequested;
-	void RedrawLock();
-	void RedrawUnlock();
 public:
 	void RedrawFrame();
 	void SetFrameActiveState(bool bActive);
-private:
-	//OSVERSIONINFO m_OSVer;
-#if 0
-	void PaintFrame2k(HWND hWnd, HDC hdc, RECT &cr);
-#endif
-	int mn_WinCaptionHeight, mn_FrameWidth, mn_FrameHeight, mn_OurCaptionHeight, mn_TabsHeight, mn_CaptionDragHeight;
 public:
 	void RecalculateFrameSizes();
-	int GetFrameWidth(); // ширина рамки окна
-	int GetFrameHeight(); // высота рамки окна
+	UINT GetWinFrameWidth(); // системная ширина/высота рамки окна
+	UINT GetWinCaptionHeight(); // высота заголовка в окнах Windows по умолчанию (без учета табов)
 	int GetCaptionHeight(); // высота НАШЕГО заголовка (с учетом табов)
-	int GetTabsHeight(); // высота табов
 	int GetCaptionDragHeight(); // высота части заголовка, который оставляем для "таскания" окна
-	int GetWinCaptionHeight(); // высота заголовка в окнах Windows по умолчанию (без учета табов)
 	void GetIconShift(POINT& IconShift);
+
+protected:
+	// internal messages processing
+	bool OnDwmCompositionChanged(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcUahDrawFrame(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcUahDrawCaption(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnGetText(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnKeyboardMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnMouseMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcLButtonDblClk(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcMouseMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnSysCommand(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnEraseBkgnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcHitTest(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcCalcSize(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcActivate(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnNcPaint(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT& lResult);
+	bool OnPaint(HWND hWnd, HDC hdc, UINT uMsg, LRESULT& lResult);
+	// NC helpers
+	LRESULT DoDwmMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	LRESULT DoNcHitTest(const POINT& point, int width, int height, LPARAM def_hit_test = 0);
+	LRESULT NC_Wrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	// NC Invalidating
+	void NC_Redraw();
+	void RedrawLock();
+	void RedrawUnlock();
 };

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,9 @@ LRESULT CSetPgUpdate::OnInitDialog(HWND hDlg, bool abInitial)
 	checkDlgButton(hDlg, cbUpdateCheckHourly, p->isUpdateCheckHourly);
 	checkDlgButton(hDlg, cbUpdateConfirmDownload, !p->isUpdateConfirmDownload);
 	checkRadioButton(hDlg, rbUpdateStableOnly, rbUpdateLatestAvailable,
-		(p->isUpdateUseBuilds==1) ? rbUpdateStableOnly : (p->isUpdateUseBuilds==3) ? rbUpdatePreview : rbUpdateLatestAvailable);
+		(p->isUpdateUseBuilds==ConEmuUpdateSettings::Builds::Stable) ? rbUpdateStableOnly
+		: (p->isUpdateUseBuilds==ConEmuUpdateSettings::Builds::Preview) ? rbUpdatePreview
+		: rbUpdateLatestAvailable);
 
 	checkDlgButton(hDlg, cbUpdateInetTool, p->isUpdateInetTool);
 	SetDlgItemText(hDlg, tUpdateInetTool, p->GetUpdateInetToolCmd());
@@ -80,7 +82,7 @@ LRESULT CSetPgUpdate::OnInitDialog(HWND hDlg, bool abInitial)
 			wchar_t* psz = szTitle.GetBuffer(iLen+4);
 			if (psz)
 			{
-				_wsprintf(psz, SKIPLEN(iLen+4) szFormat.ms_Val, (nPackage == 1) ? szCPU : WIN3264TEST(L"x86",L"x64"));
+				swprintf_c(psz, iLen+4/*#SECURELEN*/, szFormat.ms_Val, (nPackage == 1) ? szCPU : WIN3264TEST(L"x86",L"x64"));
 				SetDlgItemText(hDlg, rbUpdateUseExe, szTitle);
 			}
 		}

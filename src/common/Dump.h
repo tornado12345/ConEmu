@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2014 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -69,7 +69,7 @@ DWORD CreateDumpForReport(LPEXCEPTION_POINTERS ExceptionInfo, wchar_t (&szFullIn
 	static LONG nDumpIndex = 0;
 	wchar_t szDumpIndex[16] = L"";
 	if (nDumpIndex)
-		_wsprintf(szDumpIndex, SKIPCOUNT(szDumpIndex) L"-%i", nDumpIndex);
+		swprintf_c(szDumpIndex, L"-%i", nDumpIndex);
 	InterlockedIncrement(&nDumpIndex);
 
 	SetCursor(LoadCursor(NULL, IDC_WAIT));
@@ -101,7 +101,7 @@ DWORD CreateDumpForReport(LPEXCEPTION_POINTERS ExceptionInfo, wchar_t (&szFullIn
 
 	nLen = lstrlen(dmpfile);
 	lstrcpyn(szVer4, _T(MVV_4a), countof(szVer4));
-	_wsprintf(dmpfile+nLen, SKIPLEN(countof(dmpfile)-nLen) L"\\Trap-%02u%02u%02u%s-%u%s.dmp", MVV_1, MVV_2, MVV_3, szVer4, GetCurrentProcessId(), szDumpIndex);
+	swprintf_c(dmpfile+nLen, countof(dmpfile)-nLen/*#SECURELEN*/, L"\\Trap-%02u%02u%02u%s-%u%s.dmp", MVV_1, MVV_2, MVV_3, szVer4, GetCurrentProcessId(), szDumpIndex);
 	
 	nSharingOption = /*FILE_SHARE_READ;
 	if (IsWindowsXP)
@@ -173,7 +173,7 @@ DWORD CreateDumpForReport(LPEXCEPTION_POINTERS ExceptionInfo, wchar_t (&szFullIn
 		{
 			if (gpConEmu)
 			{
-				_wsprintf(szCmdLine, SKIPLEN(countof(szCmdLine)) L"\"%s\\%s", gpConEmu->ms_ConEmuBaseDir, WIN3264TEST(L"ConEmuC.exe",L"ConEmuC64.exe"));
+				swprintf_c(szCmdLine, L"\"%s\\%s", gpConEmu->ms_ConEmuBaseDir, WIN3264TEST(L"ConEmuC.exe",L"ConEmuC64.exe"));
 			}
 			if (!FileExists(szCmdLine+1))
 			{
@@ -184,7 +184,7 @@ DWORD CreateDumpForReport(LPEXCEPTION_POINTERS ExceptionInfo, wchar_t (&szFullIn
 	}
 
 	nLen = _tcslen(szCmdLine);
-	_wsprintf(szCmdLine+nLen, SKIPLEN(countof(szCmdLine)-nLen) L"\" /DEBUGPID=%u /FULL", GetCurrentProcessId());
+	swprintf_c(szCmdLine+nLen, countof(szCmdLine)-nLen/*#SECURELEN*/, L"\" /DEBUGPID=%u /FULL", GetCurrentProcessId());
 
 	if (!CreateProcess(NULL, szCmdLine, NULL, NULL, TRUE, HIGH_PRIORITY_CLASS, NULL, NULL, &si, &pi))
 	{
@@ -216,7 +216,7 @@ wrap:
 		wchar_t what[100];
 		if (ExceptionInfo && ExceptionInfo->ExceptionRecord)
 		{
-			_wsprintf(what, SKIPLEN(countof(what)) L"Exception 0x%08X", ExceptionInfo->ExceptionRecord->ExceptionCode);
+			swprintf_c(what, L"Exception 0x%08X", ExceptionInfo->ExceptionRecord->ExceptionCode);
 			if (EXCEPTION_ACCESS_VIOLATION == ExceptionInfo->ExceptionRecord->ExceptionCode
 				&& ExceptionInfo->ExceptionRecord->NumberParameters >= 2)
 			{
@@ -234,7 +234,7 @@ wrap:
 			wcscpy_c(what, L"Assertion");
 		}
 
-		_wsprintf(szFullInfo, SKIPLEN(countof(szFullInfo)) L"%s was occurred (%s, PID=%u)\r\nConEmu build %02u%02u%02u%s %s",
+		swprintf_c(szFullInfo, L"%s was occurred (%s, PID=%u)\r\nConEmu build %02u%02u%02u%s %s",
 			what, pszExeName, GetCurrentProcessId(),
 			(MVV_1%100),MVV_2,MVV_3,_T(MVV_4a), WIN3264TEST(L"",L"64"));
 	}

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#define USECHECKPROCESSMODULES
 #define ASSERT_ON_PROCNOTFOUND
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <intrin.h>
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
@@ -2001,7 +2001,7 @@ void LogFunctionCall(LPCSTR asFunc, LPCSTR asFile, int anLine)
 	if (!gbSuppressShowCall || gbSkipSuppressShowCall)
 	{
 		DWORD nErr = GetLastError();
-		char sFunc[128]; _wsprintfA(sFunc, SKIPLEN(countof(sFunc)) "Hook[%u]: %s\n", GetCurrentThreadId(), asFunc);
+		char sFunc[128]; msprintf(sFunc, countof(sFunc), "Hook[%u:%u]: %s\n", GetCurrentProcessId(), GetCurrentThreadId(), asFunc);
 		DebugStringA(sFunc);
 		SetLastError(nErr);
 	}

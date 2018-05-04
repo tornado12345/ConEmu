@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -111,12 +111,18 @@ class CSettings
 		LPCWSTR GetConfigName();
 		void SetConfigName(LPCWSTR asConfigName);
 
+		// Informational only, what Storage was used during settings loading
+		StorageType Type = StorageType::BASIC;
+
+		bool IsConfigNew = false; // true, если конфигурация новая
+		bool IsConfigPartial = false; // true, if config has no task or start command
+
 		// === Аргументы из командной строки ===
 		// Для отладочных целей.
 		bool isResetBasicSettings;
 		bool isFastSetupDisabled;
 		bool isDontCascade;
-		// === Запрет сохранения опций при выходе ===
+		// === Запрет авто сохранения опций и при выходе ===
 		bool ibDisableSaveSettingsOnExit;
 
 	public:
@@ -137,11 +143,7 @@ class CSettings
 		bool AutoScroll;
 		#endif
 
-		//bool AutoBufferHeight;
-		//bool FarSyncSize;
-		//int nCmdOutputCP;
-
-		LONG EvalSize(LONG nSize, EvalSizeFlags Flags);
+		LONG EvalSize(LONG nSize, EvalSizeFlags Flags, DpiValue* apDpi = nullptr);
 
 	public:
 		char isAllowDetach;
@@ -153,29 +155,29 @@ class CSettings
 		// Working variables...
 	private:
 		#ifndef APPDISTINCTBACKGROUND
-		CBackground* mp_Bg;
-		BITMAPFILEHEADER* mp_BgImgData;
+		CBackground* mp_Bg = nullptr;
+		BITMAPFILEHEADER* mp_BgImgData = nullptr;
 		BOOL mb_NeedBgUpdate; //, mb_WasVConBgImage;
 		FILETIME ftBgModified;
 		DWORD nBgModifiedTick;
 		bool isBackgroundImageValid;
 		bool mb_BgLastFade;
 		#else
-		CBackgroundInfo* mp_BgInfo;
+		CBackgroundInfo* mp_BgInfo = nullptr;
 		#endif
-		CDpiForDialog* mp_DpiAware;
-		CImgButtons* mp_ImgBtn;
+		CDpiForDialog* mp_DpiAware = nullptr;
+		CImgButtons* mp_ImgBtn = nullptr;
 	public:
 		enum ColorShowFormat { eRgbDec = 0, eRgbHex, eBgrHex } m_ColorFormat;
 	public:
-		void SetBgImageDarker(u8 newValue, bool bUpdate);
+		void SetBgImageDarker(uint8_t newValue, bool bUpdate);
 		#ifndef APPDISTINCTBACKGROUND
 		bool PrepareBackground(CVirtualConsole* apVCon, HDC* phBgDc, COORD* pbgBmpSize);
 		bool PollBackgroundFile(); // true, если файл изменен
 		#else
 		CBackgroundInfo* GetBackgroundObject();
 		#endif
-		bool LoadBackgroundFile(TCHAR *inPath, bool abShowErrors=false);
+		bool LoadBackgroundFile(LPCWSTR inPath, bool abShowErrors=false);
 		bool IsBackgroundEnabled(CVirtualConsole* apVCon);
 		void NeedBackgroundUpdate();
 		//CBackground* CreateBackgroundImage(const BITMAPFILEHEADER* apBkImgData);
@@ -192,6 +194,8 @@ class CSettings
 			return (pObject != NULL);
 		};
 		TabHwndIndex GetPageId(HWND hPage);
+		LPCWSTR GetActivePageWiki(CEStr& lsWiki);
+		bool ActivatePage(TabHwndIndex showPage);
 
 	private:
 		TabHwndIndex m_LastActivePageId;
@@ -239,11 +243,13 @@ class CSettings
 		static bool CheckConsoleFont(HWND ahDlg);
 		LPCWSTR CreateConFontError(LPCWSTR asReqFont=NULL, LPCWSTR asGotFont=NULL);
 		TOOLINFO tiConFontBalloon;
+		// #DPI Move DPI members to CConEmuMain
 		DpiValue _dpi;
 		DpiValue _dpi_all;
 		int GetOverallDpi();
 	public:
 		int QueryDpi();
+		void SetRequestedDpi(int dpiX, int dpiY);
 	private:
 		CEStr ms_BalloonErrTip;
 		CEStr ms_ConFontError;
@@ -253,6 +259,7 @@ class CSettings
 		void ShowModifierErrorTip(LPCTSTR asInfo, HWND hDlg, WORD nID);
 		void ShowConFontErrorTip();
 	protected:
+		INT_PTR OnCtlColorStatic(HWND hDlg, HDC hdc, HWND hCtrl, WORD nCtrlId);
 		void OnResetOrReload(bool abResetOnly, SettingsStorage* pXmlStorage = NULL);
 		void ExportSettings();
 		void ImportSettings();
@@ -273,13 +280,13 @@ class CSettings
 		void RegisterTipsFor(HWND hChildDlg);
 	private:
 		//BOOL mb_CharSetWasSet;
-		i64 mn_Freq;
-		i64 mn_FPS[256]; int mn_FPS_CUR_FRAME;
-		i64 mn_RFPS[128]; int mn_RFPS_CUR_FRAME;
-		i64 mn_Counter[tPerfLast];
-		i64 mn_CounterMax[tPerfLast];
+		int64_t mn_Freq;
+		int64_t mn_FPS[256]; int mn_FPS_CUR_FRAME;
+		int64_t mn_RFPS[128]; int mn_RFPS_CUR_FRAME;
+		int64_t mn_Counter[tPerfLast];
+		int64_t mn_CounterMax[tPerfLast];
 		DWORD mn_CounterTick[tPerfLast];
-		i64 mn_KbdDelayCounter, mn_KbdDelays[32/*must be power of 2*/]; LONG mn_KBD_CUR_FRAME;
+		int64_t mn_KbdDelayCounter, mn_KbdDelays[32/*must be power of 2*/]; LONG mn_KBD_CUR_FRAME;
 		HWND hwndTip, hwndBalloon;
 		TOOLINFO tiBalloon;
 		static BOOL CALLBACK RegisterTipsForChild(HWND hChild, LPARAM lParam);
@@ -313,8 +320,6 @@ class CSettings
 		void UpdateWinHookSettings(HMODULE hLLKeyHookDll);
 	public:
 		bool isDialogMessage(MSG &Msg);
-	private:
-		CEHelpPopup* mp_HelpPopup;
 	public:
 		INT_PTR ProcessTipHelp(HWND hWnd2, UINT messg, WPARAM wParam, LPARAM lParam);
 	private:

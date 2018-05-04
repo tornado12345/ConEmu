@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,20 +28,19 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <wchar.h>
-#include <tchar.h>
+#include "defines.h"
 #include "MAssert.h"
 
 #define STRSAFE_NO_DEPRECATE
 
 // В некоторых случаях использовать StringCch и прочие нельзя
 #undef  STRSAFE_DISABLE
-#ifdef CONEMU_MINIMAL
-	#define STRSAFE_DISABLE
-#endif
-#ifdef __GNUC__
-	#define STRSAFE_DISABLE
-#endif
+//#ifdef CONEMU_MINIMAL
+//	#define STRSAFE_DISABLE
+//#endif
+//#ifdef __GNUC__
+//	#define STRSAFE_DISABLE
+//#endif
 
 
 
@@ -186,7 +185,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #else // STRSAFE_NO_DEPRECATE
 
-#if defined(__CYGWIN__)
+#if 0 //defined(__CYGWIN__)
 	// bug: Cygwin's tchar.h
 	#define __T(x) L ## x
 	#define _T(x) __T(x)
@@ -211,7 +210,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif // STRSAFE_NO_DEPRECATE
 
 
-#ifndef _DEBUG
+#if 0
+//#ifndef _DEBUG
 #undef StringCchPrintf
 #define StringCchPrintf    dont_use_StringCchPrintf_in_release;
 
@@ -224,56 +224,78 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 
-#if defined(_DEBUG) && !defined(STRSAFE_DISABLE) && !defined(__GNUC__)
+//#if defined(_DEBUG) && !defined(STRSAFE_DISABLE) && !defined(__GNUC__)
 // buggy with L" %c %s[%u%s]" in MinGW build
 // Только под дебагом, т.к. StringCchVPrintf вызывает vsprintf, который не линкуется в релизе статиком.
 #define SKIPLEN(l) (l),
 #define SKIPCOUNT(l) (countof(l)),
-int swprintf_c(wchar_t* Buffer, INT_PTR size, const wchar_t *Format, ...);
-int sprintf_c(char* Buffer, INT_PTR size, const char *Format, ...);
+int swprintf_c(wchar_t* Buffer, INT_PTR size, const wchar_t* Format, ...);
+int sprintf_c(char* Buffer, INT_PTR size, const char* Format, ...);
+
+template <size_t size>
+int swprintf_c(wchar_t (&Buffer)[size], const wchar_t* Format, ...)
+{
+	_ASSERTE(Buffer!=Format);
+	va_list argList;
+	va_start(argList, Format);
+	HRESULT nRc = StringCchVPrintfW(Buffer, size, Format, argList);
+	va_end(argList);
+	return int(nRc);
+}
+
+template <size_t size>
+int sprintf_c(char (&Buffer)[size], const char* Format, ...)
+{
+	_ASSERTE(Buffer!=Format);
+	va_list argList;
+	va_start(argList, Format);
+	HRESULT nRc = StringCchVPrintfA(Buffer, size, Format, argList);
+	va_end(argList);
+	return int(nRc);
+}
 
 #define _wsprintf  swprintf_c
 #define _wsprintfA sprintf_c
-#else
-#define SKIPLEN(l)
-#define SKIPCOUNT(l)
-#define _wsprintf  wsprintfW
-#define _wsprintfA wsprintfA
-#endif
+//#else
+//#define SKIPLEN(l)
+//#define SKIPCOUNT(l)
+//#define _wsprintf  wsprintfW
+//#define _wsprintfA wsprintfA
+//#endif
 
-#ifdef STRSAFE_DISABLE
-inline int wcscpy_add(wchar_t* Buffer, wchar_t* /*BufferStart*/, const wchar_t *Str)
-{
-	lstrcpyW(Buffer, Str);
-	return S_OK;
-};
-inline int wcscpy_add(int Shift, wchar_t* BufferStart, const wchar_t *Str)
-{
-	lstrcpyW(BufferStart+Shift, Str);
-	return S_OK;
-};
-inline int wcscat_add(wchar_t* Buffer, wchar_t* /*BufferStart*/, const wchar_t *Str)
-{
-	lstrcatW(Buffer, Str);
-	return S_OK;
-};
-inline int wcscat_add(int Shift, wchar_t* BufferStart, const wchar_t* Str)
-{
-	lstrcatW(BufferStart+Shift, Str);
-	return S_OK;
-};
-inline int wcscpy_c(wchar_t* Dst, const wchar_t *Src)
-{
-	lstrcpyW(Dst, Src);
-	return S_OK;
-}
-inline int wcscat_c(wchar_t* Dst, const wchar_t *Src)
-{
-	lstrcatW(Dst, Src);
-	return S_OK;
-}
-
-#else
+//#ifdef STRSAFE_DISABLE
+//inline int wcscpy_add(wchar_t* Buffer, wchar_t* /*BufferStart*/, const wchar_t *Str)
+//{
+//	lstrcpyW(Buffer, Str);
+//	return S_OK;
+//};
+//inline int wcscpy_add(int Shift, wchar_t* BufferStart, const wchar_t *Str)
+//{
+//	lstrcpyW(BufferStart+Shift, Str);
+//	return S_OK;
+//};
+//inline int wcscat_add(wchar_t* Buffer, wchar_t* /*BufferStart*/, const wchar_t *Str)
+//{
+//	lstrcatW(Buffer, Str);
+//	return S_OK;
+//};
+//inline int wcscat_add(int Shift, wchar_t* BufferStart, const wchar_t* Str)
+//{
+//	lstrcatW(BufferStart+Shift, Str);
+//	return S_OK;
+//};
+//inline int wcscpy_c(wchar_t* Dst, const wchar_t *Src)
+//{
+//	lstrcpyW(Dst, Src);
+//	return S_OK;
+//}
+//inline int wcscat_c(wchar_t* Dst, const wchar_t *Src)
+//{
+//	lstrcatW(Dst, Src);
+//	return S_OK;
+//}
+//
+//#else
 
 template <size_t size>
 int wcscpy_add(wchar_t* Buffer, wchar_t (&BufferStart)[size], const wchar_t *Str)
@@ -286,8 +308,8 @@ int wcscpy_add(wchar_t* Buffer, wchar_t (&BufferStart)[size], const wchar_t *Str
 		return E_POINTER;
 	}
 
-	int nRc = StringCchCopyW(Buffer, SizeLeft, Str);
-	return nRc;
+	HRESULT nRc = StringCchCopyW(Buffer, SizeLeft, Str);
+	return int(nRc);
 };
 template <size_t size>
 int wcscpy_add(int Shift, wchar_t (&BufferStart)[size], const wchar_t* Str)
@@ -300,8 +322,8 @@ int wcscpy_add(int Shift, wchar_t (&BufferStart)[size], const wchar_t* Str)
 		return E_POINTER;
 	}
 
-	int nRc = StringCchCopyW(BufferStart+Shift, SizeLeft, Str);
-	return nRc;
+	HRESULT nRc = StringCchCopyW(BufferStart+Shift, SizeLeft, Str);
+	return int(nRc);
 };
 template <size_t size>
 int wcscat_add(wchar_t* Buffer, wchar_t (&BufferStart)[size], const wchar_t* Str)
@@ -314,8 +336,8 @@ int wcscat_add(wchar_t* Buffer, wchar_t (&BufferStart)[size], const wchar_t* Str
 		return E_POINTER;
 	}
 
-	int nRc = StringCchCatW(Buffer, SizeLeft, Str);
-	return nRc;
+	HRESULT nRc = StringCchCatW(Buffer, SizeLeft, Str);
+	return int(nRc);
 };
 template <size_t size>
 int wcscat_add(int Shift, wchar_t (&BufferStart)[size], const wchar_t *Str)
@@ -328,22 +350,22 @@ int wcscat_add(int Shift, wchar_t (&BufferStart)[size], const wchar_t *Str)
 		return E_POINTER;
 	}
 
-	int nRc = StringCchCatW(BufferStart+Shift, SizeLeft, Str);
-	return nRc;
+	HRESULT nRc = StringCchCatW(BufferStart+Shift, SizeLeft, Str);
+	return int(nRc);
 };
 template <size_t size>
 int wcscpy_c(wchar_t (&Dst)[size], const wchar_t *Src)
 {
-	int nRc = StringCchCopyW(Dst, size, Src);
-	return nRc;
+	HRESULT nRc = StringCchCopyW(Dst, size, Src);
+	return int(nRc);
 }
 template <size_t size>
 int wcscat_c(wchar_t (&Dst)[size], const wchar_t *Src)
 {
-	int nRc = StringCchCatW(Dst, size, Src);
-	return nRc;
+	HRESULT nRc = StringCchCatW(Dst, size, Src);
+	return int(nRc);
 }
-#endif
+//#endif
 //#undef _wcscpy_c
 //inline errno_t _wcscpy_c(wchar_t *Dst, size_t size, const wchar_t *Src)
 //{
@@ -375,3 +397,21 @@ int startswith(LPCWSTR asStr, LPCWSTR asPattern, bool abIgnoreCase);
 
 #define lstrempty(s) (!(s) || !*(s))
 #define lstrnempty(s) ((s) && *(s))
+
+template <size_t size>
+const wchar_t* ltow_s(int value, wchar_t (&buffer)[size], int radix)
+{
+	errno_t e = _itow_s(value, buffer, size, radix);
+	if (e != 0)
+		buffer[0] = 0;
+	return buffer;
+}
+
+template <size_t size>
+const wchar_t* ultow_s(unsigned value, wchar_t (&buffer)[size], int radix)
+{
+	errno_t e = _ui64tow_s(value, buffer, size, radix);
+	if (e != 0)
+		buffer[0] = 0;
+	return buffer;
+}

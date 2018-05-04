@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,20 +30,27 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <Windows.h>
 
-SHORT MakeShort(i32 X);
-USHORT MakeUShort(u32 X);
+SHORT MakeShort(int32_t X);
+USHORT MakeUShort(uint32_t X);
 
 COORD MakeCoord(int X,int Y);
 POINT MakePoint(int X,int Y);
+
 RECT MakeRect(int W,int H);
 RECT MakeRect(int X1, int Y1,int X2,int Y2);
 SMALL_RECT MakeSmallRect(int X1, int Y1, int X2, int Y2);
+
+bool RectEqual(const RECT& rc1, const RECT& rc2);
+bool operator ==(const RECT& rc1, const RECT& rc2);
+bool operator !=(const RECT& rc1, const RECT& rc2);
+
 bool CoordInRect(const COORD& c, const RECT& r);
 bool IntersectSmallRect(const RECT& rc1, const SMALL_RECT& rc2, LPRECT lprcDest = NULL);
 
 bool PtDiffTest(int x1, int y1, int x2, int y2, UINT maxDx, UINT maxDy);
 bool PtDiffTest(POINT C, int aX, int aY, UINT D);
 
+int  CoordCompare(const COORD& cr1, const COORD& cr2);
 bool CoordEqual(const COORD& cr1, const COORD& cr2);
 bool operator ==(const COORD& cr1, const COORD& cr2);
 bool operator !=(const COORD& cr1, const COORD& cr2);

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -65,7 +65,7 @@ static bool LoadModuleVersion(LPCWSTR asModulePath, VS_FIXEDFILEINFO& Version, w
 					if (VerQueryValue((void*)pVerData, szSlash, (void**)&lvs, &nLen))
 					{
 						_ASSERTE(nLen == sizeof(*lvs));
-						memmove(&Version, lvs, min(nLen, sizeof(Version)));
+						memmove(&Version, lvs, std::min<size_t>(nLen, sizeof(Version)));
 						lbRc = true;
 					}
 					else
@@ -84,7 +84,7 @@ static bool LoadModuleVersion(LPCWSTR asModulePath, VS_FIXEDFILEINFO& Version, w
 			}
 			else
 			{
-				if (ErrText) _wsprintf(ErrText, SKIPLEN(cchErrMax) L"LoadAppVersion failed! Can't allocate %n bytes!\n", dwSize);
+				if (ErrText) swprintf_c(ErrText, cchErrMax/*#SECURELEN*/, L"LoadAppVersion failed! Can't allocate %n bytes!\n", dwSize);
 			}
 		}
 		else
@@ -106,7 +106,7 @@ static bool LoadModuleVersion(LPCWSTR asModulePath, VS_FIXEDFILEINFO& Version, w
 		if (dwErr)
 		{
 			int nCurLen = lstrlen(ErrText);
-			_wsprintf(ErrText+nCurLen, SKIPLEN(cchErrMax-nCurLen) L"\nErrCode=0x%08X", dwErr);
+			swprintf_c(ErrText+nCurLen, cchErrMax-nCurLen/*#SECURELEN*/, L"\nErrCode=0x%08X", dwErr);
 		}
 	}
 

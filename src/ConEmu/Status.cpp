@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRSIZE(s) //DEBUGSTR(s)
 #define DEBUGSTRPAINT(s) //DEBUGSTR(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <commctrl.h>
 
 #include "header.h"
@@ -147,6 +147,9 @@ static StatusColInfo gStatusCols[] =
 						L"ConEmu VCon DC size",
 						L"Width x Height: ConEmu VCon drawing size"},
 
+	{csi_WindowMode,	L"StatusBar.Hide.WMode",
+						L"ConEmu window mode",
+						L"ConEmu window mode (Max/FS/Tiled)"},
 	{csi_WindowStyle,	L"StatusBar.Hide.Style",
 						L"ConEmu window style",
 						L"GWL_STYLE: ConEmu window style"},
@@ -203,6 +206,10 @@ static StatusColInfo gStatusCols[] =
 	{csi_CursorInfo,	L"StatusBar.Hide.CurI",
 						L"Cursor information",
 						L"Col, Row, Height (visible|hidden): Console cursor, 0-based"},
+
+	{csi_CellInfo,		L"StatusBar.Hide.CellI",
+						L"Cell information",
+						L"Cell information: Char, Code, Attributes"},
 
 	{csi_ConEmuPID,		L"StatusBar.Hide.ConEmuPID",
 						L"ConEmu GUI PID",
@@ -272,7 +279,8 @@ static CStatus::StatusMenuOptions gRConTermModes[] = {
 };
 
 
-CStatus::CStatus()
+CStatus::CStatus(CConEmuMain* _owner)
+	: mp_ConEmu(_owner)
 {
 	//mb_WasClick = false;
 	mb_InPopupMenu = false;
@@ -302,7 +310,6 @@ CStatus::CStatus()
 	ZeroStruct(mrc_LastStatus);
 	ZeroStruct(mrc_LastResizeCol);
 	ZeroStruct(mt_LastTime);
-	mb_StatusResizing = false;
 
 	//mn_BmpSize; -- не важно
 	mb_OldBmp = mh_Bmp = NULL; mh_MemDC = NULL;
@@ -332,7 +339,7 @@ CStatus::CStatus()
 	}
 	#endif
 
-	_wsprintf(m_Values[csi_ConEmuPID].sText, SKIPLEN(countof(m_Values[csi_ConEmuPID].sText)) L"%u", GetCurrentProcessId());
+	swprintf_c(m_Values[csi_ConEmuPID].sText, L"%u", GetCurrentProcessId());
 
 	// Init some values
 	OnTransparency();
@@ -344,7 +351,7 @@ CStatus::CStatus()
 	wcscpy_c(m_Values[csi_Time].szFormat, L"00:00:00");
 
 	_ASSERTE(gpConEmu && *gpConEmu->ms_ConEmuBuild);
-	_wsprintf(ms_ConEmuBuild, SKIPLEN(countof(ms_ConEmuBuild)) L" %c %s[%u%s]",
+	swprintf_c(ms_ConEmuBuild, L" %c %s[%u%s]",
 		0x00AB/* « */, gpConEmu->ms_ConEmuBuild, WIN3264TEST(32,64), RELEASEDEBUGTEST(L"","D"));
 	ZeroStruct(mpt_StatusResizePt);
 	ZeroStruct(mpt_StatusResizeCmp);
@@ -410,15 +417,17 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 	}
 	else
 	{
-		GetStatusBarClientRect(&rcStatus);
+		GetStatusBarClientRect(rcStatus);
 	}
 
 	#ifdef _DEBUG
 	{
-		wchar_t szPos[80]; RECT rcScreen = rcStatus;
+		wchar_t szPos[100]; RECT rcScreen = rcStatus;
 		MapWindowPoints(ghWnd, NULL, (LPPOINT)&rcScreen, 2);
-		_wsprintf(szPos, SKIPCOUNT(szPos) L"StatusBar painted at {%i,%i}-{%i,%i} screen coords", LOGRECTCOORDS(rcScreen));
+		swprintf_c(szPos, L"StatusBar painted at {%i,%i}-{%i,%i} screen coords (%s)",
+			LOGRECTCOORDS(rcScreen), prcStatus ? L"PTR" : L"calc");
 		DEBUGSTRPAINT(szPos);
+		//OutputDebugStringW(szPos); OutputDebugStringW(L"\n");
 	}
 	#endif
 
@@ -430,8 +439,8 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 	#endif
 	mb_DataChanged = false;
 
-	int nStatusWidth = rcStatus.right - rcStatus.left + 1;
-	int nStatusHeight = rcStatus.bottom - rcStatus.top + ((gpSet->isStatusBarFlags & csf_NoVerticalPad) ? 0 : 1);
+	const int nStatusWidth = RectWidth(rcStatus);
+	const int nStatusHeight = RectHeight(rcStatus);
 
 	// Проверить клавиатуру
 	IsKeyboardChanged();
@@ -645,12 +654,12 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 				// чтобы не задавали вопросов, нафига дублируется.
 				if (LOWORD((DWORD)mhk_Locale) == HIWORD((DWORD)mhk_Locale))
 				{
-					_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%04X", LOWORD((DWORD)mhk_Locale));
+					swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%04X", LOWORD((DWORD)mhk_Locale));
 					wcscpy_c(m_Items[nDrawCount].szFormat, L"FFFF");
 				}
 				else
 				{
-					_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%08X", (DWORD)mhk_Locale);
+					swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%08X", (DWORD)mhk_Locale);
 					wcscpy_c(m_Items[nDrawCount].szFormat, L"FFFFFFFF");
 				}
 				break;
@@ -675,32 +684,61 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 					m_Items[nDrawCount].sText[0] = 0;
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"x00/x00");
 				break;
+			case csi_CellInfo:
+				if (pRCon)
+					pRCon->QueryCellInfo(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText));
+				else
+					m_Items[nDrawCount].sText[0] = 0;
+				wcscpy_c(m_Items[nDrawCount].szFormat, L"U+FF A:FF");
+				break;
 
+			case csi_WindowMode:
+				m_Items[nDrawCount].sText[0] = 0;
+				if (m_WindowMode.mode == wmMaximized)
+					wcscat_c(m_Items[nDrawCount].sText, L"Max");
+				else if (m_WindowMode.mode == wmFullScreen)
+					wcscat_c(m_Items[nDrawCount].sText, L"FS");
+				if (m_WindowMode.tile != cwc_Current)
+				{
+					if (m_Items[nDrawCount].sText[0])
+						wcscat_c(m_Items[nDrawCount].sText, L"|");
+					switch (m_WindowMode.tile)
+					{
+					case cwc_TileHeight:  wcscat_c(m_Items[nDrawCount].sText, L"TH"); break;
+					case cwc_TileWidth:   wcscat_c(m_Items[nDrawCount].sText, L"TW"); break;
+					case cwc_TileLeft:    wcscat_c(m_Items[nDrawCount].sText, L"TL"); break;
+					case cwc_TileRight:   wcscat_c(m_Items[nDrawCount].sText, L"TR"); break;
+					}
+				}
+				if (!m_Items[nDrawCount].sText[0])
+					wcscpy_c(m_Items[nDrawCount].sText, L"--");
+				wcscpy_c(m_Items[nDrawCount].szFormat, L"--");
+				break;
 			case csi_WindowStyle:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%08X", mn_Style);
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%08X", mn_Style);
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"FFFFFFFF");
 				break;
 			case csi_WindowStyleEx:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%08X", mn_ExStyle);
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%08X", mn_ExStyle);
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"FFFFFFFF");
 				break;
 
 			case csi_Zoom:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%i%%", gpFontMgr->GetZoom());
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%i%%", gpFontMgr->GetZoom());
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"200%");
 				break;
 			case csi_DPI:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"%i", gpSetCls->QueryDpi());
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"%i", gpSetCls->QueryDpi());
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"999");
 				break;
 
 			case csi_HwndFore:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"x%08X[%u]", LODWORD(mh_Fore), mn_ForePID);
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"x%08X[%u]", LODWORD(mh_Fore), mn_ForePID);
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"xFFFFFFFF[99999]");
 				m_Values[nID].sHelp = ms_ForeInfo;
 				break;
 			case csi_HwndFocus:
-				_wsprintf(m_Items[nDrawCount].sText, SKIPLEN(countof(m_Items[nDrawCount].sText)-1) L"x%08X[%u]", LODWORD(mh_Focus), mn_FocusPID);
+				swprintf_c(m_Items[nDrawCount].sText, countof(m_Items[nDrawCount].sText)-1/*#SECURELEN*/, L"x%08X[%u]", LODWORD(mh_Focus), mn_FocusPID);
 				wcscpy_c(m_Items[nDrawCount].szFormat, L"xFFFFFFFF[99999]");
 				m_Values[nID].sHelp = ms_FocusInfo;
 				break;
@@ -725,7 +763,7 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 		}
 		if (*m_Items[nDrawCount].szFormat && GetTextExtentPoint32(hDrawDC, m_Items[nDrawCount].szFormat, lstrlen(m_Items[nDrawCount].szFormat), &szTemp))
 		{
-			m_Items[nDrawCount].TextSize.cx = max(m_Items[nDrawCount].TextSize.cx, szTemp.cx);
+			m_Items[nDrawCount].TextSize.cx = std::max(m_Items[nDrawCount].TextSize.cx, szTemp.cx);
 		}
 
 		if (nID == csi_Info)
@@ -761,7 +799,7 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 
 	if (nDrawCount == 1)
 	{
-		m_Items[0].TextSize.cx = min((nStatusWidth - 2*nGapWidth - 1),m_Items[0].TextSize.cx);
+		m_Items[0].TextSize.cx = std::min<LONG>((nStatusWidth - 2*nGapWidth - 1), m_Items[0].TextSize.cx);
 	}
 	else
 	{
@@ -799,7 +837,7 @@ void CStatus::PaintStatus(HDC hPaint, LPRECT prcStatus /*= NULL*/)
 			// -- don't break, may be further column will be visible and fit!
 		}
 
-		m_Items[0].TextSize.cx = max(nMinInfoWidth,(nStatusWidth - nTotalWidth + iFirstWidth));
+		m_Items[0].TextSize.cx = std::max(nMinInfoWidth,(nStatusWidth - nTotalWidth + iFirstWidth));
 	}
 
 
@@ -1053,7 +1091,7 @@ void CStatus::InvalidateStatusBar(LPRECT rcInvalidated /*= NULL*/)
 		return;
 
 	RECT rcClient = {};
-	if (!GetStatusBarClientRect(&rcClient))
+	if (!GetStatusBarClientRect(rcClient))
 		return;
 
 	// Invalidate вызывается не только при изменениях, но
@@ -1136,7 +1174,8 @@ bool CStatus::IsResizeAllowed()
 	return true;
 }
 
-bool CStatus::IsCursorOverResizeMark(POINT ptCurClient)
+// point - coordinates relative to UpperLeft corner of window client rect
+bool CStatus::IsCursorOverResizeMark(const POINT& ptCurClient)
 {
 	_ASSERTE(this);
 
@@ -1148,15 +1187,6 @@ bool CStatus::IsCursorOverResizeMark(POINT ptCurClient)
 		return false;
 
 	return true;
-}
-
-bool CStatus::IsStatusResizing()
-{
-	_ASSERTE(this);
-	if (!gpSet->isStatusBarShow)
-		return false; // Нет статуса - нет ресайза
-
-	return mb_StatusResizing;
 }
 
 void CStatus::DoStatusResize(const POINT& ptScr)
@@ -1207,58 +1237,6 @@ bool CStatus::ProcessStatusMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 	lResult = 0;
 
-	// Cursor over "resize mark"?
-	if (IsResizeAllowed()
-		&& (mb_StatusResizing || PtInRect(&mrc_LastResizeCol, ptCurClient)))
-	{
-		POINT ptScr = {};
-
-		switch (uMsg)
-		{
-		case WM_LBUTTONDOWN:
-			if (!gpConEmu->IsSizeFree())
-			{
-				DEBUGSTRSIZE(L"Resize from status bar grip skipped - size is fixed");
-				break;
-			}
-			DEBUGSTRSIZE(L"Starting resize from status bar grip");
-			GetCursorPos(&mpt_StatusResizePt);
-			GetWindowRect(ghWnd, &mrc_StatusResizeRect);
-			mb_StatusResizing = true;
-			SetCapture(ghWnd);
-			gpConEmu->BeginSizing(true);
-			// Force first resize
-			DoStatusResize(mpt_StatusResizePt);
-			break;
-		case WM_LBUTTONUP:
-		case WM_MOUSEMOVE:
-			if (mb_StatusResizing)
-			{
-				if (GetCursorPos(&ptScr)
-					// Do resize if the cursor position was changed only
-					&& ((ptScr.x != mpt_StatusResizeCmp.x) || (ptScr.y != mpt_StatusResizeCmp.y))
-					)
-				{
-					DoStatusResize(ptScr);
-				}
-
-				if (uMsg == WM_LBUTTONUP)
-				{
-					ReleaseCapture();
-					gpConEmu->EndSizing();
-					mb_StatusResizing = false;
-					DEBUGSTRSIZE(L"Resize from status bar grip finished");
-				}
-			}
-			break;
-		case WM_SETCURSOR: // не приходит
-			// Stop further processing
-			SetCursor(LoadCursor(NULL, IDC_SIZENWSE));
-			lResult = TRUE;
-			return true;
-		}
-	}
-
 	if (gpConEmu->isSizing() || !PtInRect(&mrc_LastStatus, ptCurClient))
 	{
 		//bool bWasClick = mb_WasClick;
@@ -1294,7 +1272,7 @@ bool CStatus::ProcessStatusMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 					{
 						// и координата не правее середины колонки
 						// (ну так, на всякий случай, чтобы и статусное меню можно было показать)
-						if (ptCurClient.x <= min(80,(m_Items[0].rcClient.right/2)))
+						if (ptCurClient.x <= std::min<LONG>(80, (m_Items[0].rcClient.right/2)))
 						{
 							_ASSERTE(m_Items[i].nID == csi_Info);
 							SetClickedItemDesc(csi_Info);
@@ -1461,7 +1439,7 @@ void CStatus::ShowStatusSetupMenu()
 	if ((nClickedID == 0)
 		// и координата не правее середины колонки
 		// (ну так, на всякий случай, чтобы и статусное меню можно было показать)
-		&& (ptClient.x <= min(80,(m_Items[0].rcClient.right/2))))
+		&& (ptClient.x <= std::min<LONG>(80, (m_Items[0].rcClient.right/2))))
 	{
 		LogString(L"ShowSysmenu called from (StatusBar)");
 		gpConEmu->mp_Menu->ShowSysmenu(ptCur.x, ptCur.y, TPM_BOTTOMALIGN);
@@ -1633,13 +1611,13 @@ void CStatus::OnWindowReposition(const RECT *prcNew)
 	wcscpy_c(m_Values[csi_WindowSize].szFormat, m_Values[csi_WindowSize].sText/*L"9999x9999"*/);
 
 	// csi_WindowClient
-	RECT rcClient = gpConEmu->CalcRect(CER_MAINCLIENT, rcTmp, CER_MAIN);
+	RECT rcClient = gpConEmu->ClientRect();
 	_wsprintf(m_Values[csi_WindowClient].sText, SKIPLEN(countof(m_Values[csi_WindowClient].sText)-1)
 		L"%ix%i", (rcClient.right-rcClient.left), (rcClient.bottom-rcClient.top));
 	wcscpy_c(m_Values[csi_WindowClient].szFormat, m_Values[csi_WindowClient].sText/*L"9999x9999"*/);
 
 	// csi_WindowClient
-	RECT rcWork = gpConEmu->CalcRect(CER_WORKSPACE, rcTmp, CER_MAIN);
+	RECT rcWork = gpConEmu->WorkspaceRect();
 	_wsprintf(m_Values[csi_WindowWork].sText, SKIPLEN(countof(m_Values[csi_WindowWork].sText)-1)
 		L"%ix%i", (rcWork.right-rcWork.left), (rcWork.bottom-rcWork.top));
 	wcscpy_c(m_Values[csi_WindowWork].szFormat, m_Values[csi_WindowWork].sText/*L"9999x9999"*/);
@@ -1682,9 +1660,9 @@ void CStatus::OnConsoleChanged(const CONSOLE_SCREEN_BUFFER_INFO* psbi, const CON
 	// csi_ConsolePos:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_ConsolePos].sText, SKIPLEN(countof(m_Values[csi_ConsolePos].sText)-1) L"(%i,%i)-(%i,%i)",
+		swprintf_c(m_Values[csi_ConsolePos].sText, countof(m_Values[csi_ConsolePos].sText)-1/*#SECURELEN*/, L"(%i,%i)-(%i,%i)",
 			(int)psbi->srWindow.Left+1, (int)psbi->srWindow.Top+1, (int)psbi->srWindow.Right+1, (int)psbi->srWindow.Bottom+1);
-		_wsprintf(m_Values[csi_ConsolePos].szFormat, SKIPLEN(countof(m_Values[csi_ConsolePos].szFormat)) L" (%i,%i)-(%i,%i) ",
+		swprintf_c(m_Values[csi_ConsolePos].szFormat, L" (%i,%i)-(%i,%i) ",
 			(int)psbi->srWindow.Left+1, (int)psbi->srWindow.Top+1, (int)psbi->dwSize.X, (int)psbi->dwSize.Y);
 		if (mb_ViewLock != pTopLeft->isLocked())
 		{
@@ -1695,21 +1673,21 @@ void CStatus::OnConsoleChanged(const CONSOLE_SCREEN_BUFFER_INFO* psbi, const CON
 		if (mb_ViewLock)
 		{
 			if (pTopLeft->x >= 0)
-				_wsprintf(szX, SKIPCOUNT(szX) L"%i", pTopLeft->x+1);
+				swprintf_c(szX, L"%i", pTopLeft->x+1);
 			else
 				wcscpy_c(szX, L"*");
 			if (pTopLeft->y >= 0)
-				_wsprintf(szY, SKIPCOUNT(szY) L"%i", pTopLeft->y+1);
+				swprintf_c(szY, L"%i", pTopLeft->y+1);
 			else
 				wcscpy_c(szY, L"*");
-			_wsprintf(m_Values[csi_ViewLock].sText, SKIPLEN(countof(m_Values[csi_ViewLock].sText)) L"{%s,%s}", szX, szY);
+			swprintf_c(m_Values[csi_ViewLock].sText, L"{%s,%s}", szX, szY);
 		}
 		else
 		{
 			wcscpy_c(m_Values[csi_ViewLock].sText, gsViewName);
 		}
 		wcscpy_c(m_Values[csi_ViewLock].szFormat, L"{-,999}");
-		//_wsprintf(ms_ViewLockHint, SKIPLEN(countof(ms_ViewLockHint)-1) L"%s (%i,%i)",
+		//swprintf_c(ms_ViewLockHint, countof(ms_ViewLockHint)-1/*#SECURELEN*/, L"%s (%i,%i)",
 		//	gsViewLock, pTopLeft->x, pTopLeft->y);
 		//m_Values[csi_ViewLock].sHelp = ms_ViewLockHint;
 	}
@@ -1723,20 +1701,20 @@ void CStatus::OnConsoleChanged(const CONSOLE_SCREEN_BUFFER_INFO* psbi, const CON
 
 	// csi_ConsoleSize:
 	if (bValid)
-		_wsprintf(m_Values[csi_ConsoleSize].sText, SKIPLEN(countof(m_Values[csi_ConsoleSize].sText)-1) L"%ix%i", (int)psbi->srWindow.Right-psbi->srWindow.Left+1, (int)psbi->srWindow.Bottom-psbi->srWindow.Top+1);
+		swprintf_c(m_Values[csi_ConsoleSize].sText, countof(m_Values[csi_ConsoleSize].sText)-1/*#SECURELEN*/, L"%ix%i", (int)psbi->srWindow.Right-psbi->srWindow.Left+1, (int)psbi->srWindow.Bottom-psbi->srWindow.Top+1);
 	else
 		wcscpy_c(m_Values[csi_ConsoleSize].sText, L" ");
 	//m_Values[csi_ConsoleSize].sFormat = L"999x999";
-	//_wsprintf(m_Values[csi_ConsoleSize].szFormat, SKIPLEN(countof(m_Values[csi_ConsoleSize].szFormat)) L" %ix%i",
-	//	(int)psbi->dwSize.X, max((int)psbi->dwSize.Y,(int)gpSet->DefaultBufferHeight));
+	//swprintf_c(m_Values[csi_ConsoleSize].szFormat, L" %ix%i",
+	//	(int)psbi->dwSize.X, std::max((int)psbi->dwSize.Y,(int)gpSet->DefaultBufferHeight));
 	wcscpy_c(m_Values[csi_ConsoleSize].szFormat, m_Values[csi_ConsoleSize].sText);
 
 	// csi_BufferSize:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_BufferSize].sText, SKIPLEN(countof(m_Values[csi_BufferSize].sText)-1) L"%ix%i", (int)psbi->dwSize.X, (int)psbi->dwSize.Y);
-		_wsprintf(m_Values[csi_BufferSize].szFormat, SKIPLEN(countof(m_Values[csi_BufferSize].szFormat)) L" %ix%i",
-			(int)psbi->dwSize.X, max((int)psbi->dwSize.Y,(int)gpSet->DefaultBufferHeight));
+		swprintf_c(m_Values[csi_BufferSize].sText, countof(m_Values[csi_BufferSize].sText)-1/*#SECURELEN*/, L"%ix%i", (int)psbi->dwSize.X, (int)psbi->dwSize.Y);
+		swprintf_c(m_Values[csi_BufferSize].szFormat, L" %ix%i",
+			(int)psbi->dwSize.X, std::max((int)psbi->dwSize.Y,(int)gpSet->DefaultBufferHeight));
 	}
 	else
 	{
@@ -1761,9 +1739,9 @@ void CStatus::OnCursorChanged(const COORD* pcr, const CONSOLE_CURSOR_INFO* pci, 
 	// csi_CursorX:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_CursorX].sText, SKIPLEN(countof(m_Values[csi_CursorX].sText)-1) _T("%i"), (int)pcr->X+1);
+		swprintf_c(m_Values[csi_CursorX].sText, countof(m_Values[csi_CursorX].sText)-1/*#SECURELEN*/, _T("%i"), (int)pcr->X+1);
 		if (nMaxX)
-			_wsprintf(m_Values[csi_CursorX].szFormat, SKIPLEN(countof(m_Values[csi_CursorX].szFormat)) L" %i", nMaxX);
+			swprintf_c(m_Values[csi_CursorX].szFormat, L" %i", nMaxX);
 	}
 	else
 	{
@@ -1774,9 +1752,9 @@ void CStatus::OnCursorChanged(const COORD* pcr, const CONSOLE_CURSOR_INFO* pci, 
 	// csi_CursorY:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_CursorY].sText, SKIPLEN(countof(m_Values[csi_CursorY].sText)-1) _T("%i"), (int)pcr->Y+1);
+		swprintf_c(m_Values[csi_CursorY].sText, countof(m_Values[csi_CursorY].sText)-1/*#SECURELEN*/, _T("%i"), (int)pcr->Y+1);
 		if (nMaxY)
-			_wsprintf(m_Values[csi_CursorY].szFormat, SKIPLEN(countof(m_Values[csi_CursorY].szFormat)) L" %i", nMaxY);
+			swprintf_c(m_Values[csi_CursorY].szFormat, L" %i", nMaxY);
 	}
 	else
 	{
@@ -1787,7 +1765,7 @@ void CStatus::OnCursorChanged(const COORD* pcr, const CONSOLE_CURSOR_INFO* pci, 
 	// csi_CursorSize:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_CursorSize].sText, SKIPLEN(countof(m_Values[csi_CursorSize].sText)-1) _T("%i%s"), pci->dwSize, pci->bVisible ? L"V" : L"H");
+		swprintf_c(m_Values[csi_CursorSize].sText, countof(m_Values[csi_CursorSize].sText)-1/*#SECURELEN*/, _T("%i%s"), pci->dwSize, pci->bVisible ? L"V" : L"H");
 		wcscpy_c(m_Values[csi_CursorSize].szFormat, L"100V");
 	}
 	else
@@ -1799,9 +1777,9 @@ void CStatus::OnCursorChanged(const COORD* pcr, const CONSOLE_CURSOR_INFO* pci, 
 	// csi_CursorInfo:
 	if (bValid)
 	{
-		_wsprintf(m_Values[csi_CursorInfo].sText, SKIPLEN(countof(m_Values[csi_CursorInfo].sText)-1) _T("(%i,%i) %i%s"), (int)pcr->X+1, (int)pcr->Y+1, pci->dwSize, pci->bVisible ? L"V" : L"H");
+		swprintf_c(m_Values[csi_CursorInfo].sText, countof(m_Values[csi_CursorInfo].sText)-1/*#SECURELEN*/, _T("(%i,%i) %i%s"), (int)pcr->X+1, (int)pcr->Y+1, pci->dwSize, pci->bVisible ? L"V" : L"H");
 		if (nMaxX && nMaxY)
-			_wsprintf(m_Values[csi_CursorInfo].szFormat, SKIPLEN(countof(m_Values[csi_CursorInfo].szFormat)) L" (%i,%i) 100V", nMaxX, nMaxY);
+			swprintf_c(m_Values[csi_CursorInfo].szFormat, L" (%i,%i) 100V", nMaxX, nMaxY);
 	}
 	else
 	{
@@ -1852,7 +1830,7 @@ void CStatus::OnActiveVConChanged(int nIndex/*0-based*/, CRealConsole* pRCon)
 
 	if ((nCount > 0) && (nIndex >= 0))
 	{
-		_wsprintf(m_Values[csi_ActiveVCon].sText, SKIPLEN(countof(m_Items[csi_ActiveVCon].sText)) L"%i/%i",
+		swprintf_c(m_Values[csi_ActiveVCon].sText, L"%i/%i",
 			nIndex+1, nCount);
 	}
 	else
@@ -1909,12 +1887,12 @@ void CStatus::OnServerChanged(DWORD nMainServerPID, DWORD nAltServerPID)
 	{
 		if ((nMainServerPID == nAltServerPID) || !nAltServerPID)
 		{
-			_wsprintf(m_Values[csi_Server].sText, SKIPLEN(countof(m_Items[csi_Server].sText)) _T("%u"), nMainServerPID);
+			swprintf_c(m_Values[csi_Server].sText, _T("%u"), nMainServerPID);
 			wcscpy_c(m_Values[csi_Server].szFormat, L"99999");
 		}
 		else
 		{
-			_wsprintf(m_Values[csi_Server].sText, SKIPLEN(countof(m_Values[csi_Server].sText)) _T("%u/%u"), nMainServerPID, nAltServerPID);
+			swprintf_c(m_Values[csi_Server].sText, _T("%u/%u"), nMainServerPID, nAltServerPID);
 			wcscpy_c(m_Values[csi_Server].szFormat, L"99999/99999");
 		}
 	}
@@ -1948,7 +1926,7 @@ bool CStatus::IsTimeChanged()
 	if (st.wHour != mt_LastTime.wHour || st.wMinute != mt_LastTime.wMinute || st.wSecond != mt_LastTime.wSecond)
 	{
 		mt_LastTime = st;
-		_wsprintf(m_Values[csi_Time].sText, SKIPLEN(countof(m_Values[csi_Time].sText)) L"%u:%02u:%02u", (uint)st.wHour, (uint)st.wMinute, (uint)st.wSecond);
+		swprintf_c(m_Values[csi_Time].sText, L"%u:%02u:%02u", (unsigned)st.wHour, (unsigned)st.wMinute, (unsigned)st.wSecond);
 		return true;
 	}
 
@@ -2007,6 +1985,7 @@ bool CStatus::IsWindowChanged()
 {
 	if (gpSet->isStatusColumnHidden[csi_WindowStyle]
 		&& gpSet->isStatusColumnHidden[csi_WindowStyleEx]
+		&& gpSet->isStatusColumnHidden[csi_WindowMode]
 		&& gpSet->isStatusColumnHidden[csi_Zoom]
 		&& gpSet->isStatusColumnHidden[csi_DPI]
 		&& gpSet->isStatusColumnHidden[csi_HwndFore]
@@ -2020,6 +1999,16 @@ bool CStatus::IsWindowChanged()
 	bool bChanged = false;
 	DWORD n; HWND h;
 	LONG l;
+
+	if (!gpSet->isStatusColumnHidden[csi_WindowMode])
+	{
+		ConEmuWindowCommand tile = mp_ConEmu->GetTileMode(false);
+		ConEmuWindowMode mode = mp_ConEmu->GetWindowMode();
+		if (m_WindowMode.tile != tile || m_WindowMode.mode != mode)
+		{
+			m_WindowMode.tile = tile; m_WindowMode.mode = mode; bChanged = true;
+		}
+	}
 
 	if (!gpSet->isStatusColumnHidden[csi_WindowStyle])
 	{
@@ -2091,7 +2080,7 @@ void CStatus::OnKeyboardChanged()
 
 void CStatus::OnTransparency()
 {
-	_wsprintf(m_Values[csi_Transparency].sText, SKIPLEN(countof(m_Items[csi_Transparency].sText))
+	swprintf_c(m_Values[csi_Transparency].sText,
 		_T("%u%%%s%s"), (UINT)(gpConEmu->mn_LastTransparentValue >= 255) ? 100 : (gpConEmu->mn_LastTransparentValue * 100 / 255),
 		gpSet->isUserScreenTransparent ? L",USR" : L"",
 		L""); // TODO: ColorKey transparency
@@ -2150,7 +2139,7 @@ bool CStatus::ProcessTransparentMenuId(WORD nCmd, bool abAlphaOnly)
 		{
 			if ((p->nValue < 100) || !abAlphaOnly)
 			{
-				gpSet->nTransparent = min(255,((p->nValue*255/100)+1));
+				gpSet->nTransparent = std::min(255,((p->nValue*255/100)+1));
 				bSelected = true;
 			}
 		}
@@ -2160,7 +2149,7 @@ bool CStatus::ProcessTransparentMenuId(WORD nCmd, bool abAlphaOnly)
 			{
 				case 1:
 					gpSet->isUserScreenTransparent = !gpSet->isUserScreenTransparent;
-					gpConEmu->OnHideCaption(); // при прозрачности - обязательно скрытие заголовка + кнопки
+					gpConEmu->RefreshWindowStyles(); // при прозрачности - обязательно скрытие заголовка + кнопки
 					gpConEmu->UpdateWindowRgn();
 					// Отразить изменения в статусе
 					OnTransparency();
@@ -2207,7 +2196,7 @@ bool CStatus::ProcessTermModeMenuId(WORD nCmd)
 		switch (nCmd)
 		{
 		case 1: case 2:
-			mode = tmc_Keyboard;
+			mode = tmc_TerminalType;
 			action = (nCmd == 2) ? cta_Enable : cta_Disable;
 			break;
 		case 3:
@@ -2250,7 +2239,7 @@ void CStatus::ShowTransparencyMenu(POINT pt)
 	// меню было расчитано на min=40
 	_ASSERTE(MIN_ALPHA_VALUE==40);
 
-	u8 nPrevAlpha = gpSet->nTransparent;
+	uint8_t nPrevAlpha = gpSet->nTransparent;
 	//bool bPrevUserScreen = gpSet->isUserScreenTransparent; -- он идет через WindowRgn, а не Transparency
 	bool bPrevColorKey = gpSet->isColorKeyTransparent;
 
@@ -2331,21 +2320,24 @@ void CStatus::ShowTermModeMenu(POINT pt)
 }
 
 // Прямоугольник в клиентских координатах ghWnd!
-bool CStatus::GetStatusBarClientRect(RECT* rc)
+bool CStatus::GetStatusBarClientRect(RECT& rc)
 {
 	if (!gpSet->isStatusBarShow)
 		return false;
 
-	RECT rcClient = gpConEmu->GetGuiClientRect();
-
-	int nHeight = gpSet->StatusBarHeight();
-	if (nHeight >= (rcClient.bottom - rcClient.top))
-		return false;
-
-	rcClient.top = rcClient.bottom /*- 1*/ - nHeight;
-
-	*rc = rcClient;
+	rc = gpConEmu->StatusRect();
 	return true;
+
+	//RECT rcClient = gpConEmu->GetGuiClientRect();
+
+	//int nHeight = gpSet->StatusBarHeight();
+	//if (nHeight >= (rcClient.bottom - rcClient.top))
+	//	return false;
+
+	//rcClient.top = rcClient.bottom /*- 1*/ - nHeight;
+
+	//*rc = rcClient;
+	//return true;
 }
 
 // Прямоугольник в клиентских координатах ghWnd!
@@ -2365,7 +2357,7 @@ bool CStatus::GetStatusBarItemRect(CEStatusItems nID, RECT* rc)
 	}
 
 	if (rc)
-		GetStatusBarClientRect(rc);
+		GetStatusBarClientRect(*rc);
 
 	return false;
 }

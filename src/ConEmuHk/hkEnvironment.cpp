@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #include "../common/Common.h"
+#include "../common/WErrGuard.h"
 
 #include "Ansi.h"
 #include "hkEnvironment.h"
@@ -49,6 +50,7 @@ void CheckVariables()
 
 void CheckAnsiConVar(LPCWSTR asName)
 {
+	CLastErrorGuard errGuard;
 	bool bAnsi = false;
 	CEAnsi::GetFeatures(&bAnsi, NULL);
 

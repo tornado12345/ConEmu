@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -87,13 +87,13 @@ BOOL GuiSetForeground(HWND hWnd)
 		CESERVER_REQ *pIn = (CESERVER_REQ*)malloc(sizeof(*pIn)), *pOut;
 		if (pIn)
 		{
-			ExecutePrepareCmd(pIn, CECMD_SETFOREGROUND, sizeof(CESERVER_REQ_HDR)+sizeof(u64)); //-V119
+			ExecutePrepareCmd(pIn, CECMD_SETFOREGROUND, sizeof(CESERVER_REQ_HDR)+sizeof(uint64_t)); //-V119
 
 			DWORD nConEmuPID = ASFW_ANY;
 			GetWindowThreadProcessId(ghConEmuWndDC, &nConEmuPID);
 			AllowSetForegroundWindow(nConEmuPID);
 
-			pIn->qwData[0] = (u64)hWnd;
+			pIn->qwData[0] = (uint64_t)hWnd;
 			HWND hConWnd = GetRealConsoleWindow();
 			pOut = ExecuteGuiCmd(hConWnd, pIn, hConWnd);
 
@@ -983,7 +983,7 @@ int WINAPI OnGetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount)
 		iRc = F(GetWindowTextW)(hWnd, lpString, nMaxCount);
 
 	#ifdef DEBUG_CON_TITLE
-	wchar_t szPrefix[32]; _wsprintf(szPrefix, SKIPCOUNT(szPrefix) L"GetWindowTextW(x%08X)='", (DWORD)(DWORD_PTR)hWnd);
+	wchar_t szPrefix[32]; swprintf_c(szPrefix, L"GetWindowTextW(x%08X)='", (DWORD)(DWORD_PTR)hWnd);
 	CEStr lsDbg(lstrmerge(szPrefix, lpString, L"'\n"));
 	OutputDebugString(lsDbg);
 	if (gFarMode.cbSize && lpString && gpLastSetConTitle && gpLastSetConTitle->ms_Arg)

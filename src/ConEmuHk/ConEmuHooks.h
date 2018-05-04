@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ struct HookModeFar
 	BOOL  bMonitorConsoleInput; // on (Read/Peek)ConsoleInput(A/W) послать инфу в GUI/Settings/Debug
 	BOOL  bPopupMenuPos;        // on EMenu call показать меню в позиции мышиного курсора
 	BOOL  bLongConsoleOutput;   // increase buffer height during console applications execution (ignored in "far.exe /w")
+	FarVersion FarVer;
 	void  (WINAPI* OnCurDirChanged)();
 };
 

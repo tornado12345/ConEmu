@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -119,8 +119,32 @@ struct ColorPalette;
 
 #define DEFAULT_TERMINAL_APPS L"explorer.exe"
 
-#define TABBAR_DEFAULT_CLICK_ACTION 1
-#define TABBTN_DEFAULT_CLICK_ACTION 0
+struct TabBarDblClick
+{
+	enum {
+		NoAction         = 0,
+		Auto             = 1,
+		MaxRestoreWindow = 2,
+		OpenNewShell     = 3,
+		Last
+	};
+};
+#define TABBAR_DEFAULT_CLICK_ACTION  TabBarDblClick::Auto
+
+struct TabBtnDblClick
+{
+	enum {
+		NoAction         = 0,
+		MaxRestoreWindow = 1,
+		CloseTab         = 2,
+		RestartTab       = 3,
+		DuplicateTab     = 4,
+		MaxRestorePane   = 5,
+		RenameTab        = 6,
+		Last
+	};
+};
+#define TABBTN_DEFAULT_CLICK_ACTION  TabBtnDblClick::RenameTab
 
 // ‘%1’ - line number, ‘%2’ - column number, ‘%3’ - C:\\Path\\File, ‘%4’ - C:/Path/File, ‘%5’ - /C/Path/File
 #define HI_GOTO_EDITOR_FAR     L"far.exe /e%1:%2 \"%3\""
@@ -155,11 +179,11 @@ struct Settings
 		void ReleasePointers();
 	public:
 
-		wchar_t Type[16]; // Информационно: L"[reg]" или L"[xml]"
+		//reg->Load(L"Language", Language, countof(Language))
+		wchar_t Language[8]; // "ru", "en", "zh", ...
 
-		bool IsConfigNew; // true, если конфигурация новая
-		bool IsConfigPartial; // true, if config has no task or start command
-
+		//reg->Load(L"DynamicBufferHeight", DynamicBufferHeight);
+		bool isDynamicBufferHeight;
 		//reg->Load(L"DefaultBufferHeight", DefaultBufferHeight);
 		int DefaultBufferHeight;
 		//reg->Load(L"AutoBufferHeight", AutoBufferHeight);
@@ -167,9 +191,6 @@ struct Settings
 
 		//reg->Load(L"UseScrollLock", UseScrollLock);
 		bool UseScrollLock;
-
-		//reg->Load(L"CmdOutputCP", nCmdOutputCP);
-		int nCmdOutputCP;
 
 		ConEmuComspec ComSpec;
 
@@ -210,6 +231,7 @@ struct Settings
 		COLORREF GetFadeColor(COLORREF cr);
 		void ResetFadeColors();
 
+		bool CmdTaskGetDefaultShell(RConStartArgsEx& args, CEStr& lsTitle);
 		const CommandTasks* CmdTaskGet(int anIndex); // 0-based, index of CmdTasks. "-1" == autosaved task
 		const CommandTasks* CmdTaskGetByName(LPCWSTR asTaskName);
 		void CmdTaskSetVkMod(int anIndex, DWORD VkMod); // 0-based, index of CmdTasks
@@ -222,7 +244,7 @@ struct Settings
 		const ColorPalette* PaletteFindByColors(bool bMatchAttributes, const ColorPalette* pCur);
 		int PaletteGetIndex(LPCWSTR asName);
 		void PaletteSaveAs(LPCWSTR asName); // Save active colors to named palette
-		void PaletteSaveAs(LPCWSTR asName, bool abExtendColors, BYTE anExtendColorIdx, BYTE anTextColorIdx, BYTE anBackColorIdx, BYTE anPopTextColorIdx, BYTE anPopBackColorIdx, const COLORREF (&aColors)[0x20], bool abSaveSettings);
+		void PaletteSaveAs(LPCWSTR asName, BYTE anTextColorIdx, BYTE anBackColorIdx, BYTE anPopTextColorIdx, BYTE anPopBackColorIdx, const COLORREF (&aColors)[0x10], bool abSaveSettings);
 		void PaletteDelete(LPCWSTR asName); // Delete named palette
 		void PaletteSetStdIndexes();
 		int PaletteSetActive(LPCWSTR asName);
@@ -261,6 +283,7 @@ struct Settings
 		CommandTasks** CmdTasks;
 		CommandTasks* StartupTask;
 		void FreeCmdTasks();
+		void FreeStartupTask();
 
 		int PaletteCount;
 		ColorPalette** Palettes;
@@ -279,18 +302,17 @@ struct Settings
 
 		void LoadSizeSettings(SettingsBase* reg);
 		void SaveSizeSettings(SettingsBase* reg);
-		void PatchSizeSettings();
 
 	private:
 		// reg->Load(L"ColorTableNN", Colors[i]);
-		COLORREF Colors[0x20];
-		COLORREF ColorsFade[0x20];
+		COLORREF Colors[0x10];
+		COLORREF ColorsFade[0x10];
 		bool mb_FadeInitialized;
 
 		//struct CEAppColors
 		//{
-		//	COLORREF Colors[0x20];
-		//	COLORREF ColorsFade[0x20];
+		//	COLORREF Colors[0x10];
+		//	COLORREF ColorsFade[0x10];
 		//	bool FadeInitialized;
 		//} **AppColors; // [AppCount]
 
@@ -335,7 +357,7 @@ struct Settings
 		//reg->Load(L"BackGround Image", sBgImage, countof(sBgImage));
 		WCHAR sBgImage[MAX_PATH];
 		//reg->Load(L"bgImageDarker", bgImageDarker);
-		u8 bgImageDarker;
+		uint8_t bgImageDarker;
 		//reg->Load(L"bgImageColors", nBgImageColors);
 		DWORD nBgImageColors;
 		//reg->Load(L"bgOperation", bgOperation);
@@ -351,11 +373,11 @@ struct Settings
 		/* *** Transparency *** */
 		bool isTransparentAllowed();
 		//reg->Load(L"AlphaValue", nTransparent);
-		u8 nTransparent;
+		uint8_t nTransparent;
 		//reg->Load(L"AlphaValueSeparate", nTransparentSeparate);
 		bool isTransparentSeparate;
 		//reg->Load(L"AlphaValueInactive", nTransparentInactive);
-		u8 nTransparentInactive;
+		uint8_t nTransparentInactive;
 		//reg->Load(L"UserScreenTransparent", isUserScreenTransparent);
 		bool isUserScreenTransparent;
 		//reg->Load(L"ColorKeyTransparent", isColorKeyTransparent);
@@ -383,7 +405,7 @@ struct Settings
 		//reg->Load(L"CmdLine", &psStartSingleApp);
 		LPTSTR psStartSingleApp;
 		//reg->Load(L"StartTasksFile", &psStartTasksFile);
-		LPTSTR psStartTasksFile;
+		LPTSTR psStartTasksFile; // Stored with prefix, e.g. "@D:\ConEmu\test-start.conemu"
 		//reg->Load(L"StartTasksName", &psStartTasksName);
 		LPTSTR psStartTasksName;
 		//reg->Load(L"StartFarFolders", isStartFarFolders);
@@ -472,6 +494,8 @@ struct Settings
 		UINT nQuakeAnimation;
 		//reg->Load(L"Restore2ActiveMon", isRestore2ActiveMon);
 		bool isRestore2ActiveMon;
+		//reg->Load(L"RestoreInactive", isRestoreInactive);
+		bool isRestoreInactive;
 		protected:
 		//reg->Load(L"HideCaptionAlways", mb_HideCaptionAlways);
 		bool mb_HideCaptionAlways;
@@ -481,8 +505,6 @@ struct Settings
 		bool isHideCaptionAlways(); //<<mb_HideCaptionAlways
 		bool isMinimizeOnLoseFocus();
 		bool isForcedHideCaptionAlways(); // true, если mb_HideCaptionAlways отключать нельзя
-		bool isCaptionHidden(ConEmuWindowMode wmNewMode = wmCurrent);
-		bool isFrameHidden();
 		//reg->Load(L"HideCaptionAlwaysFrame", nHideCaptionAlwaysFrame);
 		BYTE nHideCaptionAlwaysFrame;
 		int HideCaptionAlwaysFrame();
@@ -676,7 +698,7 @@ struct Settings
 		BYTE isDebugLog;
 		// Helpers
 		bool mb_DisableLogging;
-		uint isLogging(uint level = 1);
+		unsigned isLogging(unsigned level = 1);
 		void EnableLogging();
 		void DisableLogging();
 		LPCWSTR GetLogFileName();
@@ -709,7 +731,7 @@ struct Settings
 		UINT nStatusFontCharSet;
 		//reg->Load(L"StatusFontHeight", nStatusFontHeight);
 		int nStatusFontHeight;
-		int StatusBarFontHeight(); // { return max(4,nStatusFontHeight); };
+		int StatusBarFontHeight(); // { return std::max(4,nStatusFontHeight); };
 		int StatusBarHeight(); // { return StatusBarFontHeight() + ((isStatusBarFlags & csf_NoVerticalPad) ? ((isStatusBarFlags & csf_HorzDelim) ? 1 : 0) : 2); };
 		//reg->Load(L"StatusBar.Color.Back", nStatusBarBack);
 		DWORD nStatusBarBack;
@@ -743,11 +765,8 @@ struct Settings
 		int nTabFlashChanged;
 
 		//reg->Load(L"TabDblClick", nTabDblClickAction);
-		UINT nTabBarDblClickAction; // 0-None, 1-Auto, 2-Maximize/Restore, 3-NewTab (SettingsNS::tabBarDefaultClickActions)
-		UINT nTabBtnDblClickAction; // 0-None, 1-Maximize/Restore, 2-Close, 3-Restart, 4-Duplicate (SettingsNS::tabBtnDefaultClickActions)
-
-		//TODO:
-		bool isTabsInCaption;
+		UINT nTabBarDblClickAction; // enum of TabBarDblClick : TabBarDblClickActions[]
+		UINT nTabBtnDblClickAction; // enum of TabBtnDblClick : TabBtnDblClickActions[]
 
 		// Tab theme properties
 		//int ilDragHeight; = 10
@@ -889,6 +908,7 @@ struct Settings
 		BYTE isMultiHideOnClose; // 0 - не скрываться, 1 - в трей, 2 - просто минимизация
 		// helpers
 		bool isCloseOnLastTabClose();
+		bool isCloseOnLastTabClose(BYTE MultiLeaveOnClose);
 		bool isCloseOnCrossClick();
 		bool isMinOnLastTabClose();
 		bool isHideOnLastTabClose();
@@ -1112,6 +1132,8 @@ struct Settings
 		bool SaveProgresses(SettingsBase* reg);
 		void SaveConsoleFont();
 		void SaveFindOptions(SettingsBase* reg = NULL);
+		void OnAutoSaveTimer();
+		void AutoSaveSettings(SettingsBase* reg = NULL);
 		void SaveSettingsOnExit();
 		void SaveStopBuzzingDate();
 		//void UpdateMargins(RECT arcMargins);
@@ -1122,5 +1144,5 @@ struct Settings
 		SettingsBase* CreateSettings(const SettingsStorage* apStorage);
 		wchar_t* GetStoragePlaceDescr(const SettingsStorage* apStorage, LPCWSTR asPrefix);
 
-		void GetSettingsType(SettingsStorage& Storage, bool& ReadOnly);
+		SettingsStorage GetSettingsType();
 };

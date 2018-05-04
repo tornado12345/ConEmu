@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "../common/CEStr.h"
 #include "../common/MArray.h"
 
@@ -54,6 +54,8 @@ public:
 	static LPCWSTR getControl(LONG id, CEStr& lsText, LPCWSTR asDefault = NULL);
 	static bool getHint(UINT id, LPWSTR lpBuffer, size_t nBufferMax);
 	static LPCWSTR getRsrc(UINT id, CEStr* lpText = NULL);
+	static LPCWSTR getLanguage();
+	static bool getLanguages(MArray<const wchar_t*>& languages);
 
 protected:
 	// Definitions
@@ -61,18 +63,27 @@ protected:
 	{
 		bool     Processed; // This ID was processed
 		bool     Localized; // true if string was loaded successfully
-		u16      MaxLen;    // To avoid strings realloc
+		uint16_t MaxLen;    // To avoid strings realloc
 		wchar_t* Str;
+	};
+
+	struct LngDefinition
+	{
+		wchar_t* id;
+		wchar_t* name;
+		wchar_t* descr;
 	};
 
 protected:
 	// Routines
 	void Clean(MArray<LngRcItem>& arr);
+	void Clear(MArray<LngDefinition>& arr);
+	bool LoadLanguages(MJsonValue* pJson);
 	bool LoadResources(LPCWSTR asLanguage, LPCWSTR asFile);
 	bool LoadSection(MJsonValue* pJson, MArray<LngRcItem>& arr, int idDiff);
 	bool SetResource(MArray<LngRcItem>& arr, int idx, LPCWSTR asValue, bool bLocalized);
 	bool SetResource(MArray<LngRcItem>& arr, int idx, MJsonValue* pJson);
-	bool GetResource(MArray<LngRcItem>& arr, int idx, CEStr& lsText);
+	bool GetResource(MArray<LngRcItem>& arr, int idx, CEStr& lsText, LPCWSTR asDefault);
 
 	static bool loadString(UINT id, LPWSTR lpBuffer, size_t nBufferMax);
 
@@ -82,6 +93,8 @@ protected:
 	CEStr ms_l10n; // Full path to localization file (ConEmu.l10n)
 
 	//MSectionSimple* mp_Lock;
+
+	MArray<LngDefinition> m_Languages;
 
 	// Strings
 	MArray<LngRcItem> m_CmnHints; // ID_GO ... _APS_NEXT_CONTROL_VALUE

@@ -21,6 +21,7 @@
 #define IDD_RESTART                     123
 #define IDC_SPLITV                      124
 #define IDC_SPLITH                      125
+#define IDC_SPLITV2                     126
 #define IDD_SETTINGS                    150
 #define IDD_SPG_FONTS                   151
 #define IDD_SPG_COLORS                  152
@@ -58,6 +59,7 @@
 #define IDD_SPG_QUAKE                   186
 #define IDD_SPG_CHILDGUI                187
 #define IDD_SPG_ANSI                    188
+#define IDD_SPG_GENERAL                 189
 #define IDD_MORE_CONFONT                209
 #define IDD_MORE_DOSBOX                 210
 #define IDD_ATTACHDLG                   212
@@ -86,22 +88,6 @@
 #define c13                             1013
 #define c14                             1014
 #define c15                             1015
-#define c16                             1016
-#define c17                             1017
-#define c18                             1018
-#define c19                             1019
-#define c20                             1020
-#define c21                             1021
-#define c22                             1022
-#define c23                             1023
-#define c24                             1024
-#define c25                             1025
-#define c26                             1026
-#define c27                             1027
-#define c28                             1028
-#define c29                             1029
-#define c30                             1030
-#define c31                             1031
 #define c32                             1032
 #define c33                             1033
 #define c34                             1034
@@ -125,22 +111,6 @@
 #define tc13                            1113
 #define tc14                            1114
 #define tc15                            1115
-#define tc16                            1116
-#define tc17                            1117
-#define tc18                            1118
-#define tc19                            1119
-#define tc20                            1120
-#define tc21                            1121
-#define tc22                            1122
-#define tc23                            1123
-#define tc24                            1124
-#define tc25                            1125
-#define tc26                            1126
-#define tc27                            1127
-#define tc28                            1128
-#define tc29                            1129
-#define tc30                            1130
-#define tc31                            1131
 #define tc32                            1132
 #define tc33                            1133
 #define tc34                            1134
@@ -173,7 +143,6 @@
 #define tFontSizeY                      1512
 #define tFontCharset                    1513
 #define tFontFace2                      1514
-#define cbExtendColors                  1515
 #define tCmdLine                        1516
 #define tRealFontMain                   1517
 #define tRealFontBorders                1518
@@ -184,7 +153,7 @@
 #define IDC_TERMINATE                   1525
 #define IDC_RESTART_CMD                 1527
 #define IDC_CHOOSE                      1528
-#define IDC_RESTART_MSG                 1529
+#define gbStartCommand                  1529
 #define IDC_WARNING                     1530
 #define cbTabSelf                       1531
 #define cbTabLazy                       1532
@@ -205,7 +174,6 @@
 #define cbDebugSteps                    1551
 #define cbDragIcons                     1553
 #define lbDefaultColors                 1554
-#define lbCmdOutputCP                   1558
 #define lbNtvdmHeight                   1559
 #define IDC_CONSOLE_STATES              1560
 #define cbFARuseASCIIsort               1561
@@ -271,6 +239,7 @@
 #define cbUseWinNumber                  1648
 #define cbInstallKeybHooks              1649
 #define cbRunAsRestricted               1650
+#define cbRunAsNetOnly                  1651
 #define tRunAsUser                      1652
 #define tRunAsPassword                  1653
 #define cbSafeFarClose                  1654
@@ -345,7 +314,6 @@
 #define tConsoleFontHklmNote            1731
 #define tConsoleFontConsoleNote         1732
 #define cbBgAllowPlugin                 1734
-#define cbTabsInCaption                 1735
 #define cbAlwaysShowTrayIcon            1736
 #define cbLogShellActivity              1740
 #define cbLogInputActivity              1741
@@ -375,7 +343,6 @@
 #define stHotModifierSelect             1770
 #define lbConEmuHotKeys                 1771
 #define IDC_ATTACHLIST                  1774
-#define IDC_NEWCONSOLE                  1775
 #define IDC_REFRESH                     1776
 #define cbSendAltTab                    1777
 #define cbSendAltEsc                    1778
@@ -426,7 +393,7 @@
 #define vkConsole_10                    2040
 #define vkConsole_11                    2041
 #define vkConsole_12                    2042
-#define vkMultiNewShift                 2043
+#define vkMultiNewConfirm               2043
 #define vkWinLeft                       2044
 #define vkWinRight                      2045
 #define vkWinUp                         2046
@@ -657,8 +624,6 @@
 #define tWndX                           2295
 #define tWndY                           2296
 #define cbPosFixed                      2297
-#define tabMain                         2298
-#define lbExtendIdx                     2299
 #define lbExtendFontItalicIdx           2300
 #define lbExtendFontNormalIdx           2301
 #define rCascade                        2302
@@ -688,7 +653,7 @@
 #define vkShowTabBar                    2326
 #define vkAlwaysOnTop                   2327
 #define vkScreenshotFull                2328
-#define vkMultiNewWnd                   2329
+#define vkMultiWndConfirm               2329
 #define cbRunInNewWindow                2330
 #define cbQuakeStyle                    2333
 #define cbGuiMacroHelp                  2334
@@ -986,7 +951,7 @@
 #define tAboutSearch                    2682
 #define stConEmuVersion                 2683
 #define cbDefTermAgressive              2684
-#define stDefTermWikiLink               2685
+#define stSetPgWikiLink                 2685
 #define gbConfirmActions                2686
 #define gbConfirmMisc                   2687
 #define cbDupConfirm                    2688
@@ -1012,7 +977,6 @@
 #define vkCloseZombies                  2713
 #define stCTSPreview                    2714
 #define cbMultiShowSearch               2715
-#define cbColorResetExt                 2716
 #define rbColorRgbDec                   2720
 #define rbColorRgbHex                   2721
 #define rbColorBgrHex                   2722
@@ -1234,7 +1198,6 @@
 #define gbVConFont                      2951
 #define stVConFontMain                  2952
 #define stVConFontFix                   2953
-#define stCmdOutputCP                   2954
 #define gbCmdAutoAttach                 2955
 #define stCmdAutoAttach                 2956
 #define gbFarDragDrop                   2957
@@ -1349,15 +1312,41 @@
 #define cbJumpListAutoUpdate            3073
 #define cbCompressLongStrings           3074
 #define cbKillSshAgent                  3075
+#define vkFindPrevPrompt                3076
+#define vkFindNextPrompt                3077
+#define IDC_ATTACH_LEAVE_OPEN           3078
+#define vkMultiGroupAll                 3079
+#define vkSplitSwapUp                   3080
+#define vkSplitSwapDown                 3081
+#define vkSplitSwapLeft                 3082
+#define vkSplitSwapRight                3083
+#define vkSplitSwap                     3084
+#define vkMultiGroupKey                 3085
+#define stRestartCmd                    3086
+#define cbCmdTasksDup                   3087
+#define cbPasteM1Posix                  3088
+#define cbPasteM2Posix                  3089
+#define cbScrollbarDynamic              3090
+#define vkClose2Right                   3091
+#define vkMultiWnd                      3092
+#define stInterfaceLanguage             3093
+#define lbInterfaceLanguage             3094
+#define cbStartupShellFast              3095
+#define stQuakeKeyFast                  3096
+#define gbSettingsGeneral               3097
+#define gbRestoreMinimize               3098
+#define cbRestoreInactive               3099
+#define cbInactiveCursorSubstHidden     3100
+#define vkCheckUpdates                  3101
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        236
+#define _APS_NEXT_RESOURCE_VALUE        246
 #define _APS_NEXT_COMMAND_VALUE         40010
-#define _APS_NEXT_CONTROL_VALUE         3076
+#define _APS_NEXT_CONTROL_VALUE         3102
 #define _APS_NEXT_SYMED_VALUE           130
 #endif
 #endif

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -48,14 +48,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 CEStr::CEStr()
-	: ms_Val(NULL), mn_MaxCount(0)
 {
 	CESTRLOG0("CEStr::CEStr()");
 	Empty();
 }
 
 CEStr::CEStr(const wchar_t* asStr1, const wchar_t* asStr2/*= NULL*/, const wchar_t* asStr3/*= NULL*/, const wchar_t* asStr4/*= NULL*/, const wchar_t* asStr5/*= NULL*/, const wchar_t* asStr6/*= NULL*/, const wchar_t* asStr7/*= NULL*/, const wchar_t* asStr8/*= NULL*/, const wchar_t* asStr9/*= NULL*/)
-	: ms_Val(NULL), mn_MaxCount(0)
 {
 	CESTRLOG3("CEStr::CEStr(const wchar_t* x%p, x%p, x%p, ...)", asStr1, asStr2, asStr3);
 	Empty();
@@ -63,8 +61,13 @@ CEStr::CEStr(const wchar_t* asStr1, const wchar_t* asStr2/*= NULL*/, const wchar
 	AttachInt(lpszMerged);
 }
 
-CEStr::CEStr(wchar_t* RVAL_REF asPtr)
-	: ms_Val(NULL), mn_MaxCount(0)
+CEStr::CEStr(CEStr&& asStr)
+{
+	std::swap(ms_Val, asStr.ms_Val);
+	std::swap(mn_MaxCount, asStr.mn_MaxCount);
+}
+
+CEStr::CEStr(wchar_t*&& asPtr)
 {
 	CESTRLOG1("CEStr::CEStr(wchar_t* RVAL_REF x%p)", asPtr);
 	Empty();
@@ -146,7 +149,17 @@ LPCWSTR CEStr::Mid(INT_PTR cchOffset) const
 	return (ms_Val + cchOffset);
 }
 
-CEStr& CEStr::operator=(wchar_t* RVAL_REF asPtr)
+CEStr& CEStr::operator=(CEStr&& asStr)
+{
+	if (ms_Val == asStr.ms_Val)
+		return *this;
+	Clear();
+	std::swap(ms_Val, asStr.ms_Val);
+	std::swap(mn_MaxCount, asStr.mn_MaxCount);
+	return *this;
+}
+
+CEStr& CEStr::operator=(wchar_t*&& asPtr)
 {
 	CESTRLOG1("CEStr::=(wchar_t* RVAL_REF x%p)", asPtr);
 	AttachInt(asPtr);
@@ -208,7 +221,7 @@ wchar_t* CEStr::GetBuffer(INT_PTR cchMaxLen)
 
 	if (!ms_Val || (cchMaxLen >= mn_MaxCount))
 	{
-		INT_PTR nNewMaxLen = max(mn_MaxCount,cchMaxLen+1);
+		INT_PTR nNewMaxLen = std::max(mn_MaxCount,cchMaxLen+1);
 		if (ms_Val)
 		{
 			ms_Val = (wchar_t*)realloc(ms_Val, nNewMaxLen*sizeof(*ms_Val));
@@ -223,7 +236,7 @@ wchar_t* CEStr::GetBuffer(INT_PTR cchMaxLen)
 	if (ms_Val)
 	{
 		_ASSERTE(cchMaxLen>0 && nOldLen>=0);
-		ms_Val[min(cchMaxLen,nOldLen)] = 0;
+		ms_Val[std::min(cchMaxLen,nOldLen)] = 0;
 	}
 
 	CESTRLOG1("  ms_Val=x%p", ms_Val);
@@ -236,7 +249,7 @@ wchar_t* CEStr::Detach()
 	CESTRLOG1("CEStr::Detach()=x%p", ms_Val);
 
 	wchar_t* psz = NULL;
-	klSwap(psz, ms_Val);
+	std::swap(psz, ms_Val);
 	mn_MaxCount = 0;
 	Empty();
 
@@ -247,6 +260,12 @@ void CEStr::Clear()
 {
 	wchar_t* ptr = Detach();
 	SafeFree(ptr);
+}
+
+LPCWSTR CEStr::Append(const wchar_t* asStr1, const wchar_t* asStr2 /*= NULL*/, const wchar_t* asStr3 /*= NULL*/, const wchar_t* asStr4 /*= NULL*/, const wchar_t* asStr5 /*= NULL*/, const wchar_t* asStr6 /*= NULL*/, const wchar_t* asStr7 /*= NULL*/, const wchar_t* asStr8 /*= NULL*/)
+{
+	lstrmerge(&ms_Val, asStr1, asStr2, asStr3, asStr4, asStr5, asStr6, asStr7, asStr8);
+	return ms_Val;
 }
 
 LPCWSTR CEStr::Attach(wchar_t* RVAL_REF asPtr)
@@ -276,6 +295,7 @@ LPCWSTR CEStr::AttachInt(wchar_t*& asPtr)
 		}
 
 		ms_Val = asPtr;
+		asPtr = NULL;
 		mn_MaxCount = 1 + (INT_PTR)len;
 	}
 
@@ -311,7 +331,7 @@ bool CEStr::IsPossibleSwitch() const
 		return false;
 
 	// We do not care here about "-new_console:..." or "-cur_console:..."
-	// They are processed by RConStartArgs
+	// They are processed by RConStartArgsEx
 
 	// But ':' removed from checks, because otherwise ConEmu will not warn
 	// on invalid usage of "-new_console:a" for example
@@ -424,7 +444,7 @@ LPCWSTR CEStr::Set(LPCWSTR asNewValue, INT_PTR anChars /*= -1*/)
 
 	if (asNewValue)
 	{
-		ssize_t nNewLen = (anChars < 0) ? (ssize_t)wcslen(asNewValue) : klMin(anChars, (ssize_t)wcslen(asNewValue));
+		ssize_t nNewLen = (anChars < 0) ? (ssize_t)wcslen(asNewValue) : std::min<ssize_t>(anChars, wcslen(asNewValue));
 
 		// Assign empty but NOT NULL string
 		if (nNewLen <= 0)
@@ -506,4 +526,109 @@ void CEStr::GetPosFrom(const CEStr& arg)
 	ms_LastTokenEnd = arg.ms_LastTokenEnd;
 	lstrcpyn(ms_LastTokenSave, arg.ms_LastTokenSave, countof(ms_LastTokenSave));
 	#endif
+}
+
+
+
+// Minimalistic storage for ANSI/UTF8 strings
+CEStrA::CEStrA()
+	: ms_Val(nullptr)
+{
+}
+
+CEStrA::CEStrA(const char* asPtr)
+{
+	ms_Val = asPtr ? lstrdup(asPtr) : nullptr;
+}
+
+CEStrA::CEStrA(char*&& asPtr)
+	: ms_Val(nullptr)
+{
+	std::swap(ms_Val, asPtr);
+}
+
+CEStrA::CEStrA(const CEStrA& src)
+{
+	ms_Val = src.ms_Val ? lstrdup(src.ms_Val) : nullptr;
+}
+
+CEStrA::CEStrA(CEStrA&& src)
+	: ms_Val(nullptr)
+{
+	std::swap(ms_Val, src.ms_Val);
+}
+
+CEStrA& CEStrA::operator=(const char* asPtr)
+{
+	SafeFree(ms_Val);
+	ms_Val = asPtr ? lstrdup(asPtr) : nullptr;
+	return *this;
+}
+
+CEStrA& CEStrA::operator=(char*&& asPtr)
+{
+	SafeFree(ms_Val);
+	std::swap(ms_Val, asPtr);
+	return *this;
+}
+
+CEStrA& CEStrA::operator=(const CEStrA& src)
+{
+	SafeFree(ms_Val);
+	ms_Val = src.ms_Val ? lstrdup(src.ms_Val) : nullptr;
+	return *this;
+}
+
+CEStrA& CEStrA::operator=(CEStrA&& src)
+{
+	SafeFree(ms_Val);
+	std::swap(ms_Val, src.ms_Val);
+	return *this;
+}
+
+CEStrA::operator const char*() const
+{
+	return ms_Val;
+}
+
+CEStrA::operator bool() const
+{
+	return (ms_Val && *ms_Val);
+}
+
+const char* CEStrA::c_str(const char* asNullSubstitute /*= NULL*/) const
+{
+	return ms_Val ? ms_Val : asNullSubstitute;
+}
+
+INT_PTR CEStrA::length() const
+{
+	return ms_Val ? strlen(ms_Val) : 0;
+}
+
+void CEStrA::clear()
+{
+	SafeFree(ms_Val);
+}
+
+// Reset the buffer to new empty data of required size
+char* CEStrA::getbuffer(INT_PTR cchMaxLen)
+{
+	clear();
+	if (cchMaxLen >= 0)
+	{
+		ms_Val = (char*)malloc(cchMaxLen+1);
+		if (ms_Val)
+			ms_Val[0] = 0;
+	}
+	return ms_Val;
+}
+
+// Detach the pointer
+char* CEStrA::release()
+{
+	char* ptr = nullptr;
+	std::swap(ptr, ms_Val);
+	clear(); // JIC
+	return ptr;
 }

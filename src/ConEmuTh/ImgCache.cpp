@@ -492,7 +492,7 @@ void CImgCache::Init(COLORREF acrBack)
 	//hWhiteBrush = ahWhiteBrush;
 	_ASSERTE(gThSet.Thumbs.nImgSize>=16 && gThSet.Tiles.nImgSize>=16);
 	WARNING("Не предусмотрен размер gThSet.Tiles.nImgSize?");
-	int nMaxSize = max(gThSet.Thumbs.nImgSize,gThSet.Tiles.nImgSize);
+	int nMaxSize = std::max(gThSet.Thumbs.nImgSize,gThSet.Tiles.nImgSize);
 
 	// Не будем при смене фона дергаться, а то на Fade проблемы...
 	if (nPreviewSize != nMaxSize /*|| crBackground != gThSet.crBackground*/)
@@ -864,12 +864,12 @@ BOOL CImgCache::PaintItem(HDC hdc, int x, int y, int nImgSize, CePluginPanelItem
 }
 void CImgCache::CopyBits(COORD crSrcSize, LPBYTE lpSrc, DWORD nSrcStride, COORD crDstSize, LPBYTE lpDst)
 {
-	int nMaxY = min(crDstSize.Y,crSrcSize.Y);
+	int nMaxY = std::min(crDstSize.Y,crSrcSize.Y);
 	_ASSERTE(lpSrc);
 	_ASSERTE(lpDst);
 	_ASSERTE(nSrcStride);
 	DWORD nDstStride = crDstSize.X*4;
-	DWORD nStride = min(nDstStride,nSrcStride);
+	DWORD nStride = std::min(nDstStride,nSrcStride);
 	_ASSERTE(nStride);
 
 	for(int y = 0; y < nMaxY; y++)
@@ -1274,7 +1274,7 @@ BOOL CImgCache::LoadThumbnail(struct IMAGE_CACHE_INFO* pItem)
 
 			if (PV.pszComments && !lbIgnoreComments)
 			{
-				DWORD nLen = (DWORD)max(255,lstrlen(PV.pszComments));
+				DWORD nLen = (DWORD)std::max(255,lstrlen(PV.pszComments));
 
 				if (pItem->pszComments && pItem->wcCommentsSize <= nLen)
 				{
@@ -1315,7 +1315,7 @@ BOOL CImgCache::LoadThumbnail(struct IMAGE_CACHE_INFO* pItem)
 	// Поставим флаг того, что превьюшку загружать ПЫТАЛИСЬ
 	pItem->PreviewLoaded |= ilt_Thumbnail;
 #ifdef _DEBUG
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"result=%s, preview=%s\n", lbThumbRc ? L"OK" : L"FAILED", (pItem->PreviewLoaded & ilt_ThumbnailLoaded) ? L"Loaded" : L"NOT loaded"); //-V112
+	swprintf_c(szDbg, L"result=%s, preview=%s\n", lbThumbRc ? L"OK" : L"FAILED", (pItem->PreviewLoaded & ilt_ThumbnailLoaded) ? L"Loaded" : L"NOT loaded"); //-V112
 	DEBUGSTRLOAD2(szDbg);
 #endif
 

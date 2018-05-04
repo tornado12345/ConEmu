@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -137,7 +137,7 @@ DWORD WINAPI OnGetConsoleAliasesW(LPWSTR AliasBuffer, DWORD AliasBufferLength, L
 
 				if (pOut)
 				{
-					size_t nData = min(AliasBufferLength,(pOut->hdr.cbSize-sizeof(pOut->hdr)));
+					size_t nData = std::min<DWORD>(AliasBufferLength, (pOut->hdr.cbSize - sizeof(pOut->hdr)));
 
 					if (nData)
 					{
@@ -405,7 +405,7 @@ BOOL WINAPI OnAllocConsole(void)
 				SMALL_RECT rNewRect = {0, 0, crLocked.X-1, crLocked.Y-1};
 				OnSetConsoleWindowInfo(hStdOut, TRUE, &rNewRect);
 				#ifdef _DEBUG
-				COORD crNewSize = {crLocked.X, max(crLocked.Y, csbi.dwSize.Y)};
+				COORD crNewSize = {crLocked.X, std::max(crLocked.Y, csbi.dwSize.Y)};
 				#endif
 				SetConsoleScreenBufferSize(hStdOut, crLocked);
 			}
@@ -892,6 +892,11 @@ BOOL WINAPI OnSetConsoleScreenBufferInfoEx(HANDLE hConsoleOutput, MY_CONSOLE_SCR
 	ORIGINAL_KRNL_EX(SetConsoleScreenBufferInfoEx);
 	BOOL lbRc = FALSE;
 
+	if (lpConsoleScreenBufferInfoEx)
+		CEAnsi::WriteAnsiLogFormat("SetConsoleScreenBufferInfoEx(curPos={%i,%i} attr=0x%02X)",
+			lpConsoleScreenBufferInfoEx->dwCursorPosition.X, lpConsoleScreenBufferInfoEx->dwCursorPosition.Y,
+			lpConsoleScreenBufferInfoEx->wAttributes);
+
 	COORD crLocked;
 	DWORD dwErr = -1;
 
@@ -988,6 +993,8 @@ BOOL WINAPI OnSetConsoleCursorPosition(HANDLE hConsoleOutput, COORD dwCursorPosi
 
 	BOOL lbRc;
 
+	CEAnsi::WriteAnsiLogFormat("SetConsoleCursorPosition(%i,%i)", dwCursorPosition.X, dwCursorPosition.Y);
+
 	if (gbIsVimAnsi)
 	{
 		#ifdef DUMP_VIM_SETCURSORPOS
@@ -1019,6 +1026,10 @@ BOOL WINAPI OnSetConsoleCursorInfo(HANDLE hConsoleOutput, const CONSOLE_CURSOR_I
 {
 	//typedef BOOL (WINAPI* OnSetConsoleCursorInfo_t)(HANDLE,const CONSOLE_CURSOR_INFO *);
 	ORIGINAL_KRNL(SetConsoleCursorInfo);
+
+	CEAnsi::WriteAnsiLogFormat("SetConsoleCursorInfo(%i,%i)",
+		lpConsoleCursorInfo ? lpConsoleCursorInfo->dwSize : 0,
+		lpConsoleCursorInfo ? lpConsoleCursorInfo->bVisible : 0);
 
 	BOOL lbRc = F(SetConsoleCursorInfo)(hConsoleOutput, lpConsoleCursorInfo);
 

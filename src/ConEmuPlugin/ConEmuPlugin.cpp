@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRACTIVATE(s) DEBUGSTR(s)
 
 
-#include <windows.h>
 #include "../common/Common.h"
 #include "../ConEmuHk/ConEmuHooks.h"
 #ifdef _DEBUG
@@ -330,13 +329,7 @@ int WINAPI ActivateConsole()
 }
 
 
-//#ifndef max
-//#define max(a,b)            (((a) > (b)) ? (a) : (b))
-//#endif
-//
-//#ifndef min
-//#define min(a,b)            (((a) < (b)) ? (a) : (b))
-//#endif
+
 
 void WINAPI SetStartupInfo(void *aInfo)
 {

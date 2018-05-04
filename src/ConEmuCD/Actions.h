@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
-
+#include "../common/defines.h"
 #include "GuiMacro.h"
 
 enum ConEmuStateCheck
@@ -40,6 +39,7 @@ enum ConEmuStateCheck
 	ec_IsTerm,
 	ec_IsAnsi,
 	ec_IsAdmin,
+	ec_IsRedirect,
 };
 
 enum ConEmuExecAction

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 #include "SetPgBase.h"
 
@@ -78,8 +78,8 @@ protected:
 	// Members
 	bool mb_SkipEditChange;
 	bool mb_SkipEditSet;
-	CDynDialog*    mp_DlgDistinct2;
-	CDpiForDialog* mp_DpiDistinct2;
+	CDynDialog*    mp_DlgDistinct2 = nullptr;
+	CDpiForDialog* mp_DpiDistinct2 = nullptr;
 	HWND mh_Child;
 	bool mb_Redraw, mb_Refill;
 };

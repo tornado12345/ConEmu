@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "../common/MArray.h"
 #include "../common/CEStr.h"
 
@@ -39,6 +39,8 @@ class CRConFiles
 {
 private:
 	CRealConsole* mp_RCon;
+
+	bool CheckParentFolders(LPCWSTR asParentDir, LPCWSTR asFilePath, CEStr& szFull);
 
 public:
 	CRConFiles(CRealConsole* apRCon);

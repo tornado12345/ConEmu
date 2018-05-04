@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include <Windows.h>
+
 #ifndef COMMON_LVB_LEADING_BYTE
 #define COMMON_LVB_LEADING_BYTE    0x0100 // Leading Byte of DBCS
 #define COMMON_LVB_TRAILING_BYTE   0x0200 // Trailing Byte of DBCS
@@ -36,6 +38,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef CONSOLE_FULLSCREEN_HARDWARE
 #define CONSOLE_FULLSCREEN_HARDWARE 2   // console owns the hardware
+#endif
+
+#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x200
 #endif
 
 struct MY_CONSOLE_SCREEN_BUFFER_INFOEX
@@ -71,7 +77,11 @@ struct MY_CONSOLE_FONT_INFOEX
 
 extern MY_CONSOLE_FONT_INFOEX g_LastSetConsoleFont;
 
-void SetConsoleFontSizeTo(HWND inConWnd, int inSizeY, int inSizeX, const wchar_t *asFontName, WORD anTextColors = 0, WORD anPopupColors = 0);
+#ifdef _DEBUG
+extern bool g_IgnoreSetLargeFont;
+#endif
+
+BOOL isConsoleBadDBCS();
 
 BOOL apiGetConsoleScreenBufferInfoEx(HANDLE hConsoleOutput, MY_CONSOLE_SCREEN_BUFFER_INFOEX* lpConsoleScreenBufferInfoEx);
 BOOL apiSetConsoleScreenBufferInfoEx(HANDLE hConsoleOutput, MY_CONSOLE_SCREEN_BUFFER_INFOEX* lpConsoleScreenBufferInfoEx);

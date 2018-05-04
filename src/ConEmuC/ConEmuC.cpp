@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,9 +37,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 #endif
 
-#include <windows.h>
-
-//#pragma warning( disable : 4995 )
 #include "../common/Common.h"
 #include "../common/CmdLine.h"
 
@@ -86,9 +83,13 @@ void UnitTests()
 	if (LdrGetDllHandleByName_f)
 	{
 		DWORD_PTR nShift = ((LPBYTE)GetProcAddress(hKernel,"LoadLibraryW")) - (LPBYTE)hKernel;
+		if (!LdrGetDllHandleByName_f(&str, NULL, (PVOID*)&ptrProc))
+			goto err;
 		ntStatus = LdrGetDllHandleByName_f(&str, NULL, (PVOID*)&ptrProc);
 		ptrProc += 0x12345;
 	}
+err:
+	return;
 }
 #endif
 
@@ -168,7 +169,7 @@ void PrintVersion()
 {
 	wchar_t szProgInfo[255], szVer[32];
 	MultiByteToWideChar(CP_ACP, 0, CONEMUVERS, -1, szVer, countof(szVer));
-	_wsprintf(szProgInfo, SKIPLEN(countof(szProgInfo))
+	swprintf_c(szProgInfo,
 		L"ConEmuC build %s %s. " CECOPYRIGHTSTRING_W L"\n",
 		szVer, WIN3264TEST(L"x86",L"x64"));
 	_wprintf(szProgInfo);
@@ -217,12 +218,12 @@ int DoParseArgs(LPCWSTR asCmdLine)
 	#if defined(__GNUC__)
 	lstrcpyn(szCLVer, "GNUC");
 	#elif defined(_MSC_VER)
-	_wsprintfA(szCLVer, SKIPCOUNT(szCLVer) "VC %u.%u", (int)(_MSC_VER / 100), (int)(_MSC_VER % 100));
+	sprintf_c(szCLVer, "VC %u.%u", (int)(_MSC_VER / 100), (int)(_MSC_VER % 100));
 	#else
 	lstrcpyn(szCLVer, "<Unknown CL>");
 	#endif
 
-	_wsprintfA(szLine, SKIPCOUNT(szLine) "main arguments (count %i) {%s}\n", gn_argc, szCLVer);
+	sprintf_c(szLine, "main arguments (count %i) {%s}\n", gn_argc, szCLVer);
 	{ HL(10); _printf(szLine); }
 	for (int j = 0; j < gn_argc; j++)
 	{
@@ -232,7 +233,7 @@ int DoParseArgs(LPCWSTR asCmdLine)
 			_printf("*** TOO MANY ARGUMENTS ***\n");
 			break;
 		}
-		_wsprintfA(szLine, SKIPCOUNT(szLine) "  %u: ", j);
+		sprintf_c(szLine, "  %u: ", j);
 		{ HL(2); _printf(szLine); }
 		if (!gp_argv)
 		{
@@ -268,25 +269,25 @@ int DoParseArgs(LPCWSTR asCmdLine)
 	{
 		if (szArg.mb_Quoted)
 			DemangleArg(szArg, true);
-		_wsprintfA(szLine, SKIPCOUNT(szLine) "  %u: ", ++i);
+		sprintf_c(szLine, "  %u: ", ++i);
 		{ HL(2); _printf(szLine); }
 		{ HL(8); _printf("`"); }
 		{ HL(15); _wprintf(szArg); }
 		{ HL(8); _printf("`\n"); }
 	}
-	_wsprintfA(szLine, SKIPCOUNT(szLine) "  Total arguments parsed: %u\n", i);
+	sprintf_c(szLine, "  Total arguments parsed: %u\n", i);
 	{ HL(8); _printf(szLine); }
 
 	{ HL(10); _printf("Standard shell splitter\n"); }
 	for (int j = 0; j < iShellCount; j++)
 	{
-		_wsprintfA(szLine, SKIPCOUNT(szLine) "  %u: ", j);
+		sprintf_c(szLine, "  %u: ", j);
 		{ HL(2); _printf(szLine); }
 		{ HL(8); _printf("`"); }
 		{ HL(15); _wprintf(ppszShl[j]); }
 		{ HL(8); _printf("`\n"); }
 	}
-	_wsprintfA(szLine, SKIPCOUNT(szLine) "  Total arguments parsed: %u\n", iShellCount);
+	sprintf_c(szLine, "  Total arguments parsed: %u\n", iShellCount);
 	{ HL(8); _printf(szLine); }
 	LocalFree(ppszShl);
 
@@ -409,7 +410,7 @@ int main(int argc, char** argv)
 	#if defined(SHOW_STARTED_MSGBOX)
 	if (!IsDebuggerPresent())
 	{
-		wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) WIN3264TEST(L"ConEmuC",L"ConEmuC64") L" Loaded (PID=%i)", GetCurrentProcessId());
+		wchar_t szTitle[100]; swprintf_c(szTitle, WIN3264TEST(L"ConEmuC",L"ConEmuC64") L" Loaded (PID=%i)", GetCurrentProcessId());
 		const wchar_t* pszCmdLine = GetCommandLineW();
 		MessageBox(NULL,pszCmdLine,szTitle,0);
 	}
@@ -436,7 +437,7 @@ int main(int argc, char** argv)
 
 	if (!hConEmu)
 	{
-		_wsprintf(szErrInfo, SKIPLEN(countof(szErrInfo))
+		swprintf_c(szErrInfo,
 		           L"Can't load library \"%s\", ErrorCode=0x%08X\n",
 		           WIN3264TEST(L"ConEmuCD.dll",L"ConEmuCD64.dll"),
 		           dwErr);
@@ -453,7 +454,7 @@ int main(int argc, char** argv)
 	if (!lfConsoleMain2 || !gfHandlerRoutine)
 	{
 		dwErr = GetLastError();
-		_wsprintf(szErrInfo, SKIPLEN(countof(szErrInfo))
+		swprintf_c(szErrInfo,
 		           L"Procedure \"%s\"  not found in library \"%s\"",
 		           lfConsoleMain2 ? L"HandlerRoutine" : L"ConsoleMain2",
 		           WIN3264TEST(L"ConEmuCD.dll",L"ConEmuCD64.dll"));

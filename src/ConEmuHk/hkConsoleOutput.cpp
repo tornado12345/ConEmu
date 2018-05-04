@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ExtConsole.h"
 #include "GuiAttach.h"
 #include "hkConsoleOutput.h"
+#include "hlpConsole.h"
 #include "MainThread.h"
 
 /* **************** */
@@ -119,15 +120,17 @@ BOOL WINAPI OnSetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode)
 	}
 
 	// gh-629: Arrow keys not working in Bash for Windows
-	if (gbIsBashProcess && IsWin10())
+	// gh-1291: Support wsl.exe and ubuntu.exe
+	if (IsWin10())
 	{
-		// 0x200 is ENABLE_VIRTUAL_TERMINAL_INPUT
-		if ((dwMode & 0x200) || (CEAnsi::gbWasXTermOutput && !(dwMode & 0x200)))
+		if ((dwMode & ENABLE_VIRTUAL_TERMINAL_INPUT) || (CEAnsi::gbWasXTermOutput && !(dwMode & ENABLE_VIRTUAL_TERMINAL_INPUT)))
 		{
 			if (!HandleKeeper::IsOutputHandle(hConsoleHandle))
 			{
 				_ASSERT(HandleKeeper::IsInputHandle(hConsoleHandle));
-				CEAnsi::StartXTermMode((dwMode & 0x200) == 0x200);
+				CEAnsi::StartXTermMode((dwMode & ENABLE_VIRTUAL_TERMINAL_INPUT) != 0);
+				//if (dwMode & ENABLE_VIRTUAL_TERMINAL_INPUT)
+				//	CEAnsi::ChangeTermMode(tmc_AppCursorKeys, true);
 			}
 		}
 	}
@@ -159,6 +162,8 @@ BOOL WINAPI OnSetConsoleTextAttribute(HANDLE hConsoleOutput, WORD wAttributes)
 	//typedef BOOL (WINAPI* OnSetConsoleTextAttribute_t)(HANDLE hConsoleOutput, WORD wAttributes);
 	ORIGINAL_KRNL(SetConsoleTextAttribute);
 
+	CEAnsi::WriteAnsiLogFormat("SetConsoleTextAttribute(0x%02X)", wAttributes);
+
 	BOOL lbRc = FALSE;
 
 	if (ph && ph->PreCallBack)
@@ -189,6 +194,8 @@ BOOL WINAPI OnSetConsoleTextAttribute(HANDLE hConsoleOutput, WORD wAttributes)
 	return lbRc;
 }
 
+
+TODO("Call UpdateAppMapRows everywhere where direct write operations are executed");
 
 BOOL WINAPI OnWriteConsoleOutputA(HANDLE hConsoleOutput,const CHAR_INFO *lpBuffer,COORD dwBufferSize,COORD dwBufferCoord,PSMALL_RECT lpWriteRegion)
 {
@@ -306,7 +313,7 @@ BOOL WINAPI OnWriteConsoleOutputCharacterA(HANDLE hConsoleOutput, LPCSTR lpChara
 	FIRST_ANSI_CALL((const BYTE*)lpCharacter, nLength);
 
 	ExtFillOutputParm fll = {sizeof(fll),
-		efof_Attribute|(CEAnsi::gDisplayParm.WasSet ? efof_Current : efof_ResetExt),
+		efof_Attribute|(CEAnsi::gDisplayParm.getWasSet() ? efof_Current : efof_ResetExt),
 		hConsoleOutput, {}, 0, dwWriteCoord, nLength};
 	ExtFillOutput(&fll);
 
@@ -324,7 +331,7 @@ BOOL WINAPI OnWriteConsoleOutputCharacterW(HANDLE hConsoleOutput, LPCWSTR lpChar
 	FIRST_ANSI_CALL((const BYTE*)lpCharacter, nLength);
 
 	ExtFillOutputParm fll = {sizeof(fll),
-		efof_Attribute|(CEAnsi::gDisplayParm.WasSet ? efof_Current : efof_ResetExt),
+		efof_Attribute|(CEAnsi::gDisplayParm.getWasSet() ? efof_Current : efof_ResetExt),
 		hConsoleOutput, {}, 0, dwWriteCoord, nLength};
 	ExtFillOutput(&fll);
 
@@ -334,20 +341,62 @@ BOOL WINAPI OnWriteConsoleOutputCharacterW(HANDLE hConsoleOutput, LPCWSTR lpChar
 }
 
 
+// After "cls" executed in cmd or powershell we have to reset nLastConsoleRow stored in our AppMap
+static void CheckForCls(HANDLE hConsoleOutput, const SMALL_RECT& lpScrollRectangle, COORD dwDestinationOrigin)
+{
+	// Must be {0,0}, 0
+	if (lpScrollRectangle.Left || lpScrollRectangle.Top || dwDestinationOrigin.X)
+		return;
+	if (lpScrollRectangle.Bottom != -dwDestinationOrigin.Y)
+		return;
+	CONSOLE_SCREEN_BUFFER_INFO sbi = {};
+	if (!GetConsoleScreenBufferInfoCached(hConsoleOutput, &sbi))
+		return;
+	if (lpScrollRectangle.Right != sbi.dwSize.X || lpScrollRectangle.Bottom != sbi.dwSize.Y)
+		return;
+	// That is "cls"
+	UpdateAppMapRows(0, true);
+}
+
+static void LogScrollConsoleScreenBuffer(bool unicode, const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle, COORD dwDestinationOrigin, const CHAR_INFO *lpFill)
+{
+	if (!CEAnsi::ghAnsiLogFile)
+		return;
+	char src_rect[30] = "null", clip_rect[30] = "null", fill[20] = "null";
+	if (lpScrollRectangle)
+		msprintf(src_rect, countof(src_rect), "{%i,%i}-{%i,%i}",
+			lpScrollRectangle->Left, lpScrollRectangle->Top, lpScrollRectangle->Right, lpScrollRectangle->Bottom);
+	if (lpClipRectangle)
+		msprintf(clip_rect, countof(clip_rect), "{%i,%i}-{%i,%i}",
+			lpClipRectangle->Left, lpClipRectangle->Top, lpClipRectangle->Right, lpClipRectangle->Bottom);
+	if (lpFill)
+		msprintf(fill, countof(fill), "attr=0x%02X char=0x%02X",
+			lpFill->Attributes, unicode ? lpFill->Char.UnicodeChar : lpFill->Char.AsciiChar);
+	CEAnsi::WriteAnsiLogFormat("ScrollConsoleScreenBuffer(%s -> {%i,%i} [%s] <%s>)",
+		src_rect, dwDestinationOrigin.X, dwDestinationOrigin.Y, clip_rect, fill);
+}
+
 BOOL WINAPI OnScrollConsoleScreenBufferA(HANDLE hConsoleOutput, const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle, COORD dwDestinationOrigin, const CHAR_INFO *lpFill)
 {
 	//typedef BOOL (WINAPI* OnScrollConsoleScreenBufferA_t)(HANDLE hConsoleOutput, const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle, COORD dwDestinationOrigin, const CHAR_INFO *lpFill);
 	ORIGINAL_KRNL(ScrollConsoleScreenBufferA);
 	BOOL lbRc = FALSE;
+	bool isOut = false;
+
+	LogScrollConsoleScreenBuffer(false, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin, lpFill);
 
 	if (HandleKeeper::IsOutputHandle(hConsoleOutput))
 	{
 		ExtScrollScreenParm scrl = {sizeof(scrl), essf_ExtOnly, hConsoleOutput, dwDestinationOrigin.Y - lpScrollRectangle->Top};
 		CheckNeedExtScroll(scrl, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin);
 		ExtScrollScreen(&scrl);
+		isOut = true;
 	}
 
 	lbRc = F(ScrollConsoleScreenBufferA)(hConsoleOutput, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin, lpFill);
+
+	if (lbRc && isOut && !lpClipRectangle && lpScrollRectangle && lpFill && lpFill->Char.AsciiChar == ' ')
+		CheckForCls(hConsoleOutput, *lpScrollRectangle, dwDestinationOrigin);
 
 	return lbRc;
 }
@@ -358,12 +407,16 @@ BOOL WINAPI OnScrollConsoleScreenBufferW(HANDLE hConsoleOutput, const SMALL_RECT
 	typedef BOOL (WINAPI* OnScrollConsoleScreenBufferW_t)(HANDLE hConsoleOutput, const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle, COORD dwDestinationOrigin, const CHAR_INFO *lpFill);
 	ORIGINAL_KRNL(ScrollConsoleScreenBufferW);
 	BOOL lbRc = FALSE;
+	bool isOut = false;
+
+	LogScrollConsoleScreenBuffer(false, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin, lpFill);
 
 	if (HandleKeeper::IsOutputHandle(hConsoleOutput))
 	{
 		ExtScrollScreenParm scrl = {sizeof(scrl), essf_ExtOnly, hConsoleOutput, dwDestinationOrigin.Y - lpScrollRectangle->Top};
 		CheckNeedExtScroll(scrl, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin);
 		ExtScrollScreen(&scrl);
+		isOut = true;
 	}
 
 	//Warning: This function called from "cmd.exe /c cls" whith arguments:
@@ -372,6 +425,9 @@ BOOL WINAPI OnScrollConsoleScreenBufferW(HANDLE hConsoleOutput, const SMALL_RECT
 	//dwDestinationOrigin = {0, -9999}
 
 	lbRc = F(ScrollConsoleScreenBufferW)(hConsoleOutput, lpScrollRectangle, lpClipRectangle, dwDestinationOrigin, lpFill);
+
+	if (lbRc && isOut && !lpClipRectangle && lpScrollRectangle && lpFill && lpFill->Char.UnicodeChar == ' ')
+		CheckForCls(hConsoleOutput, *lpScrollRectangle, dwDestinationOrigin);
 
 	return lbRc;
 }

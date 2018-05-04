@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -77,6 +77,7 @@ LPWSTR STRPTR2::Demangle()
 	if (!bMangled)
 		return psz;
 	_ASSERTE(offset >= sizeof(STRPTR2));
+	bMangled = FALSE;
 	psz = (wchar_t*)(((LPBYTE)this) + offset);
 	return psz;
 }
@@ -108,6 +109,7 @@ BOOL PackInputRecord(const INPUT_RECORD* piRec, MSG64::MsgStr* pMsg)
 		lParam |= ((DWORD_PTR)piRec->Event.KeyEvent.wVirtualKeyCode & 0xFF) << 16;
 		lParam |= ((DWORD_PTR)piRec->Event.KeyEvent.wVirtualScanCode & 0xFF) << 24;
 		wParam |= (DWORD_PTR)piRec->Event.KeyEvent.dwControlKeyState & 0xFFFF;
+		_ASSERTE(piRec->Event.KeyEvent.wRepeatCount<=255); // can't pack more repeats
 		wParam |= ((DWORD_PTR)piRec->Event.KeyEvent.wRepeatCount & 0xFF) << 16;
 	}
 	else if (piRec->EventType == MOUSE_EVENT)
@@ -235,6 +237,7 @@ BOOL UnpackInputRecord(const MSG64::MsgStr* piMsg, INPUT_RECORD* pRec)
 	}
 	else
 	{
+		_ASSERTE(FALSE && "Unknown pack type");
 		return FALSE;
 	}
 
@@ -268,7 +271,7 @@ void TranslateKeyPress(WORD vkKey, DWORD dwControlState, wchar_t wch, int ScanCo
 				if (vk & 2)
 					dwControlState |= LEFT_CTRL_PRESSED;
 				if (vk & 4)
-					dwControlState |= LEFT_ALT_PRESSED;
+					dwControlState |= ((vk & 6) == 6) ? RIGHT_ALT_PRESSED : LEFT_ALT_PRESSED;
 			}
 		}
 	}

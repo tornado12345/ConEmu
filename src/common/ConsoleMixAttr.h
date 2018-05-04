@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,8 @@ extern WORD AddConAttr[16];
 
 // GCC headers fix
 #ifndef COMMON_LVB_UNDERSCORE
+#define COMMON_LVB_LEADING_BYTE    0x0100
+#define COMMON_LVB_TRAILING_BYTE   0x0200
 #define COMMON_LVB_GRID_HORIZONTAL 0x0400 // DBCS: Grid attribute: top horizontal.
 #define COMMON_LVB_GRID_LVERTICAL  0x0800 // DBCS: Grid attribute: left vertical.
 #define COMMON_LVB_GRID_RVERTICAL  0x1000 // DBCS: Grid attribute: right vertical.
@@ -83,5 +85,5 @@ struct CEConsoleMark
 WORD ReadConsoleRowId(HANDLE hConOut, SHORT nRow, CEConsoleMark* pMark = NULL);
 bool WriteConsoleRowId(HANDLE hConOut, SHORT nRow, WORD RowId, CEConsoleMark* pMark = NULL);
 bool FindConsoleRowId(HANDLE hConOut, const CEConsoleMark& Mark, SHORT nFromRow, SHORT* pnRow = NULL);
-bool FindConsoleRowId(HANDLE hConOut, SHORT nFromRow, SHORT* pnRow = NULL, CEConsoleMark* pMark = NULL);
+bool FindConsoleRowId(HANDLE hConOut, SHORT nFromRow, bool bUpWard, SHORT* pnRow = NULL, CEConsoleMark* pMark = NULL);
 WORD GetRowIdFromAttrs(const WORD* pnAttrs4); // count == ROWID_USED_CELLS

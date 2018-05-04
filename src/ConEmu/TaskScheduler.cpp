@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -150,7 +150,7 @@ CTaskSchedulerBase::~CTaskSchedulerBase()
 void CTaskSchedulerBase::DisplaySchedulerError(LPCWSTR pszStep)
 {
 	wchar_t szInfo[200] = L"";
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L" Please check scheduler log.\n" L"HR=%u, TaskName=\"", (DWORD)hr);
+	swprintf_c(szInfo, L" Please check scheduler log.\n" L"HR=%u, TaskName=\"", (DWORD)hr);
 	CEStr szErr(L"Scheduler: ", pszStep, szInfo, bsTaskName, L"\"\n", bsApplication, L" ", bsArguments);
 	DisplayLastError(szErr, (DWORD)hr);
 };
@@ -210,7 +210,7 @@ CTaskScheduler2::~CTaskScheduler2()
 		if (FAILED(hr))
 		{
 			wchar_t szLog[80];
-			_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: Failed delete created task, hr=x%08X", (DWORD)hr);
+			swprintf_c(szLog, L"Scheduler: Failed delete created task, hr=x%08X", (DWORD)hr);
 			LogString(szLog);
 		}
 	}
@@ -428,7 +428,7 @@ HRESULT CTaskScheduler2::Run()
 	else
 	{
 		wchar_t szLog[100];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: Run result: 0x%08X", (DWORD)hr);
+		swprintf_c(szLog, L"Scheduler: Run result: 0x%08X", (DWORD)hr);
 		LogString(szLog);
 
 		GetState();
@@ -447,7 +447,7 @@ TaskSchedulerState CTaskScheduler2::GetState()
 		if (hrRun == SCHED_E_TASK_NOT_RUNNING)
 			wcscpy_c(szLog, L"Scheduler: Current task state: SCHED_E_TASK_NOT_RUNNING");
 		else
-			_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: Failed to get task state: hr=x%08X", (DWORD)hrRun);
+			swprintf_c(szLog, L"Scheduler: Failed to get task state: hr=x%08X", (DWORD)hrRun);
 		LogString(szLog);
 		return tss_Failed;
 	}
@@ -475,7 +475,7 @@ TaskSchedulerState CTaskScheduler2::GetState()
 		wcscat_c(szLog, L"TASK_STATE_UNKNOWN");
 		break;
 	default:
-		_wsprintf(szLog+wcslen(szLog), SKIPLEN(countof(szLog)-wcslen(szLog)) L"%u", (DWORD)taskState);
+		swprintf_c(szLog+wcslen(szLog), countof(szLog)-wcslen(szLog)/*#SECURELEN*/, L"%u", (DWORD)taskState);
 	}
 
 	LogString(szLog);
@@ -600,16 +600,16 @@ HRESULT CTaskScheduler1::Create(bool bAsSystem, LPCWSTR lpTaskName, LPCWSTR lpAp
 		wchar_t szLog[120], szName[20];
 		if (rc != NERR_Success)
 		{
-			_wsprintf(szLog, SKIPCOUNT(szLog) L"NetScheduleJobAdd failed, rc=%u", rc);
+			swprintf_c(szLog, L"NetScheduleJobAdd failed, rc=%u", rc);
 			hr = (HRESULT)-1;
 			DisplaySchedulerError(szLog);
 			goto wrap;
 		}
 
 		// Successfully created, but the name is ‘unknown’, only JobID
-		_wsprintf(szName, SKIPCOUNT(szName) L"At%u", jobId);
+		swprintf_c(szName, L"At%u", jobId);
 		bsTaskName = szName;
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: NetScheduleJobAdd succeeded, jobId=%u", jobId);
+		swprintf_c(szLog, L"Scheduler: NetScheduleJobAdd succeeded, jobId=%u", jobId);
 		LogString(szLog);
 
 		// Check if we can access the task via Task Scheduler 1.0 interface (to Run it)
@@ -618,7 +618,7 @@ HRESULT CTaskScheduler1::Create(bool bAsSystem, LPCWSTR lpTaskName, LPCWSTR lpAp
 		if (FAILED(hr) || !pITask)
 		{
 			// Prepare error message
-			_wsprintf(szLog, SKIPCOUNT(szLog) L"NetScheduleJobAdd succeeded, jobId=%u, but ITask is not found", jobId);
+			swprintf_c(szLog, L"NetScheduleJobAdd succeeded, jobId=%u, but ITask is not found", jobId);
 			// Delete the job immediately
 			netScheduleJobDel(NULL, jobId, jobId);
 			jobId = (DWORD)-1;
@@ -748,7 +748,7 @@ HRESULT CTaskScheduler1::Run()
 	else
 	{
 		wchar_t szLog[80];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: Run result: 0x%08X", (DWORD)hr);
+		swprintf_c(szLog, L"Scheduler: Run result: 0x%08X", (DWORD)hr);
 		LogString(szLog);
 
 		GetState();
@@ -766,7 +766,7 @@ TaskSchedulerState CTaskScheduler1::GetState()
 
 	if (FAILED(hrRun))
 	{
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Scheduler: Failed to get task state, hr=x%08X", (DWORD)hrRun);
+		swprintf_c(szLog, L"Scheduler: Failed to get task state, hr=x%08X", (DWORD)hrRun);
 		LogString(szLog);
 		return tss_Failed;
 	}
@@ -800,7 +800,7 @@ TaskSchedulerState CTaskScheduler1::GetState()
 		wcscat_c(szLog, L"SCHED_S_TASK_NO_VALID_TRIGGERS");
 		break;
 	default:
-		_wsprintf(szLog+wcslen(szLog), SKIPLEN(countof(szLog)-wcslen(szLog)) L"0x%08X", (DWORD)hrStatus);
+		swprintf_c(szLog+wcslen(szLog), countof(szLog)-wcslen(szLog)/*#SECURELEN*/, L"0x%08X", (DWORD)hrStatus);
 	}
 
 	LogString(szLog);
@@ -810,7 +810,7 @@ TaskSchedulerState CTaskScheduler1::GetState()
 /// The function starts new process using Windows Task Scheduler
 /// This allows to run process ‘Demoted’ (bAsSystem == false)
 /// or under ‘System’ account (bAsSystem == true)
-BOOL CreateProcessScheduled(bool bAsSystem, LPWSTR lpCommandLine,
+BOOL CreateProcessScheduled(bool bAsSystem, DWORD anSessionId, LPWSTR lpCommandLine,
 						   LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
 						   BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
 						   LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
@@ -830,10 +830,13 @@ BOOL CreateProcessScheduled(bool bAsSystem, LPWSTR lpCommandLine,
 		DisplayLastError(L"GetModuleFileName(NULL) failed");
 		return FALSE;
 	}
+	wchar_t szInteractive[32] = L" ";
+	if (bAsSystem)
+		msprintf(szInteractive, countof(szInteractive), L"-interactive:%u ", anSessionId); // with trailing space
 	CEStr szCommand(
 		gpSet->isLogging() ? L"-log " : NULL,
 		lpCurrentDirectory ? L"-dir \"" : NULL, lpCurrentDirectory, lpCurrentDirectory ? L"\" " : NULL,
-		bAsSystem ? L"-interactive " : L"-apparent ",
+		bAsSystem ? szInteractive : L"-apparent ",
 		lpCommandLine);
 	LPCWSTR pszCmdArgs = szCommand;
 
@@ -852,7 +855,7 @@ BOOL CreateProcessScheduled(bool bAsSystem, LPWSTR lpCommandLine,
 
 	wchar_t szUniqTaskName[128];
 	wchar_t szVer4[8] = L""; lstrcpyn(szVer4, _T(MVV_4a), countof(szVer4));
-	_wsprintf(szUniqTaskName, SKIPLEN(countof(szUniqTaskName)) L"ConEmu %02u%02u%02u%s starter ParentPID=%u", (MVV_1%100),MVV_2,MVV_3,szVer4, GetCurrentProcessId());
+	swprintf_c(szUniqTaskName, L"ConEmu %02u%02u%02u%s starter ParentPID=%u", (MVV_1%100),MVV_2,MVV_3,szVer4, GetCurrentProcessId());
 
 	HRESULT hr;
 	TaskSchedulerState state;

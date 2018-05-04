@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,8 @@ enum IntelligentSelectionState
 	IS_LBtnReleased,
 };
 
+struct ConsoleLinePtr;
+
 class CRealBuffer
 {
 public:
@@ -85,7 +87,9 @@ public:
 	bool isScroll(RealBufferScroll aiScroll = rbs_Any);
 	bool isConsoleDataChanged();
 
-	void InitSBI(CONSOLE_SCREEN_BUFFER_INFO* ap_sbi, bool abCurBufHeight);
+	// Called during attach
+	void InitSBI(const CONSOLE_SCREEN_BUFFER_INFO& ap_sbi);
+
 	void InitMaxSize(const COORD& crMaxSize);
 	COORD GetMaxSize();
 
@@ -95,17 +99,18 @@ public:
 	bool PreInit();
 	void ResetBuffer();
 
-	int BufferHeight(uint nNewBufferHeight = 0);
-	SHORT GetBufferWidth();
-	SHORT GetBufferHeight();
-	SHORT GetBufferPosX();
-	SHORT GetBufferPosY();
-	int GetTextWidth();
-	int TextWidth();
-	int GetTextHeight();
-	int TextHeight();
-	int GetWindowWidth();
-	int GetWindowHeight();
+	int BufferHeight(unsigned nNewBufferHeight = 0);
+	SHORT GetBufferWidth() const;
+	SHORT GetBufferHeight() const;
+	int GetDynamicHeight() const;
+	SHORT GetBufferPosX() const;
+	SHORT GetBufferPosY() const;
+	int GetTextWidth() const;
+	int TextWidth() const;
+	int GetTextHeight() const;
+	int TextHeight() const;
+	int GetWindowWidth() const;
+	int GetWindowHeight() const;
 
 	void SetBufferHeightMode(bool abBufferHeight, bool abIgnoreLock = false);
 	void ChangeBufferHeightMode(bool abBufferHeight);
@@ -114,15 +119,14 @@ public:
 	bool isBuferModeChangeLocked();
 	bool BuferModeChangeLock();
 	void BuferModeChangeUnlock();
-	bool BufferHeightTurnedOn(CONSOLE_SCREEN_BUFFER_INFO* psbi);
 	void OnBufferHeight();
 
-	LRESULT DoScrollBuffer(int nDirection, short nTrackPos = -1, UINT nCount = 1);
+	LRESULT DoScrollBuffer(int nDirection, short nTrackPos = -1, UINT nCount = 1, bool abOnlyVirtual = false);
 	void ResetTopLeft();
 
 	bool ApplyConsoleInfo();
 
-	bool GetConWindowSize(const CONSOLE_SCREEN_BUFFER_INFO& sbi, int* pnNewWidth, int* pnNewHeight, DWORD* pnScroll);
+	bool GetConWindowSize(const CONSOLE_SCREEN_BUFFER_INFO& sbi, int* pnNewWidth, int* pnNewHeight, DWORD* pnScroll) const;
 
 	COORD ScreenToBuffer(COORD crMouse);
 	COORD BufferToScreen(COORD crMouse, bool bFixup = true, bool bVertOnly = false);
@@ -172,7 +176,8 @@ public:
 
 	//bool IsConsoleDataChanged();
 
-	bool GetConsoleLine(CRConDataGuard& data, int nLine, const wchar_t*& rpChar, /*CharAttr*& pAttr,*/ int& rnLen, MSectionLock* pcsData = NULL);
+	bool GetConsoleLine(/*[OUT]*/CRConDataGuard& data, int nLine, const wchar_t*& rpChar, /*CharAttr*& pAttr,*/ int& rnLen, MSectionLock* pcsData = NULL);
+	bool GetConsoleLine(int nLine, /*[OUT]*/CRConDataGuard& data, ConsoleLinePtr& rpLine, MSectionLock* pcsData = NULL);
 	void GetConsoleData(wchar_t* pChar, CharAttr* pAttr, int nWidth, int nHeight, ConEmuTextRange& etr);
 
 	void ResetConData();
@@ -185,6 +190,7 @@ public:
 	bool isSelectionAllowed();
 	bool isSelectionPresent();
 	bool isMouseSelectionPresent();
+	bool isMouseClickExtension();
 	bool isMouseInsideSelection(int x, int y);
 	bool GetConsoleSelectionInfo(CONSOLE_SELECTION_INFO *sel);
 	int  GetSelectionCellsCount();
@@ -192,6 +198,7 @@ public:
 	bool isPaused();
 	void StorePausedState(CEPauseCmd state);
 
+	void QueryCellInfo(wchar_t* pszInfo, int cchMax);
 	void ConsoleScreenBufferInfo(CONSOLE_SCREEN_BUFFER_INFO* psbi, SMALL_RECT* psrRealWindow = NULL, TOPLEFTCOORD* pTopLeft = NULL);
 	void ConsoleCursorInfo(CONSOLE_CURSOR_INFO *ci);
 	void ConsoleCursorPos(COORD* pcr);
@@ -214,6 +221,7 @@ public:
 
 private:
 	void ApplyConsoleInfo(const CESERVER_REQ* pInfo, bool& bSetApplyFinished, bool& lbChanged, bool& bBufRecreate);
+	bool IsBufferHeightTurnedOn(const CONSOLE_SCREEN_BUFFER_INFO& psbi);
 	bool SetConsoleSizeSrv(USHORT sizeX, USHORT sizeY, USHORT sizeBuffer, DWORD anCmdID = CECMD_SETSIZESYNC);
 	bool InitBuffers(DWORD anCellCount = 0, int anWidth = 0, int anHeight = 0, CRConDataGuard* pData = NULL);
 	bool InitBuffers(CRConDataGuard* pData);
@@ -285,6 +293,7 @@ protected:
 		bool mb_ConDataValid;
 		// Sizes
 		int nTextWidth, nTextHeight, nBufferHeight;
+		int nDynamicHeight;
 		// Resize (srv) in progress
 		bool bLockChange2Text;
 		int nChange2TextWidth, nChange2TextHeight;
@@ -312,7 +321,7 @@ protected:
 	bool isDataValid();
 
 
-	bool SetTopLeft(int ay = -1, int ax = -1, bool abServerCall = false);
+	bool SetTopLeft(int ay = -1, int ax = -1, bool abServerCall = false, bool abOnlyVirtual = false);
 
 	CMatch* mp_Match;
 

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Header.h"
 
 #define DEBUGSTRFONT(s) DEBUGSTR(s)
+#define DEBUGSTRSTARTUPLOG(s) DEBUGSTR(s)
 
 //#include <commctrl.h>
 
@@ -178,7 +179,7 @@ bool CFontMgr::AutoRecreateFont(int nFontW, int nFontH)
 
 	if (gpSet->isLogging())
 	{
-		char szInfo[128]; _wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "AutoRecreateFont(H=%i, W=%i)", nFontH, nFontW);
+		char szInfo[128]; sprintf_c(szInfo, "AutoRecreateFont(H=%i, W=%i)", nFontH, nFontW);
 		CVConGroup::LogString(szInfo);
 	}
 
@@ -435,7 +436,7 @@ LONG CFontMgr::FontHeight()
 	if (LogFont.lfHeight <= 0)
 	{
 		// Сюда мы должны попадать только для примерных расчетов во время старта!
-		_ASSERTE(LogFont.lfHeight>0 || gpConEmu->mn_StartupFinished<=CConEmuMain::ss_Starting);
+		_ASSERTE(LogFont.lfHeight>0 || gpConEmu->GetStartupStage()<=CConEmuMain::ss_Starting);
 		int iEvalHeight = 0;
 		if (gpSet->FontSizeY)
 		{
@@ -541,7 +542,7 @@ LONG CFontMgr::FontWidth()
 	if (LogFont.lfWidth <= 0)
 	{
 		// Сюда мы должны попадать только для примерных расчетов во время старта!
-		_ASSERTE(LogFont.lfWidth>0 || gpConEmu->mn_StartupFinished<=CConEmuMain::ss_Starting);
+		_ASSERTE(LogFont.lfWidth>0 || gpConEmu->GetStartupStage()<=CConEmuMain::ss_Starting);
 		int iEvalWidth = FontHeight() * 10 / 18;
 		if (iEvalWidth)
 			return _abs(iEvalWidth);
@@ -707,7 +708,7 @@ BOOL CFontMgr::GetFontNameFromFile_TTF(LPCTSTR lpszFilePath, wchar_t (&rsFontNam
 										// Dump found table item
 										if (bDumpTable)
 										{
-											_wsprintf(szDumpInfo, SKIPCOUNT(szDumpInfo) L"  Platf: %u Enc: %u Lang: %u Len: %u \"", ttRecord.uPlatformID, ttRecord.uEncodingID, ttRecord.uLanguageID, ttRecord.uStringLength);
+											swprintf_c(szDumpInfo, L"  Platf: %u Enc: %u Lang: %u Len: %u \"", ttRecord.uPlatformID, ttRecord.uEncodingID, ttRecord.uLanguageID, ttRecord.uStringLength);
 											int iLen = lstrlen(szDumpInfo);
 											for (DWORD i = 0; i < dwRead; i++)
 											{
@@ -1117,7 +1118,11 @@ void CFontMgr::InitFont(LPCWSTR asFontName/*=NULL*/, int anFontHeight/*=-1*/, in
 		}
 	}
 
-	CreateFontGroup(LogFont);
+	if (!CreateFontGroup(LogFont))
+	{
+		// The font must be created, otherwise we can't draw anything
+		Assert(FALSE && "Can't create main font");
+	}
 
 	//2009-06-07 Реальный размер созданного шрифта мог измениться
 	SaveFontSizes((mn_AutoFontWidth == -1), false);
@@ -1142,7 +1147,7 @@ void CFontMgr::MacroFontSetName(LPCWSTR pszFontName, WORD anHeight /*= 0*/, WORD
 
 	if (gpSet->isLogging())
 	{
-		char szInfo[128]; _wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "MacroFontSetName('%s', H=%i, W=%i)", LF.lfFaceName, LF.lfHeight, LF.lfWidth);
+		char szInfo[128]; sprintf_c(szInfo, "MacroFontSetName('%s', H=%i, W=%i)", LF.lfFaceName, LF.lfHeight, LF.lfWidth);
 		CVConGroup::LogString(szInfo);
 	}
 
@@ -1164,7 +1169,7 @@ void CFontMgr::MacroFontSetName(LPCWSTR pszFontName, WORD anHeight /*= 0*/, WORD
 	if (ghOpWnd)
 	{
 		wchar_t szSize[10];
-		_wsprintf(szSize, SKIPLEN(countof(szSize)) L"%i", gpSet->FontSizeY);
+		swprintf_c(szSize, L"%i", gpSet->FontSizeY);
 		SetDlgItemText(gpSetCls->GetPage(thi_Fonts), tFontSizeY, szSize);
 		gpSetCls->UpdateFontInfo();
 	}
@@ -1180,7 +1185,7 @@ bool CFontMgr::MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,..
 	wchar_t szLog[128];
 	if (gpSet->isLogging())
 	{
-		_wsprintf(szLog, SKIPLEN(countof(szLog)) L"MacroFontSetSize(%i,%i)", nRelative, nValue);
+		swprintf_c(szLog, L"MacroFontSetSize(%i,%i)", nRelative, nValue);
 		gpConEmu->LogString(szLog);
 	}
 
@@ -1273,9 +1278,9 @@ bool CFontMgr::MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,..
 				if (hMainPg)
 				{
 					wchar_t temp[16];
-					_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->FontSizeY);
+					swprintf_c(temp, L"%i", gpSet->FontSizeY);
 					CSetDlgLists::SelectStringExact(hMainPg, tFontSizeY, temp);
-					_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->FontSizeX);
+					swprintf_c(temp, L"%i", gpSet->FontSizeX);
 					CSetDlgLists::SelectStringExact(hMainPg, tFontSizeX, temp);
 				}
 			}
@@ -1283,7 +1288,7 @@ bool CFontMgr::MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,..
 			if (gpConEmu->mp_Status)
 				gpConEmu->mp_Status->UpdateStatusBar(true);
 
-			_wsprintf(szLog, SKIPLEN(countof(szLog)) L"-- Succeeded! New font {'%s',%i,%i} was created", font->m_LF.lfFaceName, font->m_LF.lfHeight, font->m_LF.lfWidth, font->m_LF.lfHeight, font->m_LF.lfWidth);
+			swprintf_c(szLog, L"-- Succeeded! New font {'%s',%i,%i} was created", font->m_LF.lfFaceName, font->m_LF.lfHeight, font->m_LF.lfWidth, font->m_LF.lfHeight, font->m_LF.lfWidth);
 			gpConEmu->LogString(szLog);
 
 			return true;
@@ -1300,7 +1305,7 @@ bool CFontMgr::MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,..
 		nValue += (nValue > 0) ? 1 : -1;
 	}
 
-	_wsprintf(szLog, SKIPLEN(countof(szLog)) L"-- Failed! New font {'%s',%i,%i} was not created", LF.lfFaceName, LF.lfHeight, LF.lfWidth, LF.lfHeight, LF.lfWidth);
+	swprintf_c(szLog, L"-- Failed! New font {'%s',%i,%i} was not created", LF.lfFaceName, LF.lfHeight, LF.lfWidth, LF.lfHeight, LF.lfWidth);
 	gpConEmu->LogString(szLog);
 
 	return false;
@@ -1310,13 +1315,14 @@ bool CFontMgr::MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,..
 // However it may be needed for 'Auto sized' fonts
 bool CFontMgr::RecreateFontByDpi(int dpiX, int dpiY, LPRECT prcSuggested)
 {
-	if ((gpSetCls->_dpi.Xdpi == dpiX && gpSetCls->_dpi.Ydpi == dpiY) || (dpiY < 72) || (dpiY > 960))
+	if ((_dpi_font.Xdpi == dpiX && _dpi_font.Ydpi == dpiY) || (dpiY < 72) || (dpiY > 960))
 	{
 		_ASSERTE(dpiY >= 72 && dpiY <= 960);
 		return false;
 	}
 
-	gpSetCls->_dpi.SetDpi(dpiX, dpiY);
+	gpSetCls->SetRequestedDpi(dpiX, dpiY);
+	_dpi_font.SetDpi(dpiX, dpiY);
 	//Raster fonts???
 	EvalLogfontSizes(LogFont, gpSet->FontSizeY, gpSet->FontSizeX);
 	RecreateFont(true);
@@ -1531,7 +1537,7 @@ BOOL CFontMgr::RegisterFont(LPCWSTR asFontFile, BOOL abDefault)
 				if (lstrcmpi((wchar_t*)lpOutl->otmpFamilyName, rf.szFontName) != 0)
 				{
 
-					_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"!!! RegFont failed: '%s'. Req: %s, Created: %s\n",
+					swprintf_c(szDbg, L"!!! RegFont failed: '%s'. Req: %s, Created: %s\n",
 						asFontFile, rf.szFontName, (wchar_t*)lpOutl->otmpFamilyName);
 					lbFail = TRUE;
 				}
@@ -1631,6 +1637,8 @@ void CFontMgr::RegisterFonts()
 {
 	if (!gpSet->isAutoRegisterFonts || gpConEmu->DisableRegisterFonts)
 		return; // Если поиск шрифтов не требуется
+
+	DEBUGSTRSTARTUPLOG(L"Registering local fonts");
 
 	// Сначала - регистрация шрифтов в папке программы
 	RegisterFontsDir(gpConEmu->ms_ConEmuExeDir);
@@ -1799,9 +1807,9 @@ bool CFontMgr::CreateFontGroup(CLogFont inFont)
 		if (hMainPg)
 		{
 			wchar_t temp[32];
-			_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->FontSizeY);
+			swprintf_c(temp, L"%i", gpSet->FontSizeY);
 			CSetDlgLists::SelectStringExact(hMainPg, tFontSizeY, temp);
-			_wsprintf(temp, SKIPLEN(countof(temp)) L"%i", gpSet->FontSizeX);
+			swprintf_c(temp, L"%i", gpSet->FontSizeX);
 			CSetDlgLists::SelectStringExact(hMainPg, tFontSizeX, temp);
 			CSetDlgLists::SelectStringExact(hMainPg, tFontSizeX3, temp);
 		}
@@ -2009,7 +2017,7 @@ bool CFontMgr::Create(CLogFont inFont, CFontPtr& rpFont, CustomFontFamily** ppCu
 				SelectObject(hDC, hOldF);
 				DeleteDC(hDC);
 
-				_wsprintf(szFontError, SKIPLEN(countof(szFontError)) L"GetTextMetrics failed for non Raster font '%s'", inFont.lfFaceName);
+				swprintf_c(szFontError, L"GetTextMetrics failed for non Raster font '%s'", inFont.lfFaceName);
 				if (dwFontErr)
 				{
 					int nCurLen = _tcslen(szFontError);
@@ -2259,7 +2267,7 @@ void CFontMgr::RecreateAlternativeFont()
 	// Force the same height in pixels as main font
 	EvalLogfontSizes(LogFont2, gpSet->FontSizeY, gpSet->FontSizeX2);
 
-	// Font for pseudographics may differs a lot in height,
+	// Font for pseudographics may differ a lot in height,
 	// so, to avoid vertically-dashed frames...
 	if (gpSet->CheckCharAltFont(ucBoxDblVert))
 	{
@@ -2323,7 +2331,7 @@ void CFontMgr::RecreateAlternativeFont()
 
 			//if (szFontError[0]) wcscat_c(szFontError, L"\n");
 
-			_wsprintf(szFontError, SKIPCOUNT(szFontError)
+			swprintf_c(szFontError,
 			          L"Failed to create border font!\nRequested: %s\nCreated: %s",
 			          LogFont2.lfFaceName, m_Font2->m_LF.lfFaceName);
 
@@ -2408,7 +2416,7 @@ void CFontMgr::RecreateFont(bool abReset, bool abRecreateControls /*= false*/)
 
 		if (gpSet->isLogging())
 		{
-			char szInfo[128]; _wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "AutoRecreateFont(H=%i, W=%i)", LF.lfHeight, LF.lfWidth);
+			char szInfo[128]; sprintf_c(szInfo, "AutoRecreateFont(H=%i, W=%i)", LF.lfHeight, LF.lfWidth);
 			CVConGroup::LogString(szInfo);
 		}
 	}
@@ -2443,7 +2451,7 @@ void CFontMgr::RecreateFont(bool abReset, bool abRecreateControls /*= false*/)
 		gpSetCls->UpdateFontInfo();
 	}
 
-	if (gpConEmu->mn_StartupFinished >= CConEmuMain::ss_Started)
+	if (gpConEmu->GetStartupStage() >= CConEmuMain::ss_Started)
 	{
 		gpConEmu->OnPanelViewSettingsChanged(TRUE);
 	}
@@ -2478,7 +2486,7 @@ void CFontMgr::SaveFontSizes(bool bAuto, bool bSendChanges)
 	mn_FontHeight = m_Font[0]->m_LF.lfHeight;
 
 	wchar_t szLog[120];
-	_wsprintf(szLog, SKIPLEN(countof(szLog))
+	swprintf_c(szLog,
 		L"Main font was created Face='%s' lfHeight=%i lfWidth=%i use-dpi=%u dpi=%i zoom=%i",
 		LogFont.lfFaceName, LogFont.lfHeight, LogFont.lfWidth,
 		(UINT)gpSet->FontUseDpi, gpSetCls->_dpi.Ydpi, mn_FontZoomValue);
@@ -2496,16 +2504,30 @@ void CFontMgr::SaveFontSizes(bool bAuto, bool bSendChanges)
 
 void CFontMgr::SettingsLoaded(SettingsLoadedFlags slfFlags)
 {
+	_ASSERTE(gpConEmu != nullptr);
+
 	/*
 	LogFont.lfHeight = mn_FontHeight = gpSet->FontSizeY;
 	LogFont.lfWidth = mn_FontWidth = gpSet->FontSizeX;
 	*/
 	EvalLogfontSizes(LogFont, gpSet->FontSizeY, gpSet->FontSizeX);
-	lstrcpyn(LogFont.lfFaceName, gpSet->inFont, countof(LogFont.lfFaceName));
+	if (gpSet->inFont && *gpSet->inFont)
+		lstrcpyn(LogFont.lfFaceName, gpSet->inFont, countof(LogFont.lfFaceName));
 	LogFont.lfQuality = gpSet->mn_AntiAlias;
 	LogFont.lfWeight = gpSet->isBold ? FW_BOLD : FW_NORMAL;
 	LogFont.lfCharSet = (BYTE)gpSet->mn_LoadFontCharSet;
 	LogFont.lfItalic = gpSet->isItalic;
+
+	if (slfFlags & slf_OnStartupLoad)
+	{
+		RegisterFonts();
+	}
+
+	InitFont(
+		gpConEmu->opt.FontVal.GetStr(),
+		gpConEmu->opt.SizeVal.Exists ? gpConEmu->opt.SizeVal.GetInt() : -1,
+		gpConEmu->opt.ClearTypeVal.Exists ? gpConEmu->opt.ClearTypeVal.GetInt() : -1
+	);
 
 	if (slfFlags & slf_OnResetReload)
 	{
@@ -2557,6 +2579,7 @@ bool CFontMgr::IsAlmostMonospace(LPCWSTR asFaceName, LPTEXTMETRIC lptm, LPOUTLIN
 
 	if (lpotm)
 	{
+		// #LOG Log info about monospace decision
 		if (lpotm->otmPanoseNumber.bProportion == PAN_PROP_MONOSPACED)
 			bPanMono = true;
 		if (bSelfOtm)
@@ -2673,13 +2696,13 @@ void CFontMgr::DumpFontMetrics(LPCWSTR szType, CFontPtr& Font)
 
 	if (!Font.IsSet())
 	{
-		_wsprintf(szFontDump, SKIPLEN(countof(szFontDump)) L"*** gpSet->%s: WAS NOT CREATED!\n", szType);
+		swprintf_c(szFontDump, L"*** gpSet->%s: WAS NOT CREATED!\n", szType);
 	}
 	else
 	{
 		TEXTMETRIC ltm = Font->m_tm;
 		LPOUTLINETEXTMETRIC lpOutl = Font->mp_otm;
-		_wsprintf(szFontDump, SKIPLEN(countof(szFontDump)) L"*** gpSet->%s: '%s', Height=%i, Ave=%i, Max=%i, Over=%i, Angle*10=%i\n",
+		swprintf_c(szFontDump, L"*** gpSet->%s: '%s', Height=%i, Ave=%i, Max=%i, Over=%i, Angle*10=%i\n",
 		          szType, Font->m_LF.lfFaceName, ltm.tmHeight, ltm.tmAveCharWidth, ltm.tmMaxCharWidth, ltm.tmOverhang,
 		          lpOutl ? lpOutl->otmItalicAngle : 0);
 	}

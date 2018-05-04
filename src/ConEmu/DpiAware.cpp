@@ -1,6 +1,6 @@
 
 /*
-Copyright (c) 2014-2015 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,14 +58,21 @@ DpiValue::DpiValue()
 	#endif
 }
 
-DpiValue::DpiValue(WPARAM wParam)
+DpiValue::DpiValue(int xdpi, int ydpi)
 {
+	SetDpi(xdpi, ydpi);
+}
+
+DpiValue DpiValue::FromWParam(WPARAM wParam)
+{
+	DpiValue dpi;
 	#if defined(_DEBUG) && defined(DPI_DEBUG_CUSTOM)
-	SetDpi(DPI_DEBUG_CUSTOM,DPI_DEBUG_CUSTOM);
+	dpi.SetDpi(DPI_DEBUG_CUSTOM,DPI_DEBUG_CUSTOM);
 	#else
-	SetDpi(96,96);
+	dpi.SetDpi(96,96);
 	#endif
-	OnDpiChanged(wParam);
+	dpi.OnDpiChanged(wParam);
+	return dpi;
 }
 
 DpiValue::DpiValue(const DpiValue& dpi)
@@ -406,6 +413,23 @@ class CDpiForDialog - handle per-monitor dpi for our resource-based dialogs
 	MMap<int, MArray<DlgItem>*> m_Items;
 */
 
+bool CDpiForDialog::Create(CDpiForDialog*& pHelper)
+{
+	if (pHelper)
+		return true;
+
+	// In Win10 and newly implemented PerMonitor DPI support we don't need dialog handlers anymore
+	if (IsWin10())
+		return false;
+
+	// Only if required
+	if (!CDpiAware::IsPerMonitorDpi())
+		return false;
+
+	pHelper = new CDpiForDialog();
+	return (pHelper != nullptr);
+}
+
 CDpiForDialog::CDpiForDialog()
 {
 	mh_Dlg = NULL;
@@ -437,7 +461,7 @@ bool CDpiForDialog::Attach(HWND hWnd, HWND hCenterParent, CDynDialog* apDlgTempl
 	if ((mh_OldFont != NULL)
 		&& (GetObject(mh_OldFont, sizeof(mlf_InitFont), &mlf_InitFont) > 0))
 	{
-		_wsprintf(szLog, SKIPLEN(countof(szLog)) L"CDpiForDialog(x%08X) Font='%s' lfHeight=%i Points=%u", (DWORD)(DWORD_PTR)hWnd, mlf_InitFont.lfFaceName, mlf_InitFont.lfHeight, mn_TemplateFontSize);
+		swprintf_c(szLog, L"CDpiForDialog(x%08X) Font='%s' lfHeight=%i Points=%u", (DWORD)(DWORD_PTR)hWnd, mlf_InitFont.lfFaceName, mlf_InitFont.lfHeight, mn_TemplateFontSize);
 	}
 	else
 	{
@@ -446,16 +470,16 @@ bool CDpiForDialog::Attach(HWND hWnd, HWND hCenterParent, CDynDialog* apDlgTempl
 		lstrcpyn(mlf_InitFont.lfFaceName, L"MS Shell Dlg", countof(mlf_InitFont.lfFaceName));
 		mlf_InitFont.lfWeight = 400;
 		mlf_InitFont.lfCharSet = DEFAULT_CHARSET;
-		_wsprintf(szLog, SKIPLEN(countof(szLog)) L"CDpiForDialog(x%08X) DefaultFont='%s' lfHeight=%i Points=%u", (DWORD)(DWORD_PTR)hWnd, mlf_InitFont.lfFaceName, mlf_InitFont.lfHeight, mn_TemplateFontSize);
+		swprintf_c(szLog, L"CDpiForDialog(x%08X) DefaultFont='%s' lfHeight=%i Points=%u", (DWORD)(DWORD_PTR)hWnd, mlf_InitFont.lfFaceName, mlf_InitFont.lfHeight, mn_TemplateFontSize);
 	}
 
 	LogString(szLog);
 
 	// Up to Windows 8 - OS will care of dialog scaling
-	// And what will happens in Windows 8.1?
+	// And what will happen in Windows 8.1?
 	// If `Per-monitor` dpi was choosed in the OS settings,
 	// we need to re-scale our dialog manually!
-	// But if one dpi was choosed for all monitors?
+	// But if one dpi was chosen for all monitors?
 
 	CDpiAware::QueryDpiForMonitor(NULL, &m_InitDpi); // Whole desktop DPI (in most cases that will be Primary monitor DPI)
 	m_CurDpi.SetDpi(m_InitDpi);
@@ -505,7 +529,7 @@ bool CDpiForDialog::SetDialogDPI(const DpiValue& newDpi, LPRECT lprcSuggested /*
 	if (gbSkipSetDialogDPI)
 	{
 		GetClientRect(mh_Dlg, &rcClient); GetWindowRect(mh_Dlg, &rcCurWnd);
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"SKIPPED CDpiForDialog::SetDialogDPI x%08X, OldDpi={%i,%i}, NewDpi={%i,%i}, CurSize={%i,%i}, CurClient={%i,%i}",
+		swprintf_c(szLog, L"SKIPPED CDpiForDialog::SetDialogDPI x%08X, OldDpi={%i,%i}, NewDpi={%i,%i}, CurSize={%i,%i}, CurClient={%i,%i}",
 			(DWORD)(DWORD_PTR)mh_Dlg, m_CurDpi.Xdpi, m_CurDpi.Ydpi, newDpi.Xdpi, newDpi.Ydpi,
 			(rcCurWnd.right - rcCurWnd.left), (rcCurWnd.bottom - rcCurWnd.top),
 			(rcClient.right - rcClient.left), (rcClient.bottom - rcClient.top));
@@ -533,7 +557,7 @@ bool CDpiForDialog::SetDialogDPI(const DpiValue& newDpi, LPRECT lprcSuggested /*
 		setDpi.Ydpi = MulDiv(setDpi.Ydpi, 120, 96);
 		setDpi.Xdpi = MulDiv(setDpi.Xdpi, 120, 96);
 		// Log it
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"CDpiForDialog::SetDialogDPI x%08X forces larger dpi value from {%i,%i} to {%i,%i}",
+		swprintf_c(szLog, L"CDpiForDialog::SetDialogDPI x%08X forces larger dpi value from {%i,%i} to {%i,%i}",
 			(DWORD)(DWORD_PTR)mh_Dlg, newDpi.Xdpi, newDpi.Ydpi, setDpi.Xdpi, setDpi.Ydpi);
 		LogString(szLog);
 	}
@@ -626,7 +650,7 @@ bool CDpiForDialog::SetDialogDPI(const DpiValue& newDpi, LPRECT lprcSuggested /*
 	else
 	{
 		const DlgItem& di = (*p)[0];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"CDpiForDialog::SetDialogDPI x%08X, OldDpi={%i,%i}, NewDpi={%i,%i}, OldSize={%i,%i}, NewSize={%i,%i}, NewFont=%i",
+		swprintf_c(szLog, L"CDpiForDialog::SetDialogDPI x%08X, OldDpi={%i,%i}, NewDpi={%i,%i}, OldSize={%i,%i}, NewSize={%i,%i}, NewFont=%i",
 			(DWORD)(DWORD_PTR)mh_Dlg, curDpi.Xdpi, curDpi.Ydpi, newDpi.Xdpi, newDpi.Ydpi,
 			(rcCurWnd.right - rcCurWnd.left), (rcCurWnd.bottom - rcCurWnd.top), di.r.right, di.r.bottom,
 			mlf_CurFont.lfHeight);
@@ -679,7 +703,7 @@ bool CDpiForDialog::SetDialogDPI(const DpiValue& newDpi, LPRECT lprcSuggested /*
 				GetClientRect(di.h, &rcClient2);
 				GetClientRect(hComboEdit, &rcEdit2);
 				lNewHeight = newH*iComboFieldHeight/iComboWasHeight;
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"CDpiForDialog::Combo height changed - OldHeight=%i, ItemHeight=%i, NewHeight=%i, NewItemHeight=%i",
+				swprintf_c(szLog, L"CDpiForDialog::Combo height changed - OldHeight=%i, ItemHeight=%i, NewHeight=%i, NewItemHeight=%i",
 					(rcCur.bottom - rcCur.top), lFieldHeight, newH, lNewHeight);
 				LogString(szLog);
 				SendMessage(di.h, CB_SETITEMHEIGHT, -1, lNewHeight);
@@ -745,7 +769,7 @@ bool CDpiForDialog::ProcessDpiMessages(HWND hDlg, UINT nMsg, WPARAM wParam, LPAR
 	{
 	case WM_DPICHANGED:
 		{
-			DpiValue dpi(wParam);
+			DpiValue dpi = DpiValue::FromWParam(wParam);
 			LPRECT lprcSuggested = (LPRECT)lParam;
 			SetDialogDPI(dpi, lprcSuggested);
 			SetWindowLongPtr(hDlg, DWLP_MSGRESULT, 0);
@@ -780,7 +804,7 @@ MArray<CDpiForDialog::DlgItem>* CDpiForDialog::LoadDialogItems(HWND hDlg)
 				if (Button_GetTextMargin(i.h, &rcMargin))
 				{
 					wchar_t szLog[100];
-					_wsprintf(szLog, SKIPCOUNT(szLog) L"CheckBox Rect={%i,%i}-{%i,%i} Margin={%i,%i}-{%i,%i}",
+					swprintf_c(szLog, L"CheckBox Rect={%i,%i}-{%i,%i} Margin={%i,%i}-{%i,%i}",
 						LOGRECTCOORDS(i.r), LOGRECTCOORDS(rcMargin));
 					LogString(szLog);
 				}

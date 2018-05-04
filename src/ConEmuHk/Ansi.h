@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,7 @@ extern DWORD AnsiTlsIndex;
 
 struct MSectionSimple;
 
+/* !!! Duplicated in the ConnectorAPI.h !!! */
 enum WriteProcessedStream
 {
 	wps_None   = 0,
@@ -54,6 +55,7 @@ enum WriteProcessedStream
 	wps_Input  = 4, // Reserved for StdInput
 	wps_Ansi   = 8, // Reserved as a Flag for IsAnsiCapable
 };
+#define WRITE_PROCESSED_STREAM_DEFINED
 
 #if defined(__GNUC__)
 extern "C" {
@@ -181,6 +183,7 @@ public:
 	static void WriteAnsiLogW(LPCWSTR lpBuffer, DWORD nChars);
 	static void WriteAnsiLogFarPrompt();
 	static void AnsiLogEnterPressed();
+	static void WriteAnsiLogFormat(const char* format, ...);
 protected:
 	static void XTermSaveRestoreCursor(bool bSaveCursor, HANDLE hConsoleOutput = NULL);
 	static void XTermAltBuffer(bool bSetAltBuffer);
@@ -217,19 +220,35 @@ protected:
 	OnWriteConsoleW_t pfnWriteConsoleW;
 	HANDLE mh_WriteOutput;
 
+	enum VTCharSet
+	{
+		VTCS_DEFAULT = 0,
+		VTCS_DRAWING,
+	};
+	VTCharSet mCharSet = VTCS_DEFAULT;
+
+	#undef DP_PROP
+	#define DP_PROP(t,n) \
+		private: t _##n; \
+		public: t get##n() const { return _##n; }; \
+		public: void set##n(const t val);
 	struct DisplayParm
 	{
-		BOOL WasSet;
-		UINT BrightOrBold;     // 1
-		BOOL ItalicOrInverse;  // 3
-		UINT BackOrUnderline;  // 4
-		int  TextColor;        // 30-37,38,39
-		BOOL Text256;          // 38
-		int  BackColor;        // 40-47,48,49
-		BOOL Back256;          // 48
+		void Reset(const bool full);
+		DP_PROP(BOOL, WasSet);
+		DP_PROP(BOOL, BrightOrBold);     // 1
+		DP_PROP(BOOL, Italic);           // 3
+		DP_PROP(BOOL, Underline);        // 4
+		DP_PROP(BOOL, BrightFore);       // 90-97
+		DP_PROP(BOOL, BrightBack);       // 100-107
+		DP_PROP(int,  TextColor);        // 30-37,38,39
+		DP_PROP(BOOL, Text256);          // 38
+		DP_PROP(int,  BackColor);        // 40-47,48,49
+		DP_PROP(BOOL, Back256);          // 48
 		// xterm
-		BOOL Inverse;
+		DP_PROP(BOOL, Inverse);
 	}; // gDisplayParm = {};
+	#undef DP_PROP
 	// Bad thing... Thought, it must be synced between thread, but when?
 	static DisplayParm gDisplayParm;
 

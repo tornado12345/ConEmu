@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -82,6 +82,8 @@ static const EXTREADWRITEFLAGS
 	ewtf_Commit  = 0x0000000000000100ULL, // Only for Write functions
 
 	ewtf_NoBells = 0x0000000000000200ULL, // CECF_SuppressBells
+
+	ewtf_NoLfNl  = 0x0000000000000400ULL, // Don't do automatic CR after LF
 
 	ewtf_None    = 0x0000000000000000ULL;
 

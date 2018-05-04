@@ -3,7 +3,7 @@
 // DPI resize.
 
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,7 @@ namespace ConEmuAbout
 	bool mb_CommCtrlsInitialized = false;
 	HWND mh_AboutDlg = NULL;
 	DWORD nLastCrashReported = 0;
-	CDpiForDialog* mp_DpiAware = NULL;
+	CDpiForDialog* mp_DpiAware = nullptr;
 
 	INT_PTR WINAPI aboutProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam);
 	void searchProc(HWND hDlg, HWND hSearch, bool bReentr);
@@ -351,7 +351,7 @@ void ConEmuAbout::searchProc(HWND hDlg, HWND hSearch, bool bReentr)
 		SendMessage(hEdit, EM_GETSEL, (WPARAM)&nStart, (LPARAM)&nEnd);
 
 		size_t cchMax = wcslen(pszText);
-		size_t cchFrom = max(nStart,nEnd);
+		size_t cchFrom = std::max(nStart,nEnd);
 		if (cchMax > cchFrom)
 			pszFrom += cchFrom;
 
@@ -364,7 +364,7 @@ void ConEmuAbout::searchProc(HWND hDlg, HWND hSearch, bool bReentr)
 			const wchar_t szBrkChars[] = L"()[]<>{}:;,.-=\\/ \t\r\n";
 			LPCWSTR pszEnd = wcspbrk(pszFind, szBrkChars);
 			INT_PTR nPartLen = wcslen(pszPart);
-			if (!pszEnd || ((pszEnd - pszFind) > max(nPartLen,60)))
+			if (!pszEnd || ((pszEnd - pszFind) > std::max<ssize_t>(nPartLen,60)))
 				pszEnd = pszFind + nPartLen;
 			while ((pszFind > pszFrom) && !wcschr(szBrkChars, *(pszFind-1)))
 				pszFind--;
@@ -521,8 +521,7 @@ void ConEmuAbout::OnInfo_About(LPCWSTR asPageName /*= NULL*/)
 
 	{
 		DontEnable de;
-		if (!mp_DpiAware)
-			mp_DpiAware = new CDpiForDialog();
+		CDpiForDialog::Create(mp_DpiAware);
 		HWND hParent = (ghOpWnd && IsWindowVisible(ghOpWnd)) ? ghOpWnd : ghWnd;
 		// Modal dialog (CreateDialog)
 		INT_PTR iRc = CDynDialog::ExecuteDialog(IDD_ABOUT, hParent, aboutProc, (LPARAM)asPageName);
@@ -555,13 +554,11 @@ void ConEmuAbout::OnInfo_About(LPCWSTR asPageName /*= NULL*/)
 
 void ConEmuAbout::OnInfo_WhatsNew(bool bLocal)
 {
-	wchar_t sFile[MAX_PATH+80];
 	INT_PTR iExec = -1;
 
 	if (bLocal)
 	{
-		wcscpy_c(sFile, gpConEmu->ms_ConEmuBaseDir);
-		wcscat_c(sFile, L"\\WhatsNew-ConEmu.txt");
+		CEStr sFile(gpConEmu->ms_ConEmuBaseDir, L"\\WhatsNew-ConEmu.txt");
 
 		if (FileExists(sFile))
 		{
@@ -573,9 +570,7 @@ void ConEmuAbout::OnInfo_WhatsNew(bool bLocal)
 		}
 	}
 
-	wcscpy_c(sFile, gsWhatsNew);
-
-	iExec = (INT_PTR)ShellExecute(ghWnd, L"open", sFile, NULL, NULL, SW_SHOWNORMAL);
+	iExec = (INT_PTR)ShellExecute(ghWnd, L"open", gsWhatsNew, NULL, NULL, SW_SHOWNORMAL);
 	if (iExec >= 32)
 	{
 		return;
@@ -684,7 +679,7 @@ void ConEmuAbout::OnInfo_ThrowTrapException(bool bMainThread)
 {
 	if (bMainThread)
 	{
-		if (MsgBox(L"Are you sure?\nApplication will terminates after that!\nThrow exception in ConEmu's main thread?", MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2)==IDYES)
+		if (MsgBox(L"Are you sure?\nApplication will terminate after that!\nThrow exception in ConEmu's main thread?", MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2)==IDYES)
 		{
 			//#ifdef _DEBUG
 			//MyAssertTrap();
@@ -697,7 +692,7 @@ void ConEmuAbout::OnInfo_ThrowTrapException(bool bMainThread)
 	}
 	else
 	{
-		if (MsgBox(L"Are you sure?\nApplication will terminates after that!\nThrow exception in ConEmu's monitor thread?", MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2)==IDYES)
+		if (MsgBox(L"Are you sure?\nApplication will terminate after that!\nThrow exception in ConEmu's monitor thread?", MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2)==IDYES)
 		{
 			CVConGuard VCon;
 			if ((gpConEmu->GetActiveVCon(&VCon) >= 0) && VCon->RCon())

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -62,16 +62,11 @@ LRESULT CSetPgAppear::OnInitDialog(HWND hDlg, bool abInitial)
 
 	//checkDlgButton(hDlg, cbAlwaysShowScrollbar, gpSet->isAlwaysShowScrollbar);
 	checkRadioButton(hDlg, rbScrollbarHide, rbScrollbarAuto, (gpSet->isAlwaysShowScrollbar==0) ? rbScrollbarHide : (gpSet->isAlwaysShowScrollbar==1) ? rbScrollbarShow : rbScrollbarAuto);
+	checkDlgButton(hDlg, cbScrollbarDynamic, gpSet->isDynamicBufferHeight);
 	SetDlgItemInt(hDlg, tScrollAppearDelay, gpSet->nScrollBarAppearDelay, FALSE);
 	SetDlgItemInt(hDlg, tScrollDisappearDelay, gpSet->nScrollBarDisappearDelay, FALSE);
 
 	checkDlgButton(hDlg, cbAlwaysOnTop, gpSet->isAlwaysOnTop);
-
-	#ifdef _DEBUG
-	checkDlgButton(hDlg, cbTabsInCaption, gpSet->isTabsInCaption);
-	#else
-	ShowWindow(GetDlgItem(hDlg, cbTabsInCaption), SW_HIDE);
-	#endif
 
 	checkDlgButton(hDlg, cbNumberInCaption, gpSet->isNumberInCaption);
 
@@ -99,7 +94,7 @@ LRESULT CSetPgAppear::OnEditChanged(HWND hDlg, WORD nCtrlId)
 			if (lbOk && (gpSet->nHideCaptionAlwaysFrame != ((nNewVal < 0) ? 255 : (BYTE)nNewVal)))
 			{
 				gpSet->nHideCaptionAlwaysFrame = (nNewVal < 0) ? 255 : (BYTE)nNewVal;
-				gpConEmu->OnHideCaption();
+				gpConEmu->RefreshWindowStyles();
 				gpConEmu->UpdateWindowRgn();
 			}
 		}

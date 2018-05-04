@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2016 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,42 +32,50 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct ConEmuUpdateSettings
 {
 public:
-	wchar_t *szUpdateVerLocation; // ConEmu latest version location info
+	wchar_t *szUpdateVerLocation = nullptr; // ConEmu latest version location info
 	LPCWSTR UpdateVerLocation();
 	LPCWSTR UpdateVerLocationDefault();
 	void SetUpdateVerLocation(LPCWSTR asNewIniLocation);
 	bool IsVerLocationDeprecated(LPCWSTR asNewIniLocation);
 
-	bool isUpdateCheckOnStartup;
-	bool isUpdateCheckHourly;
-	bool isUpdateConfirmDownload; // true-Show MessageBox, false-notify via TSA only
-	BYTE isUpdateUseBuilds; // 0-спросить пользователя при первом запуске, 1-stable only, 2-latest, 3-preview
-	BYTE isUpdateDownloadSetup; // 0-Auto, 1-Installer (ConEmuSetup.exe), 2-7z archive (ConEmu.7z), WinRar or 7z required
-	BYTE isSetupDetected; // 0-пока не проверялся, 1-установлено через Installer, пути совпали, 2-Installer не запускался
-	bool isSetup64; // нужно запомнить, какой именно setup был установлен
+	bool isUpdateCheckOnStartup = false;
+	bool isUpdateCheckHourly = false;
+	bool isUpdateConfirmDownload = false; // true-Show MessageBox, false-notify via TSA only
+	enum class Builds : BYTE
+	{
+		Undefined = 0,
+		Stable    = 1,
+		Alpha     = 2,
+		Preview   = 3, // Previously there were only two type of releases Stable/Alpha
+	};
+	Builds isUpdateUseBuilds = Builds::Undefined;
+	BYTE isUpdateDownloadSetup = 0; // 0-Auto, 1-Installer (ConEmuSetup.exe), 2-7z archive (ConEmu.7z), WinRar or 7z required
+	BYTE isSetupDetected = 0; // 0-пока не проверялся, 1-установлено через Installer, пути совпали, 2-Installer не запускался
+	bool isSetup64 = false; // нужно запомнить, какой именно setup был установлен
 	BYTE UpdateDownloadSetup();
+	static Builds GetDefaultUpdateChannel();
 
-	bool isUpdateInetTool; // Use external downloader like `wget` or `curl`
-	wchar_t *szUpdateInetTool; // "<path>\curl.exe" -L %1 -o %2  :: %1 is url address, %2 is dst file name
+	bool isUpdateInetTool = false; // Use external downloader like `wget` or `curl`
+	wchar_t *szUpdateInetTool = nullptr; // "<path>\curl.exe" -L %1 -o %2  :: %1 is url address, %2 is dst file name
 	LPCWSTR GetUpdateInetToolCmd();
 
-	bool isUpdateUseProxy;
-	wchar_t *szUpdateProxy; // "Server:port"
-	wchar_t *szUpdateProxyUser;
-	wchar_t *szUpdateProxyPassword;
+	bool isUpdateUseProxy = false;
+	wchar_t *szUpdateProxy = nullptr; // "Server:port"
+	wchar_t *szUpdateProxyUser = nullptr;
+	wchar_t *szUpdateProxyPassword = nullptr;
 
 	// "%1"-archive or setup file, "%2"-ConEmu.exe folder, "%3"-x86/x64, "%4"-ConEmu PID
-	wchar_t *szUpdateExeCmdLine, *szUpdateExeCmdLineDef; // isUpdateDownloadSetup==1
+	wchar_t *szUpdateExeCmdLine = nullptr, *szUpdateExeCmdLineDef = nullptr; // isUpdateDownloadSetup==1
 	LPCWSTR UpdateExeCmdLine(wchar_t (&szCPU)[4]);
-	wchar_t *szUpdateArcCmdLine, *szUpdateArcCmdLineDef; // isUpdateDownloadSetup==2
+	wchar_t *szUpdateArcCmdLine = nullptr, *szUpdateArcCmdLineDef = nullptr; // isUpdateDownloadSetup==2
 	LPCWSTR UpdateArcCmdLine();
 
-	wchar_t *szUpdatePostUpdateCmd; // Юзер может чего-то свое делать с распакованными файлами
+	wchar_t *szUpdatePostUpdateCmd = nullptr; // Юзер может чего-то свое делать с распакованными файлами
 
-	wchar_t *szUpdateDownloadPath; // "%TEMP%\\ConEmu"
-	bool isUpdateLeavePackages;
+	wchar_t *szUpdateDownloadPath = nullptr; // "%TEMP%\\ConEmu"
+	bool isUpdateLeavePackages = false;
 
-	DWORD dwLastUpdateCheck;
+	DWORD dwLastUpdateCheck = 0;
 
 public:
 	ConEmuUpdateSettings();

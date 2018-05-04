@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -60,7 +60,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/MSetter.h"
 #include "../common/MWow64Disable.h"
 #include "../common/WFiles.h"
-#include "../common/WConsole.h"
+#include "../common/WConsoleEx.h"
 #include "../common/WModuleCheck.h"
 #include "../common/WThreads.h"
 #include "../common/SetEnvVar.h"
@@ -142,7 +142,6 @@ BOOL  gbPlugKeyChanged=FALSE;
 HKEY  ghRegMonitorKey=NULL; HANDLE ghRegMonitorEvt=NULL;
 HANDLE ghPluginSemaphore = NULL;
 wchar_t gsFarLang[64] = {0};
-BOOL FindServerCmd(DWORD nServerCmd, DWORD &dwServerPID, bool bFromAttach = false);
 BOOL gbNeedPostTabSend = FALSE;
 BOOL gbNeedPostEditCheck = FALSE; // проверить, может в активном редакторе изменился статус
 int lastModifiedStateW = -1;
@@ -150,7 +149,6 @@ BOOL gbNeedPostReloadFarInfo = FALSE;
 DWORD gnNeedPostTabSendTick = 0;
 #define NEEDPOSTTABSENDDELTA 100
 #define MONITORENVVARDELTA 1000
-void UpdateEnvVar(const wchar_t* pszList);
 BOOL StartupHooks();
 MFileMapping<CESERVER_CONSOLE_MAPPING_HDR> *gpConMap;
 const CESERVER_CONSOLE_MAPPING_HDR *gpConMapInfo = NULL;
@@ -244,7 +242,7 @@ CPluginBase::~CPluginBase()
 void CPluginBase::DllMain_ProcessAttach(HMODULE hModule)
 {
 	ghPluginModule = (HMODULE)hModule;
-	ghWorkingModule = (u64)hModule;
+	ghWorkingModule = hModule;
 	gnSelfPID = GetCurrentProcessId();
 	HeapInitialize();
 	gfnSearchAppPaths = SearchAppPaths;
@@ -413,7 +411,7 @@ bool CPluginBase::LoadFarVersion()
 int CPluginBase::ShowMessageBox(LPCWSTR asMessage, UINT uType)
 {
 	wchar_t szTitle[128], szVer4[8] = L""; lstrcpyn(szVer4, _T(MVV_4a), countof(szVer4));
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmu plugin %02u%02u%02u%s%s[%u%s] PID=%u",
+	swprintf_c(szTitle, L"ConEmu plugin %02u%02u%02u%s%s[%u%s] PID=%u",
 		(MVV_1 % 100), MVV_2, MVV_3, szVer4[0] && szVer4[1] ? L"-" : L"", szVer4,
 		WIN3264TEST(32,64), RELEASEDEBUGTEST(L"",L"D"),
 		GetCurrentProcessId());
@@ -430,7 +428,7 @@ int CPluginBase::ShowMessageGui(int aiMsg, int aiButtons)
 
 	if (!pwszMsg || !*pwszMsg)
 	{
-		_wsprintf(wszBuf, SKIPLEN(countof(wszBuf)) L"<MsgID=%i>", aiMsg);
+		swprintf_c(wszBuf, L"<MsgID=%i>", aiMsg);
 		pwszMsg = wszBuf;
 	}
 
@@ -745,7 +743,7 @@ void CPluginBase::UpdatePanelDirs()
 				// Don't ping Far when Editor/Viewer are active
 				return;
 			}
-			_wsprintf(szMacro, SKIPCOUNT(szMacro)
+			swprintf_c(szMacro,
 				L"$if (!Editor && !Viewer)"
 				L" $if (!APanel.Plugin) callplugin(0x%08X,%i) $end "
 				L" $if (!PPanel.Plugin) callplugin(0x%08X,%i) $end "
@@ -754,7 +752,7 @@ void CPluginBase::UpdatePanelDirs()
 		}
 		else if (!gFarVersion.IsFarLua())
 		{
-			_wsprintf(szMacro, SKIPCOUNT(szMacro)
+			swprintf_c(szMacro,
 				L"$if (APanel.Plugin) %%A=\"\"; $else %%A=APanel.Path0; $end"
 				L" $if (PPanel.Plugin) %%P=\"\"; $else %%P=PPanel.Path0; $end"
 				L" Plugin.Call(\"%s\",%i,%%A,%%P)",
@@ -762,7 +760,7 @@ void CPluginBase::UpdatePanelDirs()
 		}
 		else
 		{
-			_wsprintf(szMacro, SKIPCOUNT(szMacro)
+			swprintf_c(szMacro,
 				L"Plugin.Call(\"%s\",%i,APanel.Plugin and \"\" or APanel.Path0,PPanel.Plugin and \"\" or PPanel.Path0)",
 				ConEmu_GuidS, CE_CALLPLUGIN_REQ_DIRS);
 		}
@@ -917,7 +915,7 @@ void CPluginBase::ShowPluginMenu(PluginCallCommands nCallID /*= pcc_None*/)
 	}
 
 	#ifdef _DEBUG
-	wchar_t szInfo[128]; _wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"*** ShowPluginMenu done, nItem == %i\n", nItem);
+	wchar_t szInfo[128]; swprintf_c(szInfo, L"*** ShowPluginMenu done, nItem == %i\n", nItem);
 	SHOWDBGINFO(szInfo);
 	#endif
 
@@ -1184,7 +1182,7 @@ int CPluginBase::ProcessSynchroEvent(int Event, void *Param)
 			LPCWSTR pszLastType = GetWindowTypeName(nLastType);
 
 			wchar_t szDbg[255];
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"FarWindow: %s activated (was %s)\n", pszCurType, pszLastType);
+			swprintf_c(szDbg, L"FarWindow: %s activated (was %s)\n", pszCurType, pszLastType);
 			DEBUGSTR(szDbg);
 			nLastType = nCurType;
 		}
@@ -1337,7 +1335,7 @@ void CPluginBase::ShowConsoleInfo()
 	GetConsoleCursorInfo(hConOut, &ci);
 
 	wchar_t szInfo[1024];
-	_wsprintf(szInfo, SKIPLEN(countof(szInfo))
+	swprintf_c(szInfo,
 		L"ConEmu Console information\n"
 		L"TerminalMode=%s\n"
 		L"Console HWND=0x%08X; "
@@ -1527,15 +1525,15 @@ bool CPluginBase::StartDebugger()
 		// Откроем дебаггер в новой вкладке ConEmu. При желании юзеру проще сделать Detach
 		// "/DEBUGPID=" обязательно должен быть первым аргументом
 
-		_wsprintf(szExe, SKIPLEN(countof(szExe)) L"\"%s\" /ATTACH /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
+		swprintf_c(szExe, L"\"%s\" /ATTACH /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
 		          szConEmuC, szConEmuC, dwSelfPID, w, h);
-		//_wsprintf(szExe, SKIPLEN(countof(szExe)) L"\"%s\" /ATTACH /GID=%u /GHWND=%08X /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
+		//swprintf_c(szExe, L"\"%s\" /ATTACH /GID=%u /GHWND=%08X /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
 		//          szConEmuC, nGuiPID, (DWORD)(DWORD_PTR)ghConEmuWndDC, szConEmuC, dwSelfPID, w, h);
 	}
 	else
 	{
 		// Запустить дебаггер в новом видимом консольном окне
-		_wsprintf(szExe, SKIPLEN(countof(szExe)) L"\"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
+		swprintf_c(szExe, L"\"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
 		          szConEmuC, dwSelfPID, w, h);
 	}
 
@@ -1562,7 +1560,7 @@ bool CPluginBase::StartDebugger()
 	return lbRc;
 }
 
-bool CPluginBase::Attach2Gui()
+bool CPluginBase::Attach2Gui(bool bLeaveOpened /*= false*/)
 {
 	bool lbRc = false;
 	DWORD dwServerPID = 0;
@@ -1687,9 +1685,9 @@ bool CPluginBase::Attach2Gui()
 	//if (IsWindows64())
 	//	wsprintf(szCmdLine+lstrlenW(szCmdLine), L"ConEmuC64.exe\" /ATTACH /PID=%i", dwSelfPID);
 	//else
-	wsprintf(szCmdLine+lstrlenW(szCmdLine), L"\" /ATTACH /FARPID=%i", dwSelfPID);
+	wsprintf(szCmdLine+lstrlenW(szCmdLine), L"\" /ATTACH /FARPID=%i %s", dwSelfPID, bLeaveOpened ? L"/CONFIRM " : L"");
 	if (gdwPreDetachGuiPID)
-		wsprintf(szCmdLine+lstrlenW(szCmdLine), L" /GID=%i", gdwPreDetachGuiPID);
+		wsprintf(szCmdLine+lstrlenW(szCmdLine), L"/GID=%i", gdwPreDetachGuiPID);
 
 	if (!CreateProcess(NULL, szCmdLine, NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL,
 	                  NULL, &si, &pi))
@@ -1700,7 +1698,7 @@ bool CPluginBase::Attach2Gui()
 	else
 	{
 		wchar_t szName[64];
-		_wsprintf(szName, SKIPLEN(countof(szName)) CESRVSTARTEDEVENT, pi.dwProcessId/*gnSelfPID*/);
+		swprintf_c(szName, CESRVSTARTEDEVENT, pi.dwProcessId/*gnSelfPID*/);
 		// Event мог быть создан и ранее (в Far-плагине, например)
 		HANDLE hServerStartedEvent = CreateEvent(LocalSecurity(), TRUE, FALSE, szName);
 		_ASSERTE(hServerStartedEvent!=NULL);
@@ -1966,12 +1964,12 @@ bool CPluginBase::OutDataWrite(LPVOID apData, DWORD anSize)
 {
 	if (!gpData)
 	{
-		if (!OutDataAlloc(max(1024, (anSize+128))))
+		if (!OutDataAlloc(std::max<DWORD>(1024, (anSize+128))))
 			return false;
 	}
-	else if (((gpCursor-gpData)+anSize)>gnDataSize)
+	else if (((gpCursor-gpData)+anSize) > gnDataSize)
 	{
-		if (!OutDataRealloc(gnDataSize+max(1024, (anSize+128))))
+		if (!OutDataRealloc(gnDataSize + std::max<DWORD>(1024, (anSize+128))))
 			return false;
 	}
 
@@ -2092,7 +2090,7 @@ bool CPluginBase::AddTab(int &tabCount, int WindowPos, bool losingFocus, bool ed
 		//{
 		//	lastModifiedStateW = -1; //2009-08-17 при наличии более одного редактора - сносит крышу
 		//}
-		int nLen = min(lstrlen(Name),(CONEMUTABMAX-1));
+		int nLen = std::min(lstrlen(Name),(CONEMUTABMAX-1));
 		lstrcpyn(gpTabs->Tabs.tabs[tabCount].Name, Name, nLen+1);
 		gpTabs->Tabs.tabs[tabCount].Name[nLen]=0;
 		gpTabs->Tabs.tabs[tabCount].Pos = (WindowPos >= 0) ? WindowPos : tabCount;
@@ -2496,7 +2494,7 @@ int CPluginBase::OpenMapHeader()
 			gpConMapInfo = NULL;
 		}
 
-		//_wsprintf(szMapName, SKIPLEN(countof(szMapName)) CECONMAPNAME, (DWORD)FarHwnd);
+		//swprintf_c(szMapName, CECONMAPNAME, (DWORD)FarHwnd);
 		//ghFileMapping = OpenFileMapping(FILE_MAP_READ, FALSE, szMapName);
 		//if (ghFileMapping)
 		//{
@@ -2620,7 +2618,7 @@ void CPluginBase::InitHWND()
 	{
 		// TrueColor buffer check
 		wchar_t szMapName[64];
-		_wsprintf(szMapName, SKIPLEN(countof(szMapName)) L"Console2_consoleBuffer_%d", (DWORD)GetCurrentProcessId());
+		swprintf_c(szMapName, L"Console2_consoleBuffer_%d", (DWORD)GetCurrentProcessId());
 		HANDLE hConsole2 = OpenFileMapping(FILE_MAP_READ, FALSE, szMapName);
 		gbStartedUnderConsole2 = (hConsole2 != NULL);
 
@@ -2632,11 +2630,11 @@ void CPluginBase::InitHWND()
 	if (!ghConEmuCtrlPressed)
 	{
 		wchar_t szName[64];
-		_wsprintf(szName, SKIPLEN(countof(szName)) CEKEYEVENT_CTRL, gnSelfPID);
+		swprintf_c(szName, CEKEYEVENT_CTRL, gnSelfPID);
 		ghConEmuCtrlPressed = CreateEvent(NULL, TRUE, FALSE, szName);
 		if (ghConEmuCtrlPressed) ResetEvent(ghConEmuCtrlPressed); else { _ASSERTE(ghConEmuCtrlPressed); }
 
-		_wsprintf(szName, SKIPLEN(countof(szName)) CEKEYEVENT_SHIFT, gnSelfPID);
+		swprintf_c(szName, CEKEYEVENT_SHIFT, gnSelfPID);
 		ghConEmuShiftPressed = CreateEvent(NULL, TRUE, FALSE, szName);
 		if (ghConEmuShiftPressed) ResetEvent(ghConEmuShiftPressed); else { _ASSERTE(ghConEmuShiftPressed); }
 	}
@@ -2811,7 +2809,7 @@ DWORD CPluginBase::MonitorThreadProcW(LPVOID lpParameter)
 				{
 					// hConWnd не валидно
 					wchar_t szWarning[255];
-					_wsprintf(szWarning, SKIPLEN(countof(szWarning)) L"Console was abnormally termintated!\r\nExiting from FAR (PID=%u)", GetCurrentProcessId());
+					swprintf_c(szWarning, L"Console was abnormally termintated!\r\nExiting from FAR (PID=%u)", GetCurrentProcessId());
 					ShowMessageBox(szWarning, MB_OK|MB_ICONSTOP|MB_SETFOREGROUND);
 					TerminateProcess(GetCurrentProcess(), 100);
 					return 0;
@@ -2952,7 +2950,7 @@ HANDLE CPluginBase::OpenPluginCommon(int OpenFrom, INT_PTR Item, bool FromMacro)
 	#ifdef _DEBUG
 	if (gFarVersion.dwVerMajor==1)
 	{
-		wchar_t szInfo[128]; _wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"OpenPlugin[Ansi] (%i%s, Item=0x%X, gnReqCmd=%i%s)\n",
+		wchar_t szInfo[128]; swprintf_c(szInfo, L"OpenPlugin[Ansi] (%i%s, Item=0x%X, gnReqCmd=%i%s)\n",
 		                               OpenFrom, (OpenFrom==of_CommandLine) ? L"[OPEN_COMMANDLINE]" :
 		                               (OpenFrom==of_PluginsMenu) ? L"[OPEN_PLUGINSMENU]" : L"",
 		                               (DWORD)Item,
@@ -3092,7 +3090,7 @@ wrap:
 	#ifdef _DEBUG
 	if ((gFarVersion.dwVerMajor==1) && (gnReqCommand != (DWORD)-1))
 	{
-		wchar_t szInfo[128]; _wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"*** OpenPlugin[Ansi] post gnReqCmd=%i%s\n",
+		wchar_t szInfo[128]; swprintf_c(szInfo, L"*** OpenPlugin[Ansi] post gnReqCmd=%i%s\n",
 		                               (int)gnReqCommand,
 		                               (gnReqCommand == (DWORD)-1) ? L"" :
 		                               (gnReqCommand == CMD_REDRAWFAR) ? L"CMD_REDRAWFAR" :
@@ -3252,17 +3250,17 @@ void CPluginBase::ProcessSetWindowCommand()
 		// Если панели-редактор-вьювер - сменить окно. Иначе - отослать в GUI табы
 		if (gFarVersion.dwVerMajor == 2)
 		{
-			_wsprintf(szMacro, SKIPLEN(countof(szMacro)) L"$if (Search) Esc $end $if (Shell||Viewer||Editor) callplugin(0x%08X,%i) $else callplugin(0x%08X,%i) $end",
+			swprintf_c(szMacro, L"$if (Search) Esc $end $if (Shell||Viewer||Editor) callplugin(0x%08X,%i) $else callplugin(0x%08X,%i) $end",
 				  ConEmu_SysID, nTabShift, ConEmu_SysID, CE_CALLPLUGIN_SENDTABS);
 		}
 		else if (!gFarVersion.IsFarLua())
 		{
-			_wsprintf(szMacro, SKIPLEN(countof(szMacro)) L"$if (Search) Esc $end $if (Shell||Viewer||Editor) callplugin(\"%s\",%i) $else callplugin(\"%s\",%i) $end",
+			swprintf_c(szMacro, L"$if (Search) Esc $end $if (Shell||Viewer||Editor) callplugin(\"%s\",%i) $else callplugin(\"%s\",%i) $end",
 				  ConEmu_GuidS, nTabShift, ConEmu_GuidS, CE_CALLPLUGIN_SENDTABS);
 		}
 		else
 		{
-			_wsprintf(szMacro, SKIPLEN(countof(szMacro)) L"if Area.Search then Keys(\"Esc\") end if Area.Shell or Area.Viewer or Area.Editor then Plugin.Call(\"%s\",%i) else Plugin.Call(\"%s\",%i) end",
+			swprintf_c(szMacro, L"if Area.Search then Keys(\"Esc\") end if Area.Shell or Area.Viewer or Area.Editor then Plugin.Call(\"%s\",%i) else Plugin.Call(\"%s\",%i) end",
 				  ConEmu_GuidS, nTabShift, ConEmu_GuidS, CE_CALLPLUGIN_SENDTABS);
 		}
 		gnReqCommand = -1;
@@ -3528,7 +3526,7 @@ DWORD CPluginBase::WaitPluginActivation(DWORD nCount, HANDLE *lpHandles, BOOL bW
 		DWORD nTimeout = nStartTick + dwMilliseconds;
 		bool lbLongOperationWasStarted = false;
 		do {
-			nWait = WaitForMultipleObjects(nCount, lpHandles, bWaitAll, min(dwMilliseconds,nStepWait));
+			nWait = WaitForMultipleObjects(nCount, lpHandles, bWaitAll, std::min(dwMilliseconds,nStepWait));
 			if (((nWait >= WAIT_OBJECT_0) && (nWait < (WAIT_OBJECT_0+nCount))) || (nWait != WAIT_TIMEOUT))
 			{
 				_ASSERTE((nWait >= WAIT_OBJECT_0) && (nWait < (WAIT_OBJECT_0+nCount)));
@@ -3593,7 +3591,7 @@ bool CPluginBase::ActivatePlugin(DWORD nCmd, LPVOID pCommandData, DWORD nTimeout
 	if (nCmd == CMD_REDRAWFAR || nCmd == CMD_FARPOST)
 	{
 		WARNING("Оптимизировать!");
-		nTimeout = min(1000,nTimeout); // чтобы не зависало при попытке ресайза, если фар не отзывается.
+		nTimeout = std::min<DWORD>(1000, nTimeout); // чтобы не зависало при попытке ресайза, если фар не отзывается.
 	}
 
 	if (gbSynchroProhibited)
@@ -3615,7 +3613,7 @@ bool CPluginBase::ActivatePlugin(DWORD nCmd, LPVOID pCommandData, DWORD nTimeout
 		if (!gbUngetDummyMouseEvent && (gLastMouseReadEvent.dwButtonState & (RIGHTMOST_BUTTON_PRESSED|FROM_LEFT_1ST_BUTTON_PRESSED)))
 		{
 			// Страховка от зависаний
-			nWait = WaitForMultipleObjects(nCount, hEvents, FALSE, min(1000,max(250,nTimeout)));
+			nWait = WaitForMultipleObjects(nCount, hEvents, FALSE, std::min(1000UL, std::max(250UL, nTimeout)));
 			if (nWait == WAIT_TIMEOUT)
 			{
 				if (!gbUngetDummyMouseEvent && (gLastMouseReadEvent.dwButtonState & (RIGHTMOST_BUTTON_PRESSED|FROM_LEFT_1ST_BUTTON_PRESSED)))
@@ -3747,11 +3745,11 @@ bool CPluginBase::cmd_OpenEditorLine(CESERVER_REQ_FAREDITOR *pCmd)
 		{
 			int nCurLen = lstrlen(pszMacro);
 			if (gFarVersion.dwVerMajor==1)
-				_wsprintf(pszMacro+nCurLen, SKIPLEN(cchMax-nCurLen) L" $if(Editor) AltF8 \"%i:%i\" Enter $end", pCmd->nLine, pCmd->nColon);
+				swprintf_c(pszMacro+nCurLen, cchMax-nCurLen/*#SECURELEN*/, L" $if(Editor) AltF8 \"%i:%i\" Enter $end", pCmd->nLine, pCmd->nColon);
 			else if (!gFarVersion.IsFarLua())
-				_wsprintf(pszMacro+nCurLen, SKIPLEN(cchMax-nCurLen) L" $if(Editor) AltF8 print(\"%i:%i\") Enter $end", pCmd->nLine, pCmd->nColon);
+				swprintf_c(pszMacro+nCurLen, cchMax-nCurLen/*#SECURELEN*/, L" $if(Editor) AltF8 print(\"%i:%i\") Enter $end", pCmd->nLine, pCmd->nColon);
 			else
-				_wsprintf(pszMacro+nCurLen, SKIPLEN(cchMax-nCurLen) L" if Area.Editor then Keys(\"AltF8\") print(\"%i:%i\") Keys(\"Enter\") end", pCmd->nLine, pCmd->nColon);
+				swprintf_c(pszMacro+nCurLen, cchMax-nCurLen/*#SECURELEN*/, L" if Area.Editor then Keys(\"AltF8\") print(\"%i:%i\") Keys(\"Enter\") end", pCmd->nLine, pCmd->nColon);
 		}
 
 		_wcscat_c(pszMacro, cchMax, (!gFarVersion.IsFarLua()) ? L" $end" : L" end");
@@ -4303,7 +4301,7 @@ bool CPluginBase::ReloadFarInfoApi()
 	{
 		if (ldwDbgMode != ldwConsoleMode)
 		{
-			wchar_t szDbg[128]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Far.ConEmuW: ConsoleMode(STD_INPUT_HANDLE)=0x%08X\n", ldwConsoleMode);
+			wchar_t szDbg[128]; swprintf_c(szDbg, L"Far.ConEmuW: ConsoleMode(STD_INPUT_HANDLE)=0x%08X\n", ldwConsoleMode);
 			OutputDebugStringW(szDbg);
 			ldwDbgMode = ldwConsoleMode;
 		}
@@ -4387,7 +4385,7 @@ bool CPluginBase::ReloadFarInfo(bool abForce)
 		DWORD dwErr = 0;
 		// Создать мэппинг для gpFarInfoMapping
 		wchar_t szMapName[MAX_PATH];
-		_wsprintf(szMapName, SKIPLEN(countof(szMapName)) CEFARMAPNAME, gnSelfPID);
+		swprintf_c(szMapName, CEFARMAPNAME, gnSelfPID);
 		DWORD nMapSize = sizeof(CEFAR_INFO_MAPPING);
 		TODO("Заменить на MFileMapping");
 		ghFarInfoMapping = CreateFileMapping(INVALID_HANDLE_VALUE,
@@ -4420,7 +4418,7 @@ bool CPluginBase::ReloadFarInfo(bool abForce)
 	if (!ghFarAliveEvent)
 	{
 		wchar_t szEventName[64];
-		_wsprintf(szEventName, SKIPLEN(countof(szEventName)) CEFARALIVEEVENT, gnSelfPID);
+		swprintf_c(szEventName, CEFARALIVEEVENT, gnSelfPID);
 		ghFarAliveEvent = CreateEvent(gpLocalSecurity, FALSE, FALSE, szEventName);
 	}
 
@@ -4770,7 +4768,7 @@ void CPluginBase::DebugInputPrint(INPUT_RECORD r)
 {
 	static wchar_t szDbg[1100]; szDbg[0] = 0;
 	SYSTEMTIME st; GetLocalTime(&st);
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"%02i:%02i:%02i.%03i ", st.wHour,st.wMinute,st.wSecond,st.wMilliseconds);
+	swprintf_c(szDbg, L"%02i:%02i:%02i.%03i ", st.wHour,st.wMinute,st.wSecond,st.wMilliseconds);
 	__INPUT_RECORD_Dump(&r, szDbg+13);
 	lstrcatW(szDbg, L"\n");
 	DEBUGSTR(szDbg);
@@ -5030,7 +5028,7 @@ VOID /*WINAPI*/ CPluginBase::OnConsolePeekInputPost(HookCallbackArg* pArgs)
 		PINPUT_RECORD p = (PINPUT_RECORD)(pArgs->lArguments[1]);
 		LPDWORD pCount = (LPDWORD)(pArgs->lArguments[3]);
 		DWORD nLeft = 0; GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &nLeft);
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"*** OnConsolePeekInputPost(Events=%i, KeyCount=%i, LeftInConBuffer=%i)\n",
+		swprintf_c(szDbg, L"*** OnConsolePeekInputPost(Events=%i, KeyCount=%i, LeftInConBuffer=%i)\n",
 		          *pCount, (p->EventType==KEY_EVENT) ? p->Event.KeyEvent.wRepeatCount : 0, nLeft);
 		DEBUGSTRINPUT(szDbg);
 
@@ -5131,7 +5129,7 @@ VOID /*WINAPI*/ CPluginBase::OnConsoleReadInputPost(HookCallbackArg* pArgs)
 		PINPUT_RECORD p = (PINPUT_RECORD)(pArgs->lArguments[1]);
 		LPDWORD pCount = (LPDWORD)(pArgs->lArguments[3]);
 		DWORD nLeft = 0; GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &nLeft);
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"*** OnConsoleReadInputPost(Events=%i, KeyCount=%i, LeftInConBuffer=%i)\n",
+		swprintf_c(szDbg, L"*** OnConsoleReadInputPost(Events=%i, KeyCount=%i, LeftInConBuffer=%i)\n",
 		          *pCount, (p->EventType==KEY_EVENT) ? p->Event.KeyEvent.wRepeatCount : 0, nLeft);
 		//if (*pCount) {
 		//	wsprintfW(szDbg+lstrlen(szDbg), L", type=%i", p->EventType);
@@ -5364,7 +5362,7 @@ VOID /*WINAPI*/ CPluginBase::OnConsoleWasAttached(HookCallbackArg* pArgs)
 
 
 //#define CREATEEVENT(fmt,h)
-//		_wsprintf(szEventName, SKIPLEN(countof(szEventName)) fmt, dwCurProcId );
+//		swprintf_c(szEventName, fmt, dwCurProcId );
 //		h = CreateEvent(NULL, FALSE, FALSE, szEventName);
 //		if (h==INVALID_HANDLE_VALUE) h=NULL;
 

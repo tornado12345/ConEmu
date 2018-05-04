@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -27,10 +27,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
-#include <tchar.h>
+
 #include "defines.h"
 #include "MAssert.h"
+#include "MStrDup.h"
 #include "MStrSafe.h"
 #include "Common.h"
 #include "ConEmuCheck.h"
@@ -375,10 +375,11 @@ void _DEBUGSTR(LPCWSTR s)
 	}
 	else
 	{
-		OutputDebugString(szDEBUGSTRTime);
-		OutputDebugString(psz);
-		if (nSLen && psz[nSLen-1]!=L'\n')
-			OutputDebugString(L"\n");
+		wchar_t* whole = lstrmerge(szDEBUGSTRTime, psz, (nSLen && psz[nSLen-1]!=L'\n') ? L"\n" : nullptr);
+		if (!whole)
+			return;
+		OutputDebugString(whole);
+		free(whole);
 	}
 }
 #endif

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Tlhelp32.h>
 #include "DefaultTerm.h"
 #include "ConEmu.h"
+#include "ConEmuStart.h"
 #include "Options.h"
 #include "OptionsClass.h"
 #include "Status.h"
@@ -150,7 +151,7 @@ void CDefaultTerminal::StartGuiDefTerm(bool bManual, bool bNoThreading /*= false
 	if (!bManual)
 	{
 		// Refresh settings in the registry
-		_ASSERTE(gpConEmu->mn_StartupFinished == CConEmuMain::ss_VConAreCreated || gpConEmu->mn_StartupFinished == CConEmuMain::ss_CreateQueueReady);
+		_ASSERTE(gpConEmu->GetStartupStage() == CConEmuMain::ss_VConAreCreated || gpConEmu->GetStartupStage() == CConEmuMain::ss_CreateQueueReady);
 		ApplyAndSave(true, true);
 	}
 
@@ -211,6 +212,7 @@ void CDefaultTerminal::ReloadSettings()
 	m_Opt.bExternalPointers = true;
 	m_Opt.pszConEmuExe = gpConEmu->ms_ConEmuExe;
 	m_Opt.pszConEmuBaseDir = gpConEmu->ms_ConEmuBaseDir;
+	m_Opt.pszCfgFile = gpConEmu->opt.LoadCfgFile.Exists ? (wchar_t*)gpConEmu->opt.LoadCfgFile.GetStr() : NULL;
 	m_Opt.pszConfigName = (wchar_t*)gpSetCls->GetConfigName();
 	m_Opt.pszzHookedApps = (wchar_t*)gpSet->GetDefaultTerminalAppsMSZ(); // ASCIIZZ
 }
@@ -261,7 +263,7 @@ bool CDefaultTerminal::NotifyHookingStatus(DWORD nPID, LPCWSTR sName)
 void CDefaultTerminal::LogHookingStatus(DWORD nForePID, LPCWSTR sMessage)
 {
 	wchar_t szPID[16];
-	CEStr lsLog(L"DefTerm[", _ultow(nForePID, szPID, 10), L"]: ", sMessage);
+	CEStr lsLog(L"DefTerm[", ultow_s(nForePID, szPID, 10), L"]: ", sMessage);
 	gpConEmu->LogString(lsLog);
 }
 

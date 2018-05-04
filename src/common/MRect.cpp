@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,13 +32,13 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* RECT/SMALL_RECT/COORD encapsulation */
 
-SHORT MakeShort(i32 X)
+SHORT MakeShort(int32_t X)
 {
 	_ASSERTE(X==LOSHORT(X));
 	return LOSHORT(X);
 }
 
-USHORT MakeUShort(u32 X)
+USHORT MakeUShort(uint32_t X)
 {
 	_ASSERTE(X==LOWORD(X));
 	return LOWORD(X);
@@ -76,6 +76,24 @@ SMALL_RECT MakeSmallRect(int X1, int Y1, int X2, int Y2)
 	return rc;
 }
 
+bool RectEqual(const RECT& rc1, const RECT& rc2)
+{
+	return rc1.left == rc2.left
+		&& rc1.top == rc2.top
+		&& rc1.right == rc2.right
+		&& rc1.bottom == rc2.bottom;
+}
+
+bool operator ==(const RECT& rc1, const RECT& rc2)
+{
+	return RectEqual(rc1, rc2);
+}
+
+bool operator !=(const RECT& rc1, const RECT& rc2)
+{
+	return !RectEqual(rc1, rc2);
+}
+
 bool CoordInRect(const COORD& c, const RECT& r)
 {
 	return (c.X >= r.left && c.X <= r.right) && (c.Y >= r.top && c.Y <= r.bottom);
@@ -109,6 +127,16 @@ bool PtDiffTest(int x1, int y1, int x2, int y2, UINT maxDx, UINT maxDy)
 bool PtDiffTest(POINT C, int aX, int aY, UINT D)
 {
 	return PtDiffTest(C.x, C.y, aX, aY, D, D);
+}
+
+int CoordCompare(const COORD& cr1, const COORD& cr2)
+{
+	if ((cr1.Y < cr2.Y) || ((cr1.Y == cr2.Y) && (cr1.X < cr2.X)))
+		return -1;
+	else if ((cr1.Y > cr2.Y) || ((cr1.Y == cr2.Y) && (cr1.X > cr2.X)))
+		return 1;
+	else
+		return 0;
 }
 
 bool CoordEqual(const COORD& cr1, const COORD& cr2)

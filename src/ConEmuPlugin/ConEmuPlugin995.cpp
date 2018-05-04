@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
 #include "../common/Common.h"
 #ifdef _DEBUG
 #pragma warning( disable : 4995 )
@@ -145,7 +144,7 @@ wchar_t* CPluginW995::GetPanelDir(GetPanelDirFlags Flags, wchar_t* pszBuffer /*=
 			}
 		}
 	}
-	// May happens on Far termination
+	// May happen on Far termination
 	//_ASSERTE(nSize>0);
 
 wrap:

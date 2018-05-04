@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,16 +29,37 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 #define DEBUGSTRPROC(x) DEBUGSTR(x)
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "ConProcess.h"
 #include "../common/MSection.h"
 #include "../common/ProcessData.h"
+
+#define XTERM_PID_TIMEOUT 2500
 
 BOOL   gbUseDosBox = FALSE;
 HANDLE ghDosBoxProcess = NULL;
 DWORD  gnDosBoxPID = 0;
 
-void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
+ConProcess::ConProcess()
+{
+	nMaxProcesses = START_MAX_PROCESSES;
+	nProcessCount = 0;
+	pnProcesses = (DWORD*)calloc(START_MAX_PROCESSES, sizeof(DWORD));
+	pnProcessesGet = (DWORD*)calloc(START_MAX_PROCESSES, sizeof(DWORD));
+	pnProcessesCopy = (DWORD*)calloc(START_MAX_PROCESSES, sizeof(DWORD));
+	ZeroStruct(xFixedRequests);
+
+	// Let use pid==0 for SetConsoleMode requests
+	XTermRequest x{};
+	xRequests.push_back(x);
+	csProc = new MSection();
+}
+
+ConProcess::~ConProcess()
+{
+}
+
+void ConProcess::ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock& CS)
 {
 	int nExitPlaceAdd = 2; // 2,3,4,5,6,7,8,9 +(nExitPlaceStep)
 	bool bPrevCount2 = (anPrevCount>1);
@@ -47,19 +68,19 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 	if (abChanged && RELEASEDEBUGTEST((gpLogSize!=NULL),true))
 	{
 		DWORD nPID, nLastPID = 0, nFoundPID = 0;
-		_wsprintf(szCountInfo, SKIPCOUNT(szCountInfo) L"Process list was changed: %u -> %i", anPrevCount, gpSrv ? gpSrv->nProcessCount : -1);
+		swprintf_c(szCountInfo, L"Process list was changed: %u -> %i", anPrevCount, gpSrv ? nProcessCount : -1);
 
 		wcscat_c(szCountInfo, L"\r\n                        Processes:");
 		INT_PTR iLen = lstrlen(szCountInfo);
 		wchar_t *psz = (szCountInfo + iLen), *pszEnd = szCountInfo + (countof(szCountInfo) - iLen - 64);
-		for (size_t i = 0; (i < gpSrv->nProcessCount) && (psz < pszEnd); i++)
+		for (size_t i = 0; (i < nProcessCount) && (psz < pszEnd); i++)
 		{
-			nPID = gpSrv->pnProcesses[i];
+			nPID = pnProcesses[i];
 			if (!nPID) continue;
-			_wsprintf(psz, SKIPLEN(12) L" %u", nPID);
+			swprintf_c(psz, 12/*#SECURELEN*/, L" %u", nPID);
 			psz += lstrlen(psz);
 			nLastPID = nPID;
-			if (nPID == gpSrv->nLastFoundPID)
+			if (nPID == nLastFoundPID)
 				nFoundPID = nPID;
 		}
 
@@ -77,43 +98,42 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 
 
 	// Use section, if was not locked before
-	MSectionLock CS;
-	if (!pCS)
-		CS.Lock(gpSrv->csProc);
+	CS.Lock(csProc);
 
 #ifdef USE_COMMIT_EVENT
 	// Если кто-то регистрировался как "ExtendedConsole.dll"
 	// то проверить, а не свалился ли процесс его вызвавший
-	if (gpSrv && gpSrv->nExtConsolePID)
+	if (gpSrv && nExtConsolePID)
 	{
-		DWORD nExtPID = gpSrv->nExtConsolePID;
+		DWORD nExtPID = nExtConsolePID;
 		bool bExist = false;
-		for (UINT i = 0; i < gpSrv->nProcessCount; i++)
+		for (UINT i = 0; i < nProcessCount; i++)
 		{
-			if (gpSrv->pnProcesses[i] == nExtPID)
+			if (pnProcesses[i] == nExtPID)
 			{
 				bExist = true; break;
 			}
 		}
 		if (!bExist)
 		{
-			if (gpSrv->hExtConsoleCommit)
+			if (hExtConsoleCommit)
 			{
-				CloseHandle(gpSrv->hExtConsoleCommit);
-				gpSrv->hExtConsoleCommit = NULL;
+				CloseHandle(hExtConsoleCommit);
+				hExtConsoleCommit = NULL;
 			}
-			gpSrv->nExtConsolePID = 0;
+			nExtConsolePID = 0;
 		}
 	}
 #endif
 
+	// NTVDM block
 #ifndef WIN64
 	// Найти "ntvdm.exe"
-	if (abChanged && !gpSrv->nNtvdmPID && !IsWindows64())
+	if (abChanged && !nNtvdmPID && !IsWindows64())
 	{
 		//BOOL lbFarExists = FALSE, lbTelnetExist = FALSE;
 
-		if (gpSrv->nProcessCount > 1)
+		if (nProcessCount > 1)
 		{
 			//TODO: Reuse MToolHelp.h
 			HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
@@ -126,23 +146,23 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 				{
 					do
 					{
-						for (UINT i = 0; i < gpSrv->nProcessCount; i++)
+						for (UINT i = 0; i < nProcessCount; i++)
 						{
 							if (prc.th32ProcessID != gnSelfPID
-							        && prc.th32ProcessID == gpSrv->pnProcesses[i])
+							        && prc.th32ProcessID == pnProcesses[i])
 							{
 								//if (IsFarExe(prc.szExeFile))
 								//{
 								//	lbFarExists = TRUE;
-								//	//if (gpSrv->nProcessCount <= 2) // нужно проверить и ntvdm
+								//	//if (nProcessCount <= 2) // нужно проверить и ntvdm
 								//	//	break; // возможно, в консоли еще есть и telnet?
 								//}
 
 								//#ifndef WIN64
 								//else
-								if (!gpSrv->nNtvdmPID && lstrcmpiW(prc.szExeFile, L"ntvdm.exe")==0)
+								if (!nNtvdmPID && lstrcmpiW(prc.szExeFile, L"ntvdm.exe")==0)
 								{
-									gpSrv->nNtvdmPID = prc.th32ProcessID;
+									nNtvdmPID = prc.th32ProcessID;
 									break;
 								}
 								//#endif
@@ -157,7 +177,7 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 
 						//if (lbFarExists && lbTelnetExist
 						//	#ifndef WIN64
-						//        && gpSrv->nNtvdmPID
+						//        && nNtvdmPID
 						//	#endif
 						//    )
 						//{
@@ -171,11 +191,11 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 			}
 		}
 
-		//gpSrv->bTelnetActive = lbTelnetExist;
+		//bTelnetActive = lbTelnetExist;
 	}
 #endif
 
-	gpSrv->dwProcessLastCheckTick = GetTickCount();
+	dwProcessLastCheckTick = GetTickCount();
 
 	// Если корневой процесс проработал достаточно (10 сек), значит он живой и gbAlwaysConfirmExit можно сбросить
 	// Если gbAutoDisableConfirmExit==FALSE - сброс подтверждение закрытия консоли не выполняется
@@ -184,7 +204,7 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 	        && anPrevCount > 1 // если в консоли был зафиксирован запущенный процесс
 	        && gpSrv->hRootProcess) // и корневой процесс был вообще запущен
 	{
-		if ((gpSrv->dwProcessLastCheckTick - gpSrv->nProcessStartTick) > CHECK_ROOTOK_TIMEOUT)
+		if ((dwProcessLastCheckTick - nProcessStartTick) > CHECK_ROOTOK_TIMEOUT)
 		{
 			_ASSERTE(gnConfirmExitParm==0);
 			// эта проверка выполняется один раз
@@ -201,12 +221,12 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 			{
 				// Корневой процесс все еще работает, считаем что все ок и подтверждения закрытия консоли не потребуется
 				DisableAutoConfirmExit();
-				//gpSrv->nProcessStartTick = GetTickCount() - 2*CHECK_ROOTSTART_TIMEOUT; // менять nProcessStartTick не нужно. проверка только по флажкам
+				//nProcessStartTick = GetTickCount() - 2*CHECK_ROOTSTART_TIMEOUT; // менять nProcessStartTick не нужно. проверка только по флажкам
 			}
 		}
 	}
 
-	if (gbRootWasFoundInCon == 0 && gpSrv->nProcessCount > 1 && gpSrv->hRootProcess && gpSrv->dwRootProcess)
+	if (gbRootWasFoundInCon == 0 && nProcessCount > 1 && gpSrv->hRootProcess && gpSrv->dwRootProcess)
 	{
 		if (WaitForSingleObject(gpSrv->hRootProcess, 0) == WAIT_OBJECT_0)
 		{
@@ -214,9 +234,9 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 		}
 		else
 		{
-			for (UINT n = 0; n < gpSrv->nProcessCount; n++)
+			for (UINT n = 0; n < nProcessCount; n++)
 			{
-				if (gpSrv->dwRootProcess == gpSrv->pnProcesses[n])
+				if (gpSrv->dwRootProcess == pnProcesses[n])
 				{
 					// Процесс попал в консоль
 					gbRootWasFoundInCon = 1; break;
@@ -225,15 +245,18 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 		}
 	}
 
+	// e.g. if 'bash.exe' was killed in console
+	CheckXRequests(CS);
+
 	// Только для x86. На x64 ntvdm.exe не бывает.
 	#ifndef WIN64
-	WARNING("gpSrv->bNtvdmActive нигде не устанавливается");
-	if (gpSrv->nProcessCount == 2 && !gpSrv->bNtvdmActive && gpSrv->nNtvdmPID)
+	WARNING("bNtvdmActive нигде не устанавливается");
+	if (nProcessCount == 2 && !bNtvdmActive && nNtvdmPID)
 	{
 		// Возможно было запущено 16битное приложение, а ntvdm.exe не выгружается при его закрытии
-		// gnSelfPID не обязательно будет в gpSrv->pnProcesses[0]
-		if ((gpSrv->pnProcesses[0] == gnSelfPID && gpSrv->pnProcesses[1] == gpSrv->nNtvdmPID)
-		        || (gpSrv->pnProcesses[1] == gnSelfPID && gpSrv->pnProcesses[0] == gpSrv->nNtvdmPID))
+		// gnSelfPID не обязательно будет в pnProcesses[0]
+		if ((pnProcesses[0] == gnSelfPID && pnProcesses[1] == nNtvdmPID)
+		        || (pnProcesses[1] == gnSelfPID && pnProcesses[0] == nNtvdmPID))
 		{
 			// Послать в нашу консоль команду закрытия
 			PostMessage(ghConWnd, WM_CLOSE, 0, 0);
@@ -241,7 +264,7 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 	}
 	#endif
 
-	WARNING("Если в консоли ДО этого были процессы - все условия вида 'gpSrv->nProcessCount == 1' обломаются");
+	WARNING("Если в консоли ДО этого были процессы - все условия вида 'nProcessCount == 1' обломаются");
 
 	bool bForcedTo2 = false;
 	DWORD nWaitDbg1 = -1, nWaitDbg2 = -1;
@@ -249,9 +272,9 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 	// -- Пример - запускаемся из фара. Количество процессов ИЗНАЧАЛЬНО - 5
 	// -- cmd вываливается сразу (path not found)
 	// -- количество процессов ОСТАЕТСЯ 5 и ни одно из ниже условий не проходит
-	if (anPrevCount == 1 && gpSrv->nProcessCount == 1
-		&& gpSrv->nProcessStartTick && gpSrv->dwProcessLastCheckTick
-		&& ((gpSrv->dwProcessLastCheckTick - gpSrv->nProcessStartTick) > CHECK_ROOTSTART_TIMEOUT)
+	if (anPrevCount == 1 && nProcessCount == 1
+		&& nProcessStartTick && dwProcessLastCheckTick
+		&& ((dwProcessLastCheckTick - nProcessStartTick) > CHECK_ROOTSTART_TIMEOUT)
 		&& (nWaitDbg1 = WaitForSingleObject(ghExitQueryEvent,0)) == WAIT_TIMEOUT
 		// выходить можно только если корневой процесс завершился
 		&& gpSrv->hRootProcess && ((nWaitDbg2 = WaitForSingleObject(gpSrv->hRootProcess,0)) != WAIT_TIMEOUT))
@@ -262,11 +285,11 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 		//if (!gbAlwaysConfirmExit) gbAlwaysConfirmExit = TRUE; // чтобы консоль не схлопнулась
 	}
 
-	if (anPrevCount > 1 && gpSrv->nProcessCount == 1)
+	if (anPrevCount > 1 && nProcessCount == 1)
 	{
-		if (gpSrv->pnProcesses[0] != gnSelfPID)
+		if (pnProcesses[0] != gnSelfPID)
 		{
-			_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
+			_ASSERTE(pnProcesses[0] == gnSelfPID);
 		}
 		else
 		{
@@ -282,17 +305,13 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 			_ASSERTE(gbTerminateOnCtrlBreak==FALSE);
 			// !!! ****
 
-
-			if (pCS)
-				pCS->Unlock();
-			else
-				CS.Unlock();
+			CS.Unlock();
 
 			//2010-03-06 это не нужно, проверки делаются по другому
-			//if (!gbAlwaysConfirmExit && (gpSrv->dwProcessLastCheckTick - gpSrv->nProcessStartTick) <= CHECK_ROOTSTART_TIMEOUT) {
+			//if (!gbAlwaysConfirmExit && (dwProcessLastCheckTick - nProcessStartTick) <= CHECK_ROOTSTART_TIMEOUT) {
 			//	gbAlwaysConfirmExit = TRUE; // чтобы консоль не схлопнулась
 			//}
-			if (gbAlwaysConfirmExit && (gpSrv->dwProcessLastCheckTick - gpSrv->nProcessStartTick) <= CHECK_ROOTSTART_TIMEOUT)
+			if (gbAlwaysConfirmExit && (dwProcessLastCheckTick - nProcessStartTick) <= CHECK_ROOTSTART_TIMEOUT)
 				gbRootAliveLess10sec = TRUE; // корневой процесс проработал менее 10 сек
 
 			if (bForcedTo2)
@@ -315,25 +334,20 @@ void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock *pCS)
 	UNREFERENCED_PARAMETER(nWaitDbg1); UNREFERENCED_PARAMETER(nWaitDbg2); UNREFERENCED_PARAMETER(bForcedTo2);
 }
 
-BOOL ProcessAdd(DWORD nPID, MSectionLock *pCS /*= NULL*/)
+bool ConProcess::ProcessAdd(DWORD nPID, MSectionLock& CS)
 {
-	MSectionLock CS;
-	if ((pCS == NULL) && (gpSrv->csProc != NULL))
-	{
-		pCS = &CS;
-		CS.Lock(gpSrv->csProc);
-	}
+	CS.Lock(csProc);
 
-	UINT nPrevCount = gpSrv->nProcessCount;
+	UINT nPrevCount = nProcessCount;
 	BOOL lbChanged = FALSE;
 	_ASSERTE(nPID!=0);
 
 	// Добавить процесс в список
-	_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
+	_ASSERTE(pnProcesses[0] == gnSelfPID);
 	BOOL lbFound = FALSE;
 	for (DWORD n = 0; n < nPrevCount; n++)
 	{
-		if (gpSrv->pnProcesses[n] == nPID)
+		if (pnProcesses[n] == nPID)
 		{
 			lbFound = TRUE;
 			break;
@@ -341,65 +355,302 @@ BOOL ProcessAdd(DWORD nPID, MSectionLock *pCS /*= NULL*/)
 	}
 	if (!lbFound)
 	{
-		if (nPrevCount < gpSrv->nMaxProcesses)
+		if (nPrevCount < nMaxProcesses)
 		{
-			pCS->RelockExclusive(200);
-			gpSrv->pnProcesses[gpSrv->nProcessCount++] = nPID;
-			gpSrv->nLastFoundPID = nPID;
+			CS.RelockExclusive(200);
+			pnProcesses[nProcessCount++] = nPID;
+			nLastFoundPID = nPID;
 			lbChanged = TRUE;
 		}
 		else
 		{
-			_ASSERTE(nPrevCount < gpSrv->nMaxProcesses);
+			_ASSERTE(nPrevCount < nMaxProcesses);
 		}
 	}
 
 	return lbChanged;
 }
 
-BOOL ProcessRemove(DWORD nPID, UINT nPrevCount, MSectionLock *pCS /*= NULL*/)
+// We receive this via CECMD_FARDETACHED or sst_AltServerStop/sst_ComspecStop/sst_AppStop
+// So, the process leaves the console indeed
+bool ConProcess::ProcessRemove(DWORD nPID, UINT nPrevCount, MSectionLock& CS)
 {
-	BOOL lbChanged = FALSE;
+	bool lbChanged = false;
+	_ASSERTE(nPID != 0);
 
-	MSectionLock CS;
-	if ((pCS == NULL) && (gpSrv->csProc != NULL))
-	{
-		pCS = &CS;
-		CS.Lock(gpSrv->csProc);
-	}
+	CS.Lock(csProc);
 
-	// Удалить процесс из списка
-	_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
+	// Remove it from our list
+	_ASSERTE(pnProcesses[0] == gnSelfPID);
 	DWORD nChange = 0;
 	for (DWORD n = 0; n < nPrevCount; n++)
 	{
-		if (gpSrv->pnProcesses[n] == nPID)
+		if (pnProcesses[n] == nPID)
 		{
-			pCS->RelockExclusive(200);
-			lbChanged = TRUE;
-			if (gpSrv->nLastFoundPID == nPID)
-				gpSrv->nLastFoundPID = 0;
-			gpSrv->nProcessCount--;
+			CS.RelockExclusive(200);
+			lbChanged = true;
+			if (nLastFoundPID == nPID)
+				nLastFoundPID = 0;
+			nProcessCount--;
 			continue;
 		}
 		if (lbChanged)
 		{
-			gpSrv->pnProcesses[nChange] = gpSrv->pnProcesses[n];
+			pnProcesses[nChange] = pnProcesses[n];
 		}
 		nChange++;
+	}
+
+	for (INT_PTR i = 0; i < xRequests.size(); ++i)
+	{
+		if (xRequests[i].pid != nPID)
+			continue;
+		xRequests.erase(i);
+		break;
 	}
 
 	return lbChanged;
 }
 
+// create=false used to erasing on reset
+INT_PTR ConProcess::GetXRequestIndex(DWORD pid, bool create)
+{
+	// csProc must be locked exclusively!
+
+	for (INT_PTR i = 0; i < xRequests.size(); ++i)
+	{
+		if (xRequests[i].pid == pid)
+		{
+			// pid==0 is used to 
+			if (create && pid)
+			{
+				// Move it to the end of the queue
+				while ((i+1) < xRequests.size())
+				{
+					std::swap(xRequests[i], xRequests[i+1]);
+					++i;
+				}
+				// Update the last alive tick of the process
+				if (xRequests[i].tick)
+				{
+					DWORD t = GetTickCount();
+					if (!t) t = 1;
+					xRequests[i].tick = t;
+				}
+			}
+			return i;
+		}
+	}
+
+	if (create)
+	{
+		XTermRequest x{pid, GetTickCount()};
+		if (!x.tick) x.tick++;
+		if (pid)
+		{
+			xRequests.push_back(x);
+		}
+		else
+		{
+			_ASSERTE(FALSE && "pid==0 must be created explicitly");
+			xRequests.insert(0, x);
+		}
+		return (xRequests.size() - 1);
+	}
+
+	return -1;
+}
+
+void ConProcess::RefreshXRequests(MSectionLock& CS)
+{
+	// Use section, if was not locked before
+	CS.Lock(csProc);
+
+	for (int m = 0; m < tmc_Last; ++m)
+	{
+		// ***console*** life-time
+		if (m == tmc_CursorShape)
+			continue;
+
+		DWORD value = 0, pid = 0;
+		for (INT_PTR i = xRequests.size() - 1; !value && i >= 0; --i)
+		{
+			const XTermRequest& x = xRequests[i];
+			if (x.modes[m])
+			{
+				value = x.modes[m];
+				pid = x.pid;
+			}
+		}
+
+		if (xFixedRequests[m] != value)
+		{
+			// Update
+			xFixedRequests[m] = value;
+			// and inform the GUI
+			CESERVER_REQ* in = ExecuteNewCmd(CECMD_STARTXTERM, sizeof(CESERVER_REQ_HDR)+sizeof(DWORD)*3);
+			if (in)
+			{
+				in->dwData[0] = (TermModeCommand)m;
+				in->dwData[1] = value;
+				in->dwData[2] = pid;
+				CESERVER_REQ* pGuiOut = ExecuteGuiCmd(ghConWnd, in, ghConWnd);
+				ExecuteFreeResult(pGuiOut);
+			}
+		}
+	}
+}
+
+void ConProcess::OnAttached()
+{
+	for (int m = 0; m < tmc_Last; ++m)
+	{
+		// Only if some mode was turned ON
+		if (!xFixedRequests[m])
+			continue;
+		// Inform the GUI
+		CESERVER_REQ* in = ExecuteNewCmd(CECMD_STARTXTERM, sizeof(CESERVER_REQ_HDR)+sizeof(DWORD)*3);
+		if (in)
+		{
+			in->dwData[0] = (TermModeCommand)m;
+			in->dwData[1] = xFixedRequests[m];
+			in->dwData[2] = gnSelfPID; // doesn't matter
+			CESERVER_REQ* pGuiOut = ExecuteGuiCmd(ghConWnd, in, ghConWnd);
+			ExecuteFreeResult(pGuiOut);
+		}
+	}
+}
+
+void ConProcess::CheckXRequests(MSectionLock& CS)
+{
+	bool bWasSet = false;
+	for (int m = 0; m < tmc_Last; ++m)
+	{
+		if (xFixedRequests[m])
+		{
+			bWasSet = true; break;
+		}
+	}
+	// If modes were not requested, there is nothing to clear
+	if (!bWasSet)
+	{
+		return;
+	}
+
+	if (!CS.isLocked())
+		CS.Lock(csProc, true);
+	else
+		CS.RelockExclusive();
+
+	bool bChanged = false;
+	// Go down to zero to simplify erase procedure
+	for (INT_PTR i = xRequests.size() - 1; i >= 0; --i)
+	{
+		XTermRequest& x = xRequests[i];
+		if (!x.pid)
+			continue;
+		bool alive = false;
+		for (UINT n = 0; n < nProcessCount; ++n)
+		{
+			if (pnProcesses[n] == x.pid)
+			{
+				alive = true;
+				break;
+			}
+		}
+		if (!alive)
+		{
+			// Did process appeared in console?
+			if (x.tick)
+			{
+				if (x.pid == gpSrv->dwRootProcess && gbRootWasFoundInCon)
+					x.tick = 0;
+				else
+				{
+					DWORD nCurTick = GetTickCount();
+					if ((nCurTick - x.tick) > XTERM_PID_TIMEOUT)
+						x.tick = 0;
+				}
+			}
+			// Was terminated
+			if (!x.tick)
+			{
+				bChanged = true;
+				xRequests.erase(i);
+			}
+		}
+	}
+
+	if (bChanged)
+	{
+		RefreshXRequests(CS);
+	}
+}
+
+void ConProcess::StartStopXTermMode(const TermModeCommand cmd, const DWORD value, const DWORD pid)
+{
+	if ((unsigned)cmd >= tmc_Last)
+	{
+		_ASSERTE((unsigned)cmd < tmc_Last);
+		return;
+	}
+
+	// some modes has console life time
+	if (cmd == tmc_CursorShape)
+	{
+		xFixedRequests[cmd] = value;
+		return;
+	}
+
+	// If some process requests the mode, force check process list first
+	// Due to race, the pid *may* not be yet retrieved from conhost
+	// by CheckProcessCount, but we try to do our best )
+	if (value && pid)
+	{
+		CheckProcessCount(true);
+	}
+
+	// others are linked to the calling process life
+	MSectionLock CS; CS.Lock(csProc, true);
+	INT_PTR idx = GetXRequestIndex(pid, (value != 0));
+	if (idx >= 0)
+	{
+		xRequests[idx].modes[cmd] = value;
+		// Modified, update xFixedRequests
+		if (value)
+		{
+			xFixedRequests[cmd] = value;
+		}
+		else
+		{
+			DWORD new_value = 0;
+			for (INT_PTR i = xRequests.size() - 1; i >= 0; --i)
+			{
+				const XTermRequest& x = xRequests[i];
+				if (x.modes[cmd])
+				{
+					new_value = x.modes[cmd];
+					break;
+				}
+			}
+			xFixedRequests[cmd] = new_value;
+		}
+	}
+
+	if (value)
+	{
+		gpSrv->processes->ProcessAdd(pid, CS);
+	}
+}
+
 #ifdef _DEBUG
-void DumpProcInfo(LPCWSTR sLabel, DWORD nCount, DWORD* pPID)
+void ConProcess::DumpProcInfo(LPCWSTR sLabel, DWORD nCount, DWORD* pPID)
 {
 #ifdef WINE_PRINT_PROC_INFO
 	DWORD nErr = GetLastError();
 	wchar_t szDbgMsg[255];
 	msprintf(szDbgMsg, countof(szDbgMsg), L"%s: Err=%u, Count=%u:", sLabel ? sLabel : L"", nErr, nCount);
-	nCount = min(nCount,10);
+	nCount = std::min(nCount,10);
 	for (DWORD i = 0; pPID && (i < nCount); i++)
 	{
 		int nLen = lstrlen(szDbgMsg);
@@ -414,18 +665,18 @@ void DumpProcInfo(LPCWSTR sLabel, DWORD nCount, DWORD* pPID)
 #define DUMP_PROC_INFO(s,n,p)
 #endif
 
-BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
+bool ConProcess::CheckProcessCount(BOOL abForce/*=FALSE*/)
 {
 	//static DWORD dwLastCheckTick = GetTickCount();
-	UINT nPrevCount = gpSrv->nProcessCount;
+	UINT nPrevCount = nProcessCount;
 #ifdef _DEBUG
 	DWORD nCurProcessesDbg[128] = {}; // для отладки, получение текущего состояния консоли
 	DWORD nPrevProcessedDbg[128] = {}; // для отладки, запомнить предыдущее состояние консоли
-	if (gpSrv->pnProcesses && gpSrv->nProcessCount)
-		memmove(nPrevProcessedDbg, gpSrv->pnProcesses, min(countof(nPrevProcessedDbg),gpSrv->nProcessCount)*sizeof(*gpSrv->pnProcesses));
+	if (pnProcesses && nProcessCount)
+		memmove(nPrevProcessedDbg, pnProcesses, std::min<DWORD>(countof(nPrevProcessedDbg), nProcessCount) * sizeof(*pnProcesses));
 #endif
 
-	if (gpSrv->nProcessCount <= 0)
+	if (nProcessCount <= 0)
 	{
 		abForce = TRUE;
 	}
@@ -434,29 +685,29 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 	{
 		DWORD dwCurTick = GetTickCount();
 
-		if ((dwCurTick - gpSrv->dwProcessLastCheckTick) < (DWORD)CHECK_PROCESSES_TIMEOUT)
+		if ((dwCurTick - dwProcessLastCheckTick) < (DWORD)CHECK_PROCESSES_TIMEOUT)
 			return FALSE;
 	}
 
 	BOOL lbChanged = FALSE;
-	MSectionLock CS; CS.Lock(gpSrv->csProc);
+	MSectionLock CS; CS.Lock(csProc);
 
-	if (gpSrv->nProcessCount == 0)
+	if (nProcessCount == 0)
 	{
-		gpSrv->pnProcesses[0] = gnSelfPID;
-		gpSrv->nProcessCount = 1;
+		pnProcesses[0] = gnSelfPID;
+		nProcessCount = 1;
 	}
 
 	if (gpSrv->DbgInfo.bDebuggerActive)
 	{
 		//if (gpSrv->hRootProcess) {
 		//	if (WaitForSingleObject(gpSrv->hRootProcess, 0) == WAIT_OBJECT_0) {
-		//		gpSrv->nProcessCount = 1;
+		//		nProcessCount = 1;
 		//		return TRUE;
 		//	}
 		//}
-		//gpSrv->pnProcesses[1] = gpSrv->dwRootProcess;
-		//gpSrv->nProcessCount = 2;
+		//pnProcesses[1] = gpSrv->dwRootProcess;
+		//nProcessCount = 2;
 		return FALSE;
 	}
 
@@ -472,7 +723,7 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 	{
 		WARNING("Переделать, как-то слишком сложно получается");
 		DWORD nCurCount;
-		nCurCount = pfnGetConsoleProcessList(gpSrv->pnProcessesGet, gpSrv->nMaxProcesses);
+		nCurCount = pfnGetConsoleProcessList(pnProcessesGet, nMaxProcesses);
 
 		#ifdef _DEBUG
 		SetLastError(0);
@@ -480,12 +731,12 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 		DUMP_PROC_INFO(L"WinXP mode", nCurCountDbg, nCurProcessesDbg);
 		#endif
 
-		lbChanged = (gpSrv->nProcessCount != nCurCount);
+		lbChanged = (nProcessCount != nCurCount);
 
-		if (nCurCount && (gpSrv->nLastFoundPID != gpSrv->pnProcessesGet[0]))
-			gpSrv->nLastFoundPID = gpSrv->pnProcessesGet[0];
+		if (nCurCount && (nLastFoundPID != pnProcessesGet[0]))
+			nLastFoundPID = pnProcessesGet[0];
 		else if (!nCurCount)
-			gpSrv->nLastFoundPID = 0;
+			nLastFoundPID = 0;
 
 		bProcFound = bConsoleOnly && (nCurCount > 0);
 
@@ -511,7 +762,7 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 				#ifdef _DEBUG
 				DWORD dwErr = GetLastError();
 				#endif
-				gpSrv->nProcessCount = 1;
+				nProcessCount = 1;
 				SetEvent(ghQuitEvent);
 
 				if (!nExitQueryPlace) nExitQueryPlace = 1+(nExitPlaceStep);
@@ -522,7 +773,7 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 		}
 		else
 		{
-			if (nCurCount > gpSrv->nMaxProcesses)
+			if (nCurCount > nMaxProcesses)
 			{
 				DWORD nSize = nCurCount + 100;
 				DWORD* pnPID = (DWORD*)calloc(nSize, sizeof(DWORD));
@@ -534,13 +785,13 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 
 					if (nCurCount > 0 && nCurCount <= nSize)
 					{
-						free(gpSrv->pnProcessesGet);
-						gpSrv->pnProcessesGet = pnPID; pnPID = NULL;
-						free(gpSrv->pnProcesses);
-						gpSrv->pnProcesses = (DWORD*)calloc(nSize, sizeof(DWORD));
+						free(pnProcessesGet);
+						pnProcessesGet = pnPID; pnPID = NULL;
+						free(pnProcesses);
+						pnProcesses = (DWORD*)calloc(nSize, sizeof(DWORD));
 						_ASSERTE(nExitQueryPlace == 0 || nCurCount == 1);
-						gpSrv->nProcessCount = nCurCount;
-						gpSrv->nMaxProcesses = nSize;
+						nProcessCount = nCurCount;
+						nMaxProcesses = nSize;
 					}
 
 					if (pnPID)
@@ -549,13 +800,13 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 			}
 
 			// PID-ы процессов в консоли могут оказаться перемешаны. Нас же интересует gnSelfPID на первом месте
-			gpSrv->pnProcesses[0] = gnSelfPID;
-			DWORD nCorrect = 1, nMax = gpSrv->nMaxProcesses, nDosBox = 0;
+			pnProcesses[0] = gnSelfPID;
+			DWORD nCorrect = 1, nMax = nMaxProcesses, nDosBox = 0;
 			if (gbUseDosBox)
 			{
 				if (ghDosBoxProcess && WaitForSingleObject(ghDosBoxProcess, 0) == WAIT_TIMEOUT)
 				{
-					gpSrv->pnProcesses[nCorrect++] = gnDosBoxPID;
+					pnProcesses[nCorrect++] = gnDosBoxPID;
 					nDosBox = 1;
 				}
 				else if (ghDosBoxProcess)
@@ -565,11 +816,11 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 			}
 			for (DWORD n = 0; n < nCurCount && nCorrect < nMax; n++)
 			{
-				if (gpSrv->pnProcessesGet[n] != gnSelfPID)
+				if (pnProcessesGet[n] != gnSelfPID)
 				{
-					if (gpSrv->pnProcesses[nCorrect] != gpSrv->pnProcessesGet[n])
+					if (pnProcesses[nCorrect] != pnProcessesGet[n])
 					{
-						gpSrv->pnProcesses[nCorrect] = gpSrv->pnProcessesGet[n];
+						pnProcesses[nCorrect] = pnProcessesGet[n];
 						lbChanged = TRUE;
 					}
 					nCorrect++;
@@ -578,47 +829,47 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 			nCurCount += nDosBox;
 
 
-			if (nCurCount < gpSrv->nMaxProcesses)
+			if (nCurCount < nMaxProcesses)
 			{
 				// Сбросить в 0 ячейки со старыми процессами
-				_ASSERTE(gpSrv->nProcessCount < gpSrv->nMaxProcesses);
+				_ASSERTE(nProcessCount < nMaxProcesses);
 
-				if (nCurCount < gpSrv->nProcessCount)
+				if (nCurCount < nProcessCount)
 				{
-					UINT nSize = sizeof(DWORD)*(gpSrv->nProcessCount - nCurCount);
-					memset(gpSrv->pnProcesses + nCurCount, 0, nSize);
+					UINT nSize = sizeof(DWORD)*(nProcessCount - nCurCount);
+					memset(pnProcesses + nCurCount, 0, nSize);
 				}
 
 				_ASSERTE(nCurCount>0);
 				_ASSERTE(nExitQueryPlace == 0 || nCurCount == 1);
-				gpSrv->nProcessCount = nCurCount;
+				nProcessCount = nCurCount;
 			}
 
-			UINT nSize = sizeof(DWORD)*min(gpSrv->nMaxProcesses,START_MAX_PROCESSES);
+			UINT nSize = sizeof(DWORD) * std::min<DWORD>(nMaxProcesses, START_MAX_PROCESSES);
 			#ifdef _DEBUG
-			_ASSERTE(!IsBadWritePtr(gpSrv->pnProcessesCopy,nSize));
-			_ASSERTE(!IsBadWritePtr(gpSrv->pnProcesses,nSize));
+			_ASSERTE(!IsBadWritePtr(pnProcessesCopy,nSize));
+			_ASSERTE(!IsBadWritePtr(pnProcesses,nSize));
 			#endif
 
 			if (!lbChanged)
 			{
-				lbChanged = memcmp(gpSrv->pnProcessesCopy, gpSrv->pnProcesses, nSize) != 0;
+				lbChanged = memcmp(pnProcessesCopy, pnProcesses, nSize) != 0;
 				MCHKHEAP;
 			}
 
 			if (lbChanged)
 			{
-				memmove(gpSrv->pnProcessesCopy, gpSrv->pnProcesses, nSize);
+				memmove(pnProcessesCopy, pnProcesses, nSize);
 
 				MCHKHEAP;
 			}
 		}
 
-		if (!bProcFound && bMayBeConsolePaf && (nCurCount > 0) && gpSrv->pnProcesses)
+		if (!bProcFound && bMayBeConsolePaf && (nCurCount > 0) && pnProcesses)
 		{
 			for (DWORD i = 0; i < nCurCount; i++)
 			{
-				if (gpSrv->pnProcesses[i] == gpSrv->Portable.nPID)
+				if (pnProcesses[i] == gpSrv->Portable.nPID)
 				{
 					// В консоли обнаружен процесс запущенный из ChildGui (e.g. CommandPromptPortable.exe -> cmd.exe)
                     bProcFound = true;
@@ -627,12 +878,12 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 		}
 	}
 
-	// Wine related: GetConsoleProcessList may fails
+	// Wine related: GetConsoleProcessList may fail
 	// or ChildGui related: GUI app started in tab and (optionally) it starts another app (console or gui)
 	if (!bProcFound)
 	{
-		_ASSERTE(gpSrv->pnProcesses[0] == gnSelfPID);
-		gpSrv->pnProcesses[0] = gnSelfPID;
+		_ASSERTE(pnProcesses[0] == gnSelfPID);
+		pnProcesses[0] = gnSelfPID;
 
 		HANDLE hRootProcess = gpSrv->hRootProcess;
 		DWORD  nRootPID = gpSrv->dwRootProcess;
@@ -653,16 +904,16 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 			// Ok, Check it
 			if (nRootWait == WAIT_OBJECT_0)
 			{
-				gpSrv->pnProcesses[1] = 0;
-				lbChanged = gpSrv->nProcessCount != 1;
-				gpSrv->nProcessCount = 1;
+				pnProcesses[1] = 0;
+				lbChanged = nProcessCount != 1;
+				nProcessCount = 1;
 			}
 			else
 			{
-				gpSrv->pnProcesses[1] = nRootPID;
-				lbChanged = gpSrv->nProcessCount != 2;
+				pnProcesses[1] = nRootPID;
+				lbChanged = nProcessCount != 2;
 				_ASSERTE(nExitQueryPlace == 0);
-				gpSrv->nProcessCount = 2;
+				nProcessCount = 2;
 			}
 		}
 		else if (gpSrv->hRootProcessGui)
@@ -672,24 +923,24 @@ BOOL CheckProcessCount(BOOL abForce/*=FALSE*/)
 				// Process handle must be opened!
 				_ASSERTE(gpSrv->hRootProcess != NULL);
 				// Fin
-				gpSrv->pnProcesses[1] = 0;
-				lbChanged = gpSrv->nProcessCount != 1;
-				gpSrv->nProcessCount = 1;
+				pnProcesses[1] = 0;
+				lbChanged = nProcessCount != 1;
+				nProcessCount = 1;
 			}
 		}
 
-		DUMP_PROC_INFO(L"Win2k mode", gpSrv->nProcessCount, gpSrv->pnProcesses);
+		DUMP_PROC_INFO(L"Win2k mode", nProcessCount, pnProcesses);
 	}
 
-	gpSrv->dwProcessLastCheckTick = GetTickCount();
+	dwProcessLastCheckTick = GetTickCount();
 
-	ProcessCountChanged(lbChanged, nPrevCount, &CS);
+	ProcessCountChanged(lbChanged, nPrevCount, CS);
 
 
 	return lbChanged;
 }
 
-bool GetRootInfo(CESERVER_REQ* pReq)
+bool ConProcess::GetRootInfo(CESERVER_REQ* pReq)
 {
 	if (!pReq)
 		return false;
@@ -709,9 +960,29 @@ bool GetRootInfo(CESERVER_REQ* pReq)
 	{
 		FILETIME ftCreation = {}, ftExit = {}, ftKernel = {}, ftUser = {};
 		GetProcessTimes(gpSrv->hRootProcess, &ftCreation, &ftExit, &ftKernel, &ftUser);
-		__int64 upTime = ((*(u64*)&ftExit) - (*(u64*)&ftCreation)) / 10000LL;
+		__int64 upTime = ((*(uint64_t*)&ftExit) - (*(uint64_t*)&ftCreation)) / 10000LL;
 		pReq->RootInfo.nUpTime = (LODWORD(upTime) == upTime) ? LODWORD(upTime) : (DWORD)-1;
 	}
 
 	return true;
+}
+
+// returns true if process list was changed since last query
+bool ConProcess::GetProcesses(DWORD* processes, UINT count)
+{
+	bool lbChanged = false;
+	_ASSERTE(count*sizeof(*processes) == sizeof(nLastRetProcesses));
+	// #CONPROCESS Use current process list!
+	DWORD nCurProcCount = GetProcessCount(processes, count);
+	_ASSERTE(nCurProcCount && processes[0]);
+	size_t cmp_size = std::min<UINT>(sizeof(nLastRetProcesses), (count * sizeof(*processes)));
+	if (nCurProcCount
+		&& memcmp(nLastRetProcesses, processes, cmp_size))
+	{
+		// Process list was changed
+		lbChanged = true;
+		// remember it
+		memmove(nLastRetProcesses, gpSrv->pConsole->ConState.nProcesses, cmp_size);
+	}
+	return lbChanged;
 }

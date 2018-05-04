@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,13 +26,11 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#ifdef _DEBUG
-//#define USE_LOCK_SECTION
-//#endif
-
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
+#include "defines.h"
 #include "CmdLine.h"
+#include "MModule.h"
 #include "MStrDup.h"
 #include "WObjects.h"
 
@@ -281,8 +279,10 @@ bool FileExistsSearch(LPCWSTR asFilePath, CEStr& rsFound, bool abSetPath/*= true
 	// В противном случае, в частности, может быть запущен "far" не из папки с ConEmu, а зарегистрированный
 	// в реестре, если на машине их несколько установлено.
 
-	#if !defined(CONEMU_MINIMAL)
-	_ASSERTE(gfnSearchAppPaths!=NULL);
+	#if defined(_DEBUG)
+	CEStr lsExecutable;
+	GetModulePathName(NULL, lsExecutable);
+	_ASSERTE(gfnSearchAppPaths!=NULL || (!IsConsoleServer(lsExecutable) && !IsConEmuGui(lsExecutable)));
 	#endif
 
 	// В ConEmuHk этот блок не активен, потому что может быть "только" перехват CreateProcess,
@@ -419,19 +419,48 @@ wchar_t* GetShortFileNameEx(LPCWSTR asLong, BOOL abFavorLength/*=TRUE*/)
 		if (pszSlash)
 			*pszSlash = 0;
 
-		if (!GetShortFileName(pszLong, MAX_PATH+1, szName, abFavorLength))
+		if (wcscmp(pszSrc, L"\\..") == 0)
+		{
+			int nTrim = -1;
+			for (int i = nCurLen-2; i > 0; --i)
+			{
+				if (pszShort[i] == L'\\')
+				{
+					nTrim = i;
+					break;
+				}
+			}
+			if (nTrim > 0)
+			{
+				nCurLen = nTrim+1;
+				pszShort[nCurLen] = 0;
+				szName[0] = 0;
+			}
+			else
+			{
+				wcscpy_s(szName, MAX_PATH+1, L"..");
+			}
+		}
+		else if (!GetShortFileName(pszLong, MAX_PATH+1, szName, abFavorLength))
+		{
 			goto wrap;
+		}
+
 		nLen = lstrlenW(szName);
-		if ((nLen + nCurLen) >= nMaxLen)
-			goto wrap;
-		//pszShort[nCurLen++] = L'\\'; pszShort[nCurLen] = 0;
-		_wcscpyn_c(pszShort+nCurLen, nMaxLen-nCurLen, szName, nLen);
-		nCurLen += nLen;
+		if (nLen > 0)
+		{
+			if ((nLen + nCurLen) >= nMaxLen)
+				goto wrap;
+
+			_wcscpyn_c(pszShort+nCurLen, nMaxLen-nCurLen, szName, nLen);
+			nCurLen += nLen;
+		}
 
 		if (pszSlash)
 		{
 			*pszSlash = L'\\';
-			pszShort[nCurLen++] = L'\\'; // память выделяется calloc!
+			if (nLen > 0)
+				pszShort[nCurLen++] = L'\\'; // память выделяется calloc!
 		}
 	}
 
@@ -604,16 +633,38 @@ bool IsWinPE()
 bool GetOsVersionInformational(OSVERSIONINFO* pOsVer)
 {
 	#pragma warning(disable: 4996)
+	// #WINVER Support Rtl function like _VerifyVersionInfo does
 	BOOL result = GetVersionEx(pOsVer);
 	#pragma warning(default: 4996)
 	return (result != FALSE);
+}
+
+bool _VerifyVersionInfo(LPOSVERSIONINFOEXW lpVersionInformation, DWORD dwTypeMask, DWORDLONG dwlConditionMask)
+{
+	bool rc;
+
+	// If our dll was loaded into some executable without proper `supportedOS`
+	// in its manifest, the VerifyVersionInfoW fails to check *real* things
+	static BOOL (WINAPI *rtlVerifyVersionInfo)(LPOSVERSIONINFOEXW, DWORD, DWORDLONG) = NULL;
+	static int hasRtl = 0;
+	if (hasRtl == 0)
+	{
+		MModule ntdll(GetModuleHandle(L"ntdll.dll"));
+		hasRtl = ntdll.GetProcAddress("RtlVerifyVersionInfo", rtlVerifyVersionInfo) ? 1 : -1;
+	}
+
+	if (rtlVerifyVersionInfo)
+		rc = (0/*STATUS_SUCCESS*/ == rtlVerifyVersionInfo(lpVersionInformation, dwTypeMask, dwlConditionMask));
+	else
+		rc = !!VerifyVersionInfoW(lpVersionInformation, dwTypeMask, dwlConditionMask);
+	return rc;
 }
 
 bool IsWinVerOrHigher(WORD OsVer)
 {
 	OSVERSIONINFOEXW osvi = {sizeof(osvi), HIBYTE(OsVer), LOBYTE(OsVer)};
 	DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL);
-	BOOL ibIsWinOrHigher = VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+	BOOL ibIsWinOrHigher = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
 	return (ibIsWinOrHigher != FALSE);
 }
 
@@ -621,7 +672,7 @@ bool IsWinVerEqual(WORD OsVer)
 {
 	OSVERSIONINFOEXW osvi = {sizeof(osvi), HIBYTE(OsVer), LOBYTE(OsVer)};
 	DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_EQUAL), VER_MINORVERSION, VER_EQUAL);
-	BOOL ibIsWinOrHigher = VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+	BOOL ibIsWinOrHigher = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
 	return (ibIsWinOrHigher != FALSE);
 }
 
@@ -645,9 +696,24 @@ bool IsWin5family()
 		// Don't use IsWinVerEqual here - we need to compare only major version!
 		OSVERSIONINFOEXW osvi = {sizeof(osvi), 5, 0};
 		DWORDLONG const dwlConditionMask = VerSetConditionMask(0, VER_MAJORVERSION, VER_EQUAL);
-		ibIsWin5fam = VerifyVersionInfoW(&osvi, VER_MAJORVERSION, dwlConditionMask) ? 1 : -1;
+		ibIsWin5fam = _VerifyVersionInfo(&osvi, VER_MAJORVERSION, dwlConditionMask) ? 1 : -1;
 	}
 	return (ibIsWin5fam == 1);
+}
+
+// Windows XP or higher
+bool IsWinXP()
+{
+	static int ibIsWinXP = 0;
+	if (!ibIsWinXP)
+	{
+		OSVERSIONINFOEXW osvi = {sizeof(osvi), HIBYTE(_WIN32_WINNT_WINXP), LOBYTE(_WIN32_WINNT_WINXP)};
+		DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0,
+			VER_MAJORVERSION, VER_GREATER_EQUAL),
+			VER_MINORVERSION, VER_GREATER_EQUAL);
+		ibIsWinXP = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) ? 1 : -1;;
+	}
+	return (ibIsWinXP == 1);
 }
 
 // WinXP SP1 or higher
@@ -662,7 +728,7 @@ bool IsWinXPSP1()
 			VER_MAJORVERSION, VER_GREATER_EQUAL),
 			VER_MINORVERSION, VER_GREATER_EQUAL),
 			VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
-		ibIsWinXPSP1 = VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) ? 1 : -1;;
+		ibIsWinXPSP1 = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) ? 1 : -1;;
 	}
 	return (ibIsWinXPSP1 == 1);
 }
@@ -768,10 +834,17 @@ bool IsWin10()
 	return (ibIsWin10 == 1);
 }
 
-bool IsDbcs()
+// Returns true for CJK versions of Windows (Chinese, Japanese, etc.)
+// Their consoles behave in different way than European versions unfortunately
+bool IsWinDBCS()
 {
-	bool bIsDBCS = (GetSystemMetrics(SM_DBCSENABLED) != 0);
-	return bIsDBCS;
+	static int isDBCS = 0;
+	if (!isDBCS)
+	{
+		// GetSystemMetrics may hangs if called during normal process termination
+		isDBCS = (GetSystemMetrics(SM_DBCSENABLED) != 0) ? 1 : -1;
+	}
+	return (isDBCS == 1);
 }
 
 // Проверить битность OS
@@ -820,7 +893,7 @@ bool IsHwFullScreenAvailable()
 	_ASSERTE(_WIN32_WINNT_VISTA==0x600);
 	OSVERSIONINFOEXW osvi = {sizeof(osvi), HIBYTE(_WIN32_WINNT_VISTA), LOBYTE(_WIN32_WINNT_VISTA)};
 	DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL);
-	if (VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask))
+	if (_VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask))
 		return false; // Vista or higher - not available
 	else
 		return true;

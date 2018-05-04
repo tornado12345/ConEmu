@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	#define WINE_PRINT_PROC_INFO
 //	#define USE_PIPE_DEBUG_BOXES
 //	#define SHOW_SETCONTITLE_MSGBOX
+	#define SHOW_LOADCFGFILE_MSGBOX
 
 //	#define DEBUG_ISSUE_623
 
@@ -70,7 +71,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //#define SHOW_INJECT_MSGBOX
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "../common/CmdLine.h"
 #include "../common/ConsoleAnnotation.h"
 #include "../common/ConsoleMixAttr.h"
@@ -91,6 +92,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/RConStartArgs.h"
 #include "../common/SetEnvVar.h"
 #include "../common/StartupEnvEx.h"
+#include "../common/wcwidth.h"
 #include "../common/WCodePage.h"
 #include "../common/WConsole.h"
 #include "../common/WFiles.h"
@@ -226,7 +228,6 @@ BOOL  gbDumpServerInitStatus = FALSE;
 BOOL  gbNoCreateProcess = FALSE;
 BOOL  gbDontInjectConEmuHk = FALSE;
 BOOL  gbAsyncRun = FALSE;
-int   gnCmdUnicodeMode = 0;
 UINT  gnPTYmode = 0; // 1 enable PTY, 2 - disable PTY (work as plain console), 0 - don't change
 BOOL  gbRootIsCmdExe = TRUE;
 BOOL  gbAttachFromFar = FALSE;
@@ -262,7 +263,7 @@ SHORT gnBufferWidth = 0; // Определяется в MyGetConsoleScreenBuffer
 wchar_t* gpszPrevConTitle = NULL;
 #endif
 
-MFileLog* gpLogSize = NULL;
+MFileLogEx* gpLogSize = NULL;
 
 
 BOOL gbInRecreateRoot = FALSE;
@@ -302,7 +303,7 @@ void InitVersion()
 {
 	wchar_t szMinor[8] = L""; lstrcpyn(szMinor, _T(MVV_4a), countof(szMinor));
 	//msprintf не умеет "%02u"
-	_wsprintf(gsVersion, SKIPLEN(countof(gsVersion)) L"%02u%02u%02u%s", MVV_1, MVV_2, MVV_3, szMinor);
+	swprintf_c(gsVersion, L"%02u%02u%02u%s", MVV_1, MVV_2, MVV_3, szMinor);
 }
 
 #ifdef _DEBUG
@@ -313,8 +314,8 @@ int ShowInjectRemoteMsg(int nRemotePID, LPCWSTR asCmdArg)
 	wchar_t szDbgMsg[512], szTitle[128];
 	PROCESSENTRY32 pinf;
 	GetProcessInfo(nRemotePID, &pinf);
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuCD PID=%u", GetCurrentProcessId());
-	_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg)) L"Hooking PID=%s {%s}\nConEmuCD PID=%u. Continue with injects?", asCmdArg ? asCmdArg : L"", pinf.szExeFile, GetCurrentProcessId());
+	swprintf_c(szTitle, L"ConEmuCD PID=%u", GetCurrentProcessId());
+	swprintf_c(szDbgMsg, L"Hooking PID=%s {%s}\nConEmuCD PID=%u. Continue with injects?", asCmdArg ? asCmdArg : L"", pinf.szExeFile, GetCurrentProcessId());
 	iBtn = MessageBoxW(NULL, szDbgMsg, szTitle, MB_SYSTEMMODAL|MB_OKCANCEL);
 	#endif
 	return iBtn;
@@ -389,7 +390,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		case DLL_PROCESS_ATTACH:
 		{
 			ghOurModule = (HMODULE)hModule;
-			ghWorkingModule = (u64)hModule;
+			ghWorkingModule = hModule;
 
 			hkFunc.Init(WIN3264TEST(L"ConEmuCD.dll",L"ConEmuCD64.dll"), ghOurModule);
 
@@ -453,7 +454,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 			//gnMsgConsoleHookedKey = RegisterWindowMessage(CONEMUMSG_CONSOLEHOOKEDKEY);
 			//#endif
 			//wchar_t szSkipEventName[128];
-			//_wsprintf(szSkipEventName, SKIPLEN(countof(szSkipEventName)) CEHOOKDISABLEEVENT, GetCurrentProcessId());
+			//swprintf_c(szSkipEventName, CEHOOKDISABLEEVENT, GetCurrentProcessId());
 			//HANDLE hSkipEvent = OpenEvent(EVENT_ALL_ACCESS , FALSE, szSkipEventName);
 			////BOOL lbSkipInjects = FALSE;
 
@@ -516,8 +517,8 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 			//	wchar_t szDbgMsg[1024], szTitle[128];//, szModule[MAX_PATH];
 			//	if (!GetModuleFileName(NULL, szModule, countof(szModule)))
 			//		wcscpy_c(szModule, L"GetModuleFileName failed");
-			//	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuHk, PID=%u", GetCurrentProcessId());
-			//	_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg)) L"SetAllHooks, ConEmuHk, PID=%u\n%s", GetCurrentProcessId(), szModule);
+			//	swprintf_c(szTitle, L"ConEmuHk, PID=%u", GetCurrentProcessId());
+			//	swprintf_c(szDbgMsg, L"SetAllHooks, ConEmuHk, PID=%u\n%s", GetCurrentProcessId(), szModule);
 			//	MessageBoxW(NULL, szDbgMsg, szTitle, MB_SYSTEMMODAL);
 			//	#endif
 			//	gnRunMode = RM_APPLICATION;
@@ -644,8 +645,8 @@ void OnProcessCreatedDbg(BOOL bRc, DWORD dwErr, LPPROCESS_INFORMATION pProcessIn
 	if (bRc)
 	{
 		wchar_t szTitle[64], szMsg[128];
-		_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuSrv, PID=%u", GetCurrentProcessId());
-		_wsprintf(szMsg, SKIPLEN(countof(szMsg)) L"Root process started, PID=%u", pProcessInformation->dwProcessId);
+		swprintf_c(szTitle, L"ConEmuSrv, PID=%u", GetCurrentProcessId());
+		swprintf_c(szMsg, L"Root process started, PID=%u", pProcessInformation->dwProcessId);
 		MessageBox(NULL,szMsg,szTitle,0);
 	}
 #endif
@@ -682,9 +683,9 @@ BOOL createProcess(BOOL abSkipWowChange, LPCWSTR lpApplicationName, LPWSTR lpCom
 
 	wchar_t szRunRc[80];
 	if (lbRc)
-		_wsprintf(szRunRc, SKIPCOUNT(szRunRc) L"Succeeded (%u ms) PID=%u", nStartDuration, lpProcessInformation->dwProcessId);
+		swprintf_c(szRunRc, L"Succeeded (%u ms) PID=%u", nStartDuration, lpProcessInformation->dwProcessId);
 	else
-		_wsprintf(szRunRc, SKIPCOUNT(szRunRc) L"Failed (%u ms) Code=%u(x%04X)", nStartDuration, dwErr, dwErr);
+		swprintf_c(szRunRc, L"Failed (%u ms) Code=%u(x%04X)", nStartDuration, dwErr, dwErr);
 	LogFunction(szRunRc);
 
 #if defined(SHOW_STARTED_PRINT_LITE)
@@ -791,7 +792,7 @@ LONG WINAPI CreateDumpOnException(LPEXCEPTION_POINTERS ExceptionInfo)
 	GetModuleFileName(NULL, szExe, countof(szExe));
 	pszExeName = (wchar_t*)PointToName(szExe);
 	if (pszExeName && lstrlen(pszExeName) > 63) pszExeName[63] = 0;
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s crashed, PID=%u", pszExeName ? pszExeName : L"<process>", GetCurrentProcessId());
+	swprintf_c(szTitle, L"%s crashed, PID=%u", pszExeName ? pszExeName : L"<process>", GetCurrentProcessId());
 
 	DWORD nMsgFlags = MB_YESNO|MB_ICONSTOP|MB_SYSTEMMODAL
 		| (bKernelTrap ? MB_DEFBUTTON2 : 0);
@@ -844,7 +845,7 @@ void SetupCreateDumpOnException()
 #ifdef SHOW_SERVER_STARTED_MSGBOX
 void ShowServerStartedMsgBox(LPCWSTR asCmdLine)
 {
-	wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuC [Server] started (PID=%i)", gnSelfPID);
+	wchar_t szTitle[100]; swprintf_c(szTitle, L"ConEmuC [Server] started (PID=%i)", gnSelfPID);
 	const wchar_t* pszCmdLine = asCmdLine;
 	MessageBox(NULL,pszCmdLine,szTitle,0);
 }
@@ -937,7 +938,7 @@ bool CheckAndWarnHookers()
 				#endif
 			}
 
-			_wsprintf(szAddress, SKIPCOUNT(szAddress) WIN3264TEST(L"0x%08X",L"0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hModule));
+			swprintf_c(szAddress, WIN3264TEST(L"0x%08X",L"0x%08X%08X"), WIN3264WSPRINT((DWORD_PTR)hModule));
 			szMessage = lstrmerge(
 				L"WARNING! The ", pszTitle, L"'s hooks are detected at ", szAddress, L"\r\n"
 				L"         ");
@@ -1020,7 +1021,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	// Check linker fails!
 	if (ghOurModule == NULL)
 	{
-		wchar_t szTitle[128]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) WIN3264TEST(L"ConEmuCD",L"ConEmuCD64") L", PID=%u", GetCurrentProcessId());
+		wchar_t szTitle[128]; swprintf_c(szTitle, WIN3264TEST(L"ConEmuCD",L"ConEmuCD64") L", PID=%u", GetCurrentProcessId());
 		MessageBox(NULL, L"ConsoleMain2: ghOurModule is NULL\nDllMain was not executed", szTitle, MB_ICONSTOP|MB_SYSTEMMODAL);
 		return CERR_DLLMAIN_SKIPPED;
 	}
@@ -1040,27 +1041,27 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 #if defined(SHOW_STARTED_PRINT)
 	BOOL lbDbgWrite; DWORD nDbgWrite; HANDLE hDbg; char szDbgString[255], szHandles[128];
 	wchar_t szTitle[255];
-	_wsprintf(szTitle, SKIPCOUNT(szTitle) L"ConEmuCD[%u]: PID=%u", WIN3264TEST(32,64), GetCurrentProcessId());
+	swprintf_c(szTitle, L"ConEmuCD[%u]: PID=%u", WIN3264TEST(32,64), GetCurrentProcessId());
 	MessageBox(0, asCmdLine, szTitle, MB_SYSTEMMODAL);
 	hDbg = CreateFile(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 	                  0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-	_wsprintfA(szHandles, SKIPCOUNT(szHandles) "STD_OUTPUT_HANDLE(0x%08X) STD_ERROR_HANDLE(0x%08X) CONOUT$(0x%08X)",
+	sprintf_c(szHandles, "STD_OUTPUT_HANDLE(0x%08X) STD_ERROR_HANDLE(0x%08X) CONOUT$(0x%08X)",
 	        (DWORD)GetStdHandle(STD_OUTPUT_HANDLE), (DWORD)GetStdHandle(STD_ERROR_HANDLE), (DWORD)hDbg);
 	printf("ConEmuC: Printf: %s\n", szHandles);
-	_wsprintfA(szDbgString, SKIPCOUNT(szDbgString) "ConEmuC: STD_OUTPUT_HANDLE: %s\n", szHandles);
+	sprintf_c(szDbgString, "ConEmuC: STD_OUTPUT_HANDLE: %s\n", szHandles);
 	lbDbgWrite = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), szDbgString, lstrlenA(szDbgString), &nDbgWrite, NULL);
-	_wsprintfA(szDbgString, SKIPCOUNT(szDbgString) "ConEmuC: STD_ERROR_HANDLE:  %s\n", szHandles);
+	sprintf_c(szDbgString, "ConEmuC: STD_ERROR_HANDLE:  %s\n", szHandles);
 	lbDbgWrite = WriteFile(GetStdHandle(STD_ERROR_HANDLE), szDbgString, lstrlenA(szDbgString), &nDbgWrite, NULL);
-	_wsprintfA(szDbgString, SKIPCOUNT(szDbgString) "ConEmuC: CONOUT$: %s", szHandles);
+	sprintf_c(szDbgString, "ConEmuC: CONOUT$: %s", szHandles);
 	lbDbgWrite = WriteFile(hDbg, szDbgString, lstrlenA(szDbgString), &nDbgWrite, NULL);
 	CloseHandle(hDbg);
-	//_wsprintfA(szDbgString, SKIPCOUNT(szDbgString) "ConEmuC: PID=%u", GetCurrentProcessId());
+	//sprintf_c(szDbgString, "ConEmuC: PID=%u", GetCurrentProcessId());
 	//MessageBoxA(0, "Press Ok to continue", szDbgString, MB_SYSTEMMODAL);
 #elif defined(SHOW_STARTED_PRINT_LITE)
 	{
 	wchar_t szPath[MAX_PATH]; GetModuleFileNameW(NULL, szPath, countof(szPath));
 	wchar_t szDbgMsg[MAX_PATH*2];
-	_wsprintf(szDbgMsg, SKIPCOUNT(szDbgMsg) L"%s started, PID=%u\n", PointToName(szPath), GetCurrentProcessId());
+	swprintf_c(szDbgMsg, L"%s started, PID=%u\n", PointToName(szPath), GetCurrentProcessId());
 	_wprintf(szDbgMsg);
 	gbDumpServerInitStatus = TRUE;
 	}
@@ -1083,7 +1084,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	gnOsVer = ((gOSVer.dwMajorVersion & 0xFF) << 8) | (gOSVer.dwMinorVersion & 0xFF);
 
 	gbIsWine = IsWine(); // В общем случае, на флажок ориентироваться нельзя. Это для информации.
-	gbIsDBCS = IsDbcs();
+	gbIsDBCS = IsWinDBCS();
 
 	gpLocalSecurity = LocalSecurity();
 	HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
@@ -1118,7 +1119,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	{
 		// Это событие дергается в отладочной (мной поправленной) версии фара
 		// Suppress warning C4311 'type cast': pointer truncation from 'HWND' to 'DWORD'
-		wchar_t szEvtName[64]; _wsprintf(szEvtName, SKIPLEN(countof(szEvtName)) L"FARconEXEC:%08X", LODWORD(ghConWnd));
+		wchar_t szEvtName[64]; swprintf_c(szEvtName, L"FARconEXEC:%08X", LODWORD(ghConWnd));
 		ghFarInExecuteEvent = CreateEvent(0, TRUE, FALSE, szEvtName);
 	}
 	#endif
@@ -1127,7 +1128,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	#if defined(SHOW_STARTED_MSGBOX) || defined(SHOW_COMSPEC_STARTED_MSGBOX)
 	if (!IsDebuggerPresent())
 	{
-		wchar_t szTitle[100]; _wsprintf(szTitle, SKIPCOUNT(szTitle) L"ConEmuCD[%u]: PID=%u", WIN3264TEST(32,64), GetCurrentProcessId());
+		wchar_t szTitle[100]; swprintf_c(szTitle, L"ConEmuCD[%u]: PID=%u", WIN3264TEST(32,64), GetCurrentProcessId());
 		MessageBox(NULL, asCmdLine, szTitle, MB_SYSTEMMODAL);
 	}
 	#endif
@@ -1152,7 +1153,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	{
 		wchar_t szCpInfo[128];
 		DWORD nCP = GetConsoleOutputCP();
-		_wsprintf(szCpInfo, SKIPLEN(countof(szCpInfo)) L"Current Output CP = %u\n", nCP);
+		swprintf_c(szCpInfo, L"Current Output CP = %u\n", nCP);
 		DEBUGSTRCP(szCpInfo);
 	}
 	#endif
@@ -1199,7 +1200,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	else if ((iRc = ParseCommandLine(pszFullCmdLine)) != 0)
 	{
 		wchar_t szLog[80];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"ParseCommandLine returns %i, exiting", iRc);
+		swprintf_c(szLog, L"ParseCommandLine returns %i, exiting", iRc);
 		LogFunction(szLog);
 		// Especially if our process was started under non-interactive account,
 		// than ExitWaitForKey causes the infinitely running process, which user can't kill easily
@@ -1341,7 +1342,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	/* ****** Start child process ****** */
 	/* ********************************* */
 #ifdef SHOW_STARTED_PRINT
-	_wsprintfA(szDbgString, SKIPLEN(szDbgString) "ConEmuC: PID=%u", GetCurrentProcessId());
+	sprintf_c(szDbgString, "ConEmuC: PID=%u", GetCurrentProcessId());
 	MessageBoxA(0, "Press Ok to continue", szDbgString, MB_SYSTEMMODAL);
 #endif
 
@@ -1350,7 +1351,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	// We need to set `0` before CreateProcess, otherwise we may get timeout,
 	// due to misc antivirus software, BEFORE CreateProcess finishes
 	if (!(gbAttachMode & am_Modes))
-		gpSrv->nProcessStartTick = 0;
+		gpSrv->processes->nProcessStartTick = 0;
 
 	if (gbNoCreateProcess)
 	{
@@ -1511,7 +1512,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 
 			#ifdef SHOW_INJECT_MSGBOX
 			wchar_t szDbgMsg[128], szTitle[128];
-			_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s PID=%u", gsModuleName, GetCurrentProcessId());
+			swprintf_c(szTitle, L"%s PID=%u", gsModuleName, GetCurrentProcessId());
 			szDbgMsg[0] = 0;
 			#endif
 
@@ -1519,7 +1520,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 				|| (!szExeName.IsEmpty() && IsConsoleServer(szExeName)))
 			{
 				#ifdef SHOW_INJECT_MSGBOX
-				_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg)) L"%s PID=%u\nConEmuHk injects skipped, PID=%u", gsModuleName, GetCurrentProcessId(), pi.dwProcessId);
+				swprintf_c(szDbgMsg, L"%s PID=%u\nConEmuHk injects skipped, PID=%u", gsModuleName, GetCurrentProcessId(), pi.dwProcessId);
 				#endif
 			}
 			else
@@ -1530,7 +1531,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 				TODO("В принципе - завелось, но в сочетании с Anamorphosis получается странное зацикливание far->conemu->anamorph->conemu");
 
 				#ifdef SHOW_INJECT_MSGBOX
-				_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg)) L"%s PID=%u\nInjecting hooks into PID=%u", gsModuleName, GetCurrentProcessId(), pi.dwProcessId);
+				swprintf_c(szDbgMsg, L"%s PID=%u\nInjecting hooks into PID=%u", gsModuleName, GetCurrentProcessId(), pi.dwProcessId);
 				MessageBoxW(NULL, szDbgMsg, szTitle, MB_SYSTEMMODAL);
 				#endif
 
@@ -1571,8 +1572,8 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 					DWORD nErrCode = GetLastError();
 					//_ASSERTE(iHookRc == 0); -- ассерт не нужен, есть MsgBox
 					wchar_t szDbgMsg[255], szTitle[128];
-					_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuC, PID=%u", GetCurrentProcessId());
-					_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg)) L"ConEmuC.M, PID=%u\nInjecting hooks into PID=%u\nFAILED, code=%i:0x%08X", GetCurrentProcessId(), pi.dwProcessId, iHookRc, nErrCode);
+					swprintf_c(szTitle, L"ConEmuC[%u], PID=%u", WIN3264TEST(32,64), GetCurrentProcessId());
+					swprintf_c(szDbgMsg, L"ConEmuC.M, PID=%u\nInjecting hooks into PID=%u\nFAILED, code=%i:0x%08X", GetCurrentProcessId(), pi.dwProcessId, iHookRc, nErrCode);
 					MessageBoxW(NULL, szDbgMsg, szTitle, MB_SYSTEMMODAL);
 				}
 
@@ -1653,8 +1654,8 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 	}
 	else
 	{
-		if (!gpSrv->nProcessStartTick) // Уже мог быть проинициализирован из cmd_CmdStartStop
-			gpSrv->nProcessStartTick = GetTickCount();
+		if (!gpSrv->processes->nProcessStartTick) // Уже мог быть проинициализирован из cmd_CmdStartStop
+			gpSrv->processes->nProcessStartTick = GetTickCount();
 	}
 
 	if (pi.dwProcessId)
@@ -1682,12 +1683,12 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 		gpSrv->dwRootThread  = pi.dwThreadId;
 		gpSrv->dwRootStartTime = GetTickCount();
 		// Скорее всего процесс в консольном списке уже будет
-		CheckProcessCount(TRUE);
+		gpSrv->processes->CheckProcessCount(TRUE);
 
 		#ifdef _DEBUG
-		if (gpSrv->nProcessCount && !gpSrv->DbgInfo.bDebuggerActive)
+		if (gpSrv->processes->nProcessCount && !gpSrv->DbgInfo.bDebuggerActive)
 		{
-			_ASSERTE(gpSrv->pnProcesses[gpSrv->nProcessCount-1]!=0);
+			_ASSERTE(gpSrv->processes->pnProcesses[gpSrv->processes->nProcessCount-1]!=0);
 		}
 		#endif
 
@@ -1711,7 +1712,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 			if (dwWaitGui == WAIT_OBJECT_0)
 			{
 				// GUI пайп готов
-				_wsprintf(gpSrv->szGuiPipeName, SKIPLEN(countof(gpSrv->szGuiPipeName)) CEGUIPIPENAME, L".", LODWORD(ghConWnd)); // был gnSelfPID //-V205
+				swprintf_c(gpSrv->szGuiPipeName, CEGUIPIPENAME, L".", LODWORD(ghConWnd)); // был gnSelfPID //-V205
 			}
 		}
 
@@ -1722,8 +1723,8 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 
 		if (nWait != WAIT_OBJECT_0)  // Если таймаут
 		{
-			iRc = gpSrv->nProcessCount
-				+ (((gpSrv->nProcessCount==1) && gbUseDosBox && (WaitForSingleObject(ghDosBoxProcess,0)==WAIT_TIMEOUT)) ? 1 : 0);
+			iRc = gpSrv->processes->nProcessCount
+				+ (((gpSrv->processes->nProcessCount==1) && gbUseDosBox && (WaitForSingleObject(ghDosBoxProcess,0)==WAIT_TIMEOUT)) ? 1 : 0);
 
 			// И процессов в консоли все еще нет
 			if (iRc == 1 && !gpSrv->DbgInfo.bDebuggerActive)
@@ -1756,7 +1757,7 @@ int __stdcall ConsoleMain3(int anWorkMode/*0-Server&ComSpec,1-AltServer,2-Reserv
 							}
 						}
 
-						if ((nWait != WAIT_OBJECT_0) && (gpSrv->nProcessCount > 1))
+						if ((nWait != WAIT_OBJECT_0) && (gpSrv->processes->nProcessCount > 1))
 						{
 							gbTerminateOnCtrlBreak = FALSE;
 							gbCtrlBreakStopWaitingShown = FALSE; // сбросим, чтобы ассерты не лезли
@@ -1934,9 +1935,9 @@ wrap:
 		LPCWSTR pszName = (gnRunMode == RM_SERVER && gpSrv->hRootProcess) ? L"Shell" : L"Process";
 		DWORD nPID = (gnRunMode == RM_SERVER && gpSrv->hRootProcess) ? gpSrv->dwRootProcess : pi.dwProcessId;
 		if (gnExitCode >= 0x80000000)
-			_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"\n%s PID=%u ExitCode=%u (%i) {x%08X}", pszName, nPID, gnExitCode, (int)gnExitCode, gnExitCode);
+			swprintf_c(szInfo, L"\n%s PID=%u ExitCode=%u (%i) {x%08X}", pszName, nPID, gnExitCode, (int)gnExitCode, gnExitCode);
 		else
-			_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"\n%s PID=%u ExitCode=%u {x%08X}", pszName, nPID, gnExitCode, gnExitCode);
+			swprintf_c(szInfo, L"\n%s PID=%u ExitCode=%u {x%08X}", pszName, nPID, gnExitCode, gnExitCode);
 		LogFunction(szInfo+1);
 
 		if (gbPrintRetErrLevel)
@@ -1946,10 +1947,10 @@ wrap:
 		}
 
 		// Post information to GUI
-		if (gnMainServerPID)
+		if (gnMainServerPID && !gpSrv->bWasDetached)
 		{
 			CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_GETROOTINFO, sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_ROOT_INFO));
-			if (pIn && GetRootInfo(pIn))
+			if (pIn && gpSrv->processes->GetRootInfo(pIn))
 			{
 				CESERVER_REQ *pSrvOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd, TRUE/*async*/);
 				ExecuteFreeResult(pSrvOut);
@@ -2000,7 +2001,7 @@ wrap:
 				{
 					if ((nProcesses[i] != gpSrv->dwRootProcess)
 						#ifndef WIN64
-						&& (nProcesses[i] != gpSrv->nNtvdmPID)
+						&& (nProcesses[i] != gpSrv->processes->nNtvdmPID)
 						#endif
 						)
 					{
@@ -2038,10 +2039,10 @@ wrap:
 					}
 					wchar_t szExitCode[40];
 					if (gnExitCode > 255)
-						_wsprintf(szExitCode, SKIPLEN(countof(szExitCode)) L"x%08X(%u)", gnExitCode, gnExitCode);
+						swprintf_c(szExitCode, L"x%08X(%u)", gnExitCode, gnExitCode);
 					else
-						_wsprintf(szExitCode, SKIPLEN(countof(szExitCode)) L"%u", gnExitCode);
-					_wsprintf(szMsg, SKIPLEN(countof(szMsg))
+						swprintf_c(szExitCode, L"%u", gnExitCode);
+					swprintf_c(szMsg,
 						L"\n\nConEmuC: Root process was alive less than 10 sec, ExitCode=%s.\nPress Enter or Esc to close console...",
 						szExitCode);
 					pszMsg = szMsg;
@@ -2062,7 +2063,7 @@ wrap:
 
 			#ifdef _DEBUG
 			static wchar_t szDbgMsg[255];
-			_wsprintf(szDbgMsg, SKIPLEN(countof(szDbgMsg))
+			swprintf_c(szDbgMsg,
 			          L"\n\ngbInShutdown=%i, iRc=%i, gbAlwaysConfirmExit=%i, nExitQueryPlace=%i"
 			          L"%s",
 			          (int)gbInShutdown, iRc, (int)gbAlwaysConfirmExit, nExitQueryPlace,
@@ -2080,7 +2081,7 @@ wrap:
 
 		// During the wait, new process may be started in our console
 		{
-			int nCount = gpSrv->nProcessCount;
+			int nCount = gpSrv->processes->nProcessCount;
 
 			if ((gpSrv->ConnectInfo.bConnected && (nCount > 1))
 				|| gpSrv->DbgInfo.bDebuggerActive)
@@ -2326,7 +2327,7 @@ DoEvents:
 			;
 		}
 
-		_wsprintf(szName, SKIPLEN(countof(szName)) CEFARWRITECMTEVENT, gnSelfPID);
+		swprintf_c(szName, CEFARWRITECMTEVENT, gnSelfPID);
 		Parm->hFarCommitEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, szName);
 		_ASSERTE(Parm->hFarCommitEvent!=NULL);
 
@@ -2340,7 +2341,7 @@ DoEvents:
 	{
 		_ASSERTE(gpSrv->hCursorChangeEvent != NULL); // Уже должно быть создано!
 
-		_wsprintf(szName, SKIPLEN(countof(szName)) CECURSORCHANGEEVENT, gnSelfPID);
+		swprintf_c(szName, CECURSORCHANGEEVENT, gnSelfPID);
 		Parm->hCursorChangeEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, szName);
 		_ASSERTE(Parm->hCursorChangeEvent!=NULL);
 
@@ -2380,7 +2381,7 @@ wrap:
 void PrintVersion()
 {
 	char szProgInfo[255];
-	_wsprintfA(szProgInfo, SKIPLEN(countof(szProgInfo))
+	sprintf_c(szProgInfo,
 		"ConEmuC build %s %s. " CECOPYRIGHTSTRING_A "\n",
 		CONEMUVERS, WIN3264TEST("x86","x64"));
 	_printf(szProgInfo);
@@ -2461,21 +2462,6 @@ void PrintExecuteError(LPCWSTR asCmd, DWORD dwErr, LPCWSTR asSpecialInfo/*=NULL*
 	_printf("\n");
 }
 
-void CheckUnicodeMode()
-{
-	if (gnCmdUnicodeMode) return;
-
-	wchar_t szValue[16] = {0};
-
-	if (GetEnvironmentVariable(L"ConEmuOutput", szValue, sizeof(szValue)/sizeof(szValue[0])))
-	{
-		if (lstrcmpi(szValue, L"UNICODE") == 0)
-			gnCmdUnicodeMode = 2;
-		else if (lstrcmpi(szValue, L"ANSI") == 0)
-			gnCmdUnicodeMode = 1;
-	}
-}
-
 int CheckAttachProcess()
 {
 	LogFunction(L"CheckAttachProcess");
@@ -2492,7 +2478,7 @@ int CheckAttachProcess()
 	{
 		if (!IsWindow(gpSrv->hRootProcessGui))
 		{
-			_wsprintf(szFailMsg, SKIPLEN(countof(szFailMsg)) L"Attach of GUI application was requested,\n"
+			swprintf_c(szFailMsg, L"Attach of GUI application was requested,\n"
 				L"but required HWND(0x%08X) not found!", LODWORD(gpSrv->hRootProcessGui));
 			LogString(szFailMsg);
 			liArgsFailed = 1;
@@ -2503,7 +2489,7 @@ int CheckAttachProcess()
 			DWORD nPid; GetWindowThreadProcessId(gpSrv->hRootProcessGui, &nPid);
 			if (!gpSrv->dwRootProcess || (gpSrv->dwRootProcess != nPid))
 			{
-				_wsprintf(szFailMsg, SKIPLEN(countof(szFailMsg)) L"Attach of GUI application was requested,\n"
+				swprintf_c(szFailMsg, L"Attach of GUI application was requested,\n"
 					L"but PID(%u) of HWND(0x%08X) does not match Root(%u)!",
 					nPid, LODWORD(gpSrv->hRootProcessGui), gpSrv->dwRootProcess);
 				LogString(szFailMsg);
@@ -2559,7 +2545,7 @@ int CheckAttachProcess()
 			{
 				if (szProc[0]) wcscat_c(szProc, L", ");
 
-				_wsprintf(szTmp, SKIPLEN(countof(szTmp)) L"%i", nProcesses[n]);
+				swprintf_c(szTmp, L"%i", nProcesses[n]);
 				wcscat_c(szProc, szTmp);
 
 				if (gpSrv->dwRootProcess)
@@ -2584,14 +2570,14 @@ int CheckAttachProcess()
 
 			if ((gpSrv->dwRootProcess != 0) && !lbRootExists)
 			{
-				_wsprintf(szFailMsg, SKIPLEN(countof(szFailMsg)) L"Attach to GUI was requested, but\n" L"root process (%u) does not exists", gpSrv->dwRootProcess);
+				swprintf_c(szFailMsg, L"Attach to GUI was requested, but\n" L"root process (%u) does not exists", gpSrv->dwRootProcess);
 				LogString(szFailMsg);
 				liArgsFailed = 5;
 				//will return CERR_CARGUMENT
 			}
 			else if ((gpSrv->dwRootProcess == 0) && (nProcCount > 2))
 			{
-				_wsprintf(szFailMsg, SKIPLEN(countof(szFailMsg)) L"Attach to GUI was requested, but\n" L"there is more than 2 console processes: %s\n", szProc);
+				swprintf_c(szFailMsg, L"Attach to GUI was requested, but\n" L"there is more than 2 console processes: %s\n", szProc);
 				LogString(szFailMsg);
 				liArgsFailed = 6;
 				//will return CERR_CARGUMENT
@@ -2610,7 +2596,7 @@ int CheckAttachProcess()
 		LPCWSTR pszCmdLine = GetCommandLineW(); if (!pszCmdLine) pszCmdLine = L"";
 
 		wchar_t szTitle[MAX_PATH*2];
-		_wsprintf(szTitle, SKIPLEN(countof(szTitle))
+		swprintf_c(szTitle,
 			L"ConEmuC %s [%u], PID=%u, Code=%i" L"\r\n"
 			L"ParentPID=%u: %s" L"\r\n"
 			L"  ", // szFailMsg follows this
@@ -2692,7 +2678,7 @@ wchar_t* ParseConEmuSubst(LPCWSTR asCmd)
 
 		for (size_t i = 0; i < countof(szNames); ++i)
 		{
-			wchar_t szName[64]; _wsprintf(szName, SKIPLEN(countof(szName)) L"!%s!", szNames[i]);
+			wchar_t szName[64]; swprintf_c(szName, L"!%s!", szNames[i]);
 			size_t iLen = lstrlen(szName);
 
 			wchar_t* pszStart = StrStrI(pszCmdCopy, szName);
@@ -3005,6 +2991,23 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 
 	BOOL lbAttachGuiApp = FALSE;
 
+	struct {
+		CEStr szConEmuAddArgs;
+		void Append(LPCWSTR asSwitch, LPCWSTR asValue)
+		{
+			lstrmerge(&szConEmuAddArgs.ms_Val, asSwitch);
+			if (asValue && *asValue)
+			{
+				bool needQuot = IsQuotationNeeded(asValue);
+				lstrmerge(&szConEmuAddArgs.ms_Val,
+					needQuot ? L" \"" : L" ",
+					asValue,
+					needQuot ? L"\"" : NULL);
+			}
+			SetEnvironmentVariable(ENV_CONEMU_EXEARGS_W, szConEmuAddArgs);
+		}
+	} AddArgs;
+
 	while ((iRc = NextArg(&lsCmdLine, szArg, &pszArgStarts)) == 0)
 	{
 		xf_check();
@@ -3161,6 +3164,11 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			eStateCheck = ec_IsAdmin;
 			break;
 		}
+		else if (lstrcmpi(szArg, L"/IsRedirect")==0)
+		{
+			eStateCheck = ec_IsRedirect;
+			break;
+		}
 		else if ((wcscmp(szArg, L"/CONFIRM")==0)
 			|| (wcscmp(szArg, L"/CONFHALT")==0)
 			|| (wcscmp(szArg, L"/ECONFIRM")==0))
@@ -3184,7 +3192,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			#if defined(SHOW_ATTACH_MSGBOX)
 			if (!IsDebuggerPresent())
 			{
-				wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s PID=%u /ADMIN", gsModuleName, gnSelfPID);
+				wchar_t szTitle[100]; swprintf_c(szTitle, L"%s PID=%u /ADMIN", gsModuleName, gnSelfPID);
 				const wchar_t* pszCmdLine = GetCommandLineW();
 				MessageBox(NULL,pszCmdLine,szTitle,MB_SYSTEMMODAL);
 			}
@@ -3198,7 +3206,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			#if defined(SHOW_ATTACH_MSGBOX)
 			if (!IsDebuggerPresent())
 			{
-				wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s PID=%u /ATTACH", gsModuleName, gnSelfPID);
+				wchar_t szTitle[100]; swprintf_c(szTitle, L"%s PID=%u /ATTACH", gsModuleName, gnSelfPID);
 				const wchar_t* pszCmdLine = GetCommandLineW();
 				MessageBox(NULL,pszCmdLine,szTitle,MB_SYSTEMMODAL);
 			}
@@ -3213,7 +3221,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			#if defined(SHOW_ATTACH_MSGBOX)
 			if (!IsDebuggerPresent())
 			{
-				wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s PID=%u %s", gsModuleName, gnSelfPID, szArg.ms_Val);
+				wchar_t szTitle[100]; swprintf_c(szTitle, L"%s PID=%u %s", gsModuleName, gnSelfPID, szArg.ms_Val);
 				const wchar_t* pszCmdLine = GetCommandLineW();
 				MessageBox(NULL,pszCmdLine,szTitle,MB_SYSTEMMODAL);
 			}
@@ -3254,7 +3262,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			#if defined(SHOW_ATTACH_MSGBOX)
 			if (!IsDebuggerPresent())
 			{
-				wchar_t szTitle[100]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s PID=%u /GUIATTACH", gsModuleName, gnSelfPID);
+				wchar_t szTitle[100]; swprintf_c(szTitle, L"%s PID=%u /GUIATTACH", gsModuleName, gnSelfPID);
 				const wchar_t* pszCmdLine = GetCommandLineW();
 				MessageBox(NULL,pszCmdLine,szTitle,MB_SYSTEMMODAL);
 			}
@@ -3370,10 +3378,10 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 					FreeConsole();
 					ghConWnd = NULL;
 
-					// Issue 998: Need to wait, while real console will appears
+					// Issue 998: Need to wait, while real console will appear
 					// gpSrv->hRootProcess еще не открыт
 					HANDLE hProcess = OpenProcess(SYNCHRONIZE, FALSE, gpSrv->dwRootProcess);
-					while (hProcess)
+					while (hProcess && hProcess != INVALID_HANDLE_VALUE)
 					{
 						DWORD nConPid = 0;
 						HWND hNewCon = FindWindowEx(NULL, NULL, RealConsoleClass, NULL);
@@ -3389,7 +3397,20 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 					}
 					SafeCloseHandle(hProcess);
 
-					bAttach = AttachConsole_f(gpSrv->dwRootProcess);
+					// Sometimes conhost handles are created with lags, wait for a while
+					DWORD nStartTick = GetTickCount();
+					const DWORD reattach_duration = 5000; // 5 sec
+					while (!bAttach)
+					{
+						bAttach = AttachConsole_f(gpSrv->dwRootProcess);
+						if (bAttach)
+							break;
+						Sleep(50);
+						DWORD nDelta = (GetTickCount() - nStartTick);
+						if (nDelta >= reattach_duration)
+							break;
+						LogString(L"Retrying AttachConsole after 50ms delay");
+					}
 				}
 				else
 				{
@@ -3429,7 +3450,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 						LODWORD(hSaveCon)
 						);
 
-					_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"%s: PID=%u", gsModuleName, GetCurrentProcessId());
+					swprintf_c(szTitle, L"%s: PID=%u", gsModuleName, GetCurrentProcessId());
 
 					int nBtn = MessageBox(NULL, pszMsg, szTitle, MB_ICONSTOP|MB_SYSTEMMODAL|MB_RETRYCANCEL);
 
@@ -3496,7 +3517,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			}
 			TODO("/BX для ширины буфера?");
 		}
-		else if (wcsncmp(szArg, L"/F", 2)==0)
+		else if (wcsncmp(szArg, L"/F", 2)==0 && szArg[2] && szArg[3] == L'=')
 		{
 			wchar_t* pszEnd = NULL;
 
@@ -3574,7 +3595,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 				BOOL isWnd = gpSrv->hGuiWnd ? IsWindow(gpSrv->hGuiWnd) : FALSE;
 				DWORD nErr = gpSrv->hGuiWnd ? GetLastError() : 0;
 
-				_wsprintf(szLog, SKIPCOUNT(szLog) L"GUI HWND=0x%08X, %s, ErrCode=%u", LODWORD(gpSrv->hGuiWnd), isWnd ? L"Valid" : L"Invalid", nErr);
+				swprintf_c(szLog, L"GUI HWND=0x%08X, %s, ErrCode=%u", LODWORD(gpSrv->hGuiWnd), isWnd ? L"Valid" : L"Invalid", nErr);
 				LogString(szLog);
 
 				if (!isWnd)
@@ -3800,14 +3821,6 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 		{
 			lbNeedCdToProfileDir = true;
 		}
-		else if (wcscmp(szArg, L"/A")==0 || wcscmp(szArg, L"/a")==0)
-		{
-			gnCmdUnicodeMode = 1;
-		}
-		else if (wcscmp(szArg, L"/U")==0 || wcscmp(szArg, L"/u")==0)
-		{
-			gnCmdUnicodeMode = 2;
-		}
 		else if (lstrcmpi(szArg, L"/CONFIG")==0)
 		{
 			if ((iRc = NextArg(&lsCmdLine, szArg)) != 0)
@@ -3818,6 +3831,21 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			}
 			// Reuse config if starting "ConEmu.exe" from console server!
 			SetEnvironmentVariable(ENV_CONEMU_CONFIG_W, szArg);
+			AddArgs.Append(L"-config", szArg);
+		}
+		else if (lstrcmpi(szArg, L"/LoadCfgFile")==0)
+		{
+			// Reuse specified xml file if starting "ConEmu.exe" from console server!
+			#ifdef SHOW_LOADCFGFILE_MSGBOX
+			MessageBox(NULL, lsCmdLine, L"/LoadCfgFile", MB_SYSTEMMODAL);
+			#endif
+			if ((iRc = NextArg(&lsCmdLine, szArg)) != 0)
+			{
+				_ASSERTE(FALSE && "Xml file name was not specified!");
+				_wprintf(L"Xml file name was not specified!\r\n");
+				break;
+			}
+			AddArgs.Append(L"-LoadCfgFile", szArg);
 		}
 		else if (lstrcmpi(szArg, L"/ASYNC") == 0 || lstrcmpi(szArg, L"/FORK") == 0)
 		{
@@ -3981,7 +4009,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			// Из батника убрал, покажем инфу тут
 			PrintVersion();
 			char szAutoRunMsg[128];
-			_wsprintfA(szAutoRunMsg, SKIPLEN(countof(szAutoRunMsg)) "Starting attach autorun (NewWnd=%s)\n", gpSrv->bRequestNewGuiWnd ? "YES" : "NO");
+			sprintf_c(szAutoRunMsg, "Starting attach autorun (NewWnd=%s)\n", gpSrv->bRequestNewGuiWnd ? "YES" : "NO");
 			_printf(szAutoRunMsg);
 		}
 	}
@@ -4071,25 +4099,25 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 			if (lgsRc < lgs_Succeeded)
 			{
 				wchar_t szLgsError[200], szLGS[80];
-				_wsprintf(szLGS, SKIPCOUNT(szLGS) L"LGS=%u, Code=%u, GUI PID=%u, Srv PID=%u", lgsRc, GetLastError(), nGuiPID, GetCurrentProcessId());
+				swprintf_c(szLGS, L"LGS=%u, Code=%u, GUI PID=%u, Srv PID=%u", lgsRc, GetLastError(), nGuiPID, GetCurrentProcessId());
 				switch (lgsRc)
 				{
 				case lgs_WrongVersion:
-					_wsprintf(szLgsError, SKIPCOUNT(szLgsError) L"Failed to load ConEmu info!\n"
+					swprintf_c(szLgsError, L"Failed to load ConEmu info!\n"
 						L"Found ProtocolVer=%u but Required=%u.\n"
 						L"%s.\n"
 						L"Please update all ConEmu components!",
 						nWrongValue, (DWORD)CESERVER_REQ_VER, szLGS);
 					break;
 				case lgs_WrongSize:
-					_wsprintf(szLgsError, SKIPCOUNT(szLgsError) L"Failed to load ConEmu info!\n"
+					swprintf_c(szLgsError, L"Failed to load ConEmu info!\n"
 						L"Found MapSize=%u but Required=%u."
 						L"%s.\n"
 						L"Please update all ConEmu components!",
 						nWrongValue, (DWORD)sizeof(ConEmuGuiMapping), szLGS);
 					break;
 				default:
-					_wsprintf(szLgsError, SKIPCOUNT(szLgsError) L"Failed to load ConEmu info!\n"
+					swprintf_c(szLgsError, L"Failed to load ConEmu info!\n"
 						L"%s.\n"
 						L"Please update all ConEmu components!",
 						szLGS);
@@ -4098,7 +4126,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 				LogFunction(szLGS);
 				// Show user message
 				wchar_t szTitle[128];
-				_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuC[Srv]: PID=%u", GetCurrentProcessId());
+				swprintf_c(szTitle, L"ConEmuC[Srv]: PID=%u", GetCurrentProcessId());
 				MessageBox(NULL, szLgsError, szTitle, MB_ICONSTOP|MB_SYSTEMMODAL);
 				return CERR_WRONG_GUI_VERSION;
 			}
@@ -4144,7 +4172,7 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 				{
 					pIn->NewCmd.hFromConWnd = ghConWnd;
 
-					// ghConWnd may differs from parent process, but ENV_CONEMUDRAW_VAR_W would be inherited
+					// ghConWnd may differ from parent process, but ENV_CONEMUDRAW_VAR_W would be inherited
 					wchar_t* pszDcWnd = GetEnvVar(ENV_CONEMUDRAW_VAR_W);
 					if (pszDcWnd && (pszDcWnd[0] == L'0') && (pszDcWnd[1] == L'x'))
 					{
@@ -4318,14 +4346,9 @@ int ParseCommandLine(LPCWSTR asCmdLine)
 	// ====
 	if (gbRunViaCmdExe)
 	{
-		CheckUnicodeMode();
-
-		// -- для унификации - окавычиваем всегда
+		// -- always quotate
 		gpszRunCmd[0] = L'"';
 		_wcscpy_c(gpszRunCmd+1, nCchLen-1, gszComSpec);
-
-		if (gnCmdUnicodeMode)
-			_wcscat_c(gpszRunCmd, nCchLen, (gnCmdUnicodeMode == 2) ? L" /U" : L" /A");
 
 		_wcscat_c(gpszRunCmd, nCchLen, gpSrv->bK ? L"\" /K " : L"\" /C ");
 
@@ -4511,7 +4534,7 @@ int ExitWaitForKey(DWORD vkKeys, LPCWSTR asConfirm, BOOL abNewLine, BOOL abDontS
 		{
 			if (gnRunMode == RM_SERVER)
 			{
-				int nCount = gpSrv->nProcessCount;
+				int nCount = gpSrv->processes->nProcessCount;
 
 				if (nCount > 1)
 				{
@@ -4568,7 +4591,7 @@ int ExitWaitForKey(DWORD vkKeys, LPCWSTR asConfirm, BOOL abNewLine, BOOL abDontS
 wrap:
 	#if defined(_DEBUG) && defined(SHOW_EXITWAITKEY_MSGBOX)
 	wchar_t szTitle[128];
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuC[Srv]: PID=%u", GetCurrentProcessId());
+	swprintf_c(szTitle, L"ConEmuC[Srv]: PID=%u", GetCurrentProcessId());
 	if (!gbStopExitWaitForKey)
 		MessageBox(NULL, asConfirm ? asConfirm : L"???", szTitle, MB_ICONEXCLAMATION|MB_SYSTEMMODAL);
 	#endif
@@ -4628,7 +4651,7 @@ bool isConEmuTerminated()
 	//TODO: Same as in ConEmu, it must check server presence via pipe
 	// For now, don't annoy user with RealConsole if all processes were finished
 	if (gbInExitWaitForKey // We are waiting for Enter or Esc
-		&& (gpSrv->nProcessCount <= 1) // No active processes are found in console (except our SrvPID)
+		&& (gpSrv->processes->nProcessCount <= 1) // No active processes are found in console (except our SrvPID)
 		)
 	{
 		// Let RealConsole remain invisible, ConEmu will deal the situation
@@ -4732,11 +4755,11 @@ void SendStarted()
 		{
 		case RM_SERVER:
 			pIn->StartStop.nStarted = sst_ServerStart;
-			IsKeyboardLayoutChanged(&pIn->StartStop.dwKeybLayout);
+			IsKeyboardLayoutChanged(pIn->StartStop.dwKeybLayout);
 			break;
 		case RM_ALTSERVER:
 			pIn->StartStop.nStarted = sst_AltServerStart;
-			IsKeyboardLayoutChanged(&pIn->StartStop.dwKeybLayout);
+			IsKeyboardLayoutChanged(pIn->StartStop.dwKeybLayout);
 			break;
 		case RM_COMSPEC:
 			pIn->StartStop.nParentFarPID = gpSrv->dwParentFarPID;
@@ -4818,9 +4841,10 @@ void SendStarted()
 
 			lbRc1 = GetConsoleScreenBufferInfo(hOut, &pIn->StartStop.sbi);
 
-			if (!lbRc1) dwErr1 = GetLastError();
-
-			pIn->StartStop.crMaxSize = MyGetLargestConsoleWindowSize(hOut);
+			if (!lbRc1)
+				dwErr1 = GetLastError();
+			else
+				pIn->StartStop.crMaxSize = MyGetLargestConsoleWindowSize(hOut);
 		}
 
 		// Если (для ComSpec) указан параметр "-cur_console:h<N>"
@@ -4837,7 +4861,7 @@ void SendStarted()
 		if (gnRunMode == RM_SERVER)
 		{
 			_ASSERTE(nGuiPID!=0 && gnRunMode==RM_SERVER);
-			pIn->StartStop.hServerProcessHandle = (u64)(DWORD_PTR)DuplicateProcessHandle(nGuiPID);
+			pIn->StartStop.hServerProcessHandle = DuplicateProcessHandle(nGuiPID);
 
 			// послать CECMD_CMDSTARTSTOP/sst_ServerStart в GUI
 			pOut = ExecuteGuiCmd(ghConEmuWnd, pIn, ghConWnd);
@@ -4845,7 +4869,7 @@ void SendStarted()
 		else if (gnRunMode == RM_ALTSERVER)
 		{
 			// Подготовить хэндл своего процесса для MainServer
-			pIn->StartStop.hServerProcessHandle = (u64)(DWORD_PTR)DuplicateProcessHandle(nMainServerPID);
+			pIn->StartStop.hServerProcessHandle = DuplicateProcessHandle(nMainServerPID);
 
 			_ASSERTE(pIn->hdr.nCmd == CECMD_CMDSTARTSTOP);
 			pSrvOut = ExecuteSrvCmd(nMainServerPID, pIn, ghConWnd);
@@ -4904,7 +4928,7 @@ void SendStarted()
 			_ASSERTE(nServerPID!=0 && (gnRunMode==RM_ALTSERVER || gnRunMode==RM_COMSPEC));
 			if ((gnRunMode == RM_ALTSERVER) || (gnRunMode == RM_SERVER))
 			{
-				pIn->StartStop.hServerProcessHandle = (u64)(DWORD_PTR)DuplicateProcessHandle(nServerPID);
+				pIn->StartStop.hServerProcessHandle = DuplicateProcessHandle(nServerPID);
 			}
 
 			WARNING("Optimize!!!");
@@ -4935,7 +4959,7 @@ void SendStarted()
 			_ASSERTE(nGuiPID!=0 || gnRunMode==RM_SERVER);
 			if ((gnRunMode == RM_ALTSERVER) || (gnRunMode == RM_SERVER))
 			{
-				pIn->StartStop.hServerProcessHandle = (u64)(DWORD_PTR)DuplicateProcessHandle(nGuiPID);
+				pIn->StartStop.hServerProcessHandle = DuplicateProcessHandle(nGuiPID);
 			}
 
 			WARNING("Optimize!!!");
@@ -5262,7 +5286,7 @@ void CreateLogSizeFile(int nLevel, const CESERVER_CONSOLE_MAPPING_HDR* pConsoleI
 		}
 	}
 
-	gpLogSize = new MFileLog(L"ConEmu-srv", pszDir, GetCurrentProcessId());
+	gpLogSize = new MFileLogEx(L"ConEmu-srv", pszDir, GetCurrentProcessId());
 
 	if (!gpLogSize)
 		return;
@@ -5281,7 +5305,7 @@ void CreateLogSizeFile(int nLevel, const CESERVER_CONSOLE_MAPPING_HDR* pConsoleI
 	LogSize(NULL, 0, "Startup");
 }
 
-void LogString(LPCSTR asText)
+bool LogString(LPCSTR asText)
 {
 	if (!gpLogSize)
 	{
@@ -5296,7 +5320,7 @@ void LogString(LPCSTR asText)
 			}
 		}
 		#endif
-		return;
+		return false;
 	}
 
 	char szInfo[255]; szInfo[0] = 0;
@@ -5319,14 +5343,15 @@ void LogString(LPCSTR asText)
 		pszThread = "DataThread";
 
 	gpLogSize->LogString(asText, true, pszThread);
+	return true;
 }
 
-void LogString(LPCWSTR asText)
+bool LogString(LPCWSTR asText)
 {
 	if (!gpLogSize)
 	{
 		DEBUGSTR(asText);
-		return;
+		return false;
 	}
 
 	wchar_t szInfo[255]; szInfo[0] = 0;
@@ -5345,6 +5370,7 @@ void LogString(LPCWSTR asText)
 		pszThread = L"DataThread";
 
 	gpLogSize->LogString(asText, true, pszThread);
+	return false;
 }
 
 void LogSize(const COORD* pcrSize, int newBufferHeight, LPCSTR pszLabel, bool bForceWriteLog)
@@ -5394,7 +5420,7 @@ void LogSize(const COORD* pcrSize, int newBufferHeight, LPCSTR pszLabel, bool bF
 		int iCvt = WideCharToMultiByte(CP_UTF8, 0, szFontName, -1, szFontInfo+1, 40, NULL, NULL);
 		if (iCvt <= 0) lstrcpynA(szFontInfo+1, "??", 40); else szFontInfo[iCvt+1] = 0;
 		int iLen = lstrlenA(szFontInfo); // result of WideCharToMultiByte is not suitable (contains trailing zero)
-		_wsprintfA(szFontInfo+iLen, SKIPLEN(countof(szFontInfo)-iLen) "` %ix%i%s",
+		sprintf_c(szFontInfo+iLen, countof(szFontInfo)-iLen/*#SECURELEN*/, "` %ix%i%s",
 			fontY, fontX, szState);
 	}
 
@@ -5407,14 +5433,14 @@ void LogSize(const COORD* pcrSize, int newBufferHeight, LPCSTR pszLabel, bool bF
 	char szWindowInfo[40] = "<NA>"; RECT rcConsole = {};
 	if (GetWindowRect(ghConWnd, &rcConsole))
 	{
-		_wsprintfA(szWindowInfo, SKIPCOUNT(szWindowInfo) "{(%i,%i) (%ix%i)}", rcConsole.left, rcConsole.top, LOGRECTSIZE(rcConsole));
+		sprintf_c(szWindowInfo, "{(%i,%i) (%ix%i)}", rcConsole.left, rcConsole.top, LOGRECTSIZE(rcConsole));
 	}
 
 	if (pcrSize)
 	{
 		bWriteLog = true;
 
-		_wsprintfA(szInfo, SKIPCOUNT(szInfo) "CurSize={%i,%i,%i} ChangeTo={%i,%i,%i} Cursor={%i,%i,%i%%%c} ConRect={%i,%i}-{%i,%i} %s (skipped=%i) {%u:%u:x%X:%u} %s %s",
+		sprintf_c(szInfo, "CurSize={%i,%i,%i} ChangeTo={%i,%i,%i} Cursor={%i,%i,%i%%%c} ConRect={%i,%i}-{%i,%i} %s (skipped=%i) {%u:%u:x%X:%u} %s %s",
 		           lsbi.dwSize.X, lsbi.srWindow.Bottom-lsbi.srWindow.Top+1, lsbi.dwSize.Y, pcrSize->X, pcrSize->Y, newBufferHeight,
 		           lsbi.dwCursorPosition.X, lsbi.dwCursorPosition.Y, ci.dwSize, ci.bVisible ? L'V' : L'H',
 		           lsbi.srWindow.Left, lsbi.srWindow.Top, lsbi.srWindow.Right, lsbi.srWindow.Bottom,
@@ -5432,7 +5458,7 @@ void LogSize(const COORD* pcrSize, int newBufferHeight, LPCSTR pszLabel, bool bF
 		else if (((GetTickCount() - nLastWriteTick) >= TickDelta) || (nSkipped >= SkipDelta))
 			bWriteLog = true;
 
-		_wsprintfA(szInfo, SKIPLEN(countof(szInfo)) "CurSize={%i,%i,%i} Cursor={%i,%i,%i%%%c} ConRect={%i,%i}-{%i,%i} %s (skipped=%i) {%u:%u:x%X:%u} %s %s",
+		sprintf_c(szInfo, "CurSize={%i,%i,%i} Cursor={%i,%i,%i%%%c} ConRect={%i,%i}-{%i,%i} %s (skipped=%i) {%u:%u:x%X:%u} %s %s",
 		           lsbi.dwSize.X, lsbi.srWindow.Bottom-lsbi.srWindow.Top+1, lsbi.dwSize.Y,
 		           lsbi.dwCursorPosition.X, lsbi.dwCursorPosition.Y, ci.dwSize, ci.bVisible ? L'V' : L'H',
 		           lsbi.srWindow.Left, lsbi.srWindow.Top, lsbi.srWindow.Right, lsbi.srWindow.Bottom,
@@ -5453,6 +5479,17 @@ void LogSize(const COORD* pcrSize, int newBufferHeight, LPCSTR pszLabel, bool bF
 		LogFunction(szInfo);
 		nLastWriteTick = GetTickCount();
 	}
+}
+
+void LogModeChange(LPCWSTR asName, DWORD oldVal, DWORD newVal)
+{
+	if (!gpLogSize) return;
+
+	LPCWSTR pszLabel = asName ? asName : L"???";
+	CEStr lsInfo;
+	INT_PTR cchLen = lstrlen(pszLabel) + 80;
+	swprintf_c(lsInfo.GetBuffer(cchLen), cchLen/*#SECURELEN*/, L"Mode %s changed: old=x%04X new=x%04X", pszLabel, oldVal, newVal);
+	LogString(lsInfo);
 }
 
 int CLogFunction::m_FnLevel = 0; // Simple, without per-thread devision
@@ -5582,49 +5619,126 @@ static void UndoConsoleWindowZoom()
 	UNREFERENCED_PARAMETER(lbRc);
 }
 
+bool static NeedLegacyCursorCorrection()
+{
+	static bool bNeedCorrection = false, bChecked = false;
+
+	if (!bChecked)
+	{
+		// gh-1051: In NON DBCS systems there are cursor problems too (Win10 stable build 15063 or higher)
+		if (IsWin10() && !IsWinDBCS() && !IsWin10LegacyConsole())
+		{
+			OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, 15063 };
+			DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(VerSetConditionMask(0,
+				VER_MAJORVERSION, VER_GREATER_EQUAL),
+				VER_MINORVERSION, VER_GREATER_EQUAL),
+				VER_BUILDNUMBER, VER_GREATER_EQUAL);
+			BOOL ibIsWin = _VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER, dwlConditionMask);
+			if (ibIsWin)
+			{
+				bNeedCorrection = true;
+			}
+		}
+
+		bChecked = true;
+	}
+
+	return bNeedCorrection;
+}
+
 // TODO: Optimize - combine ReadConsoleData/ReadConsoleInfo
 void static CorrectDBCSCursorPosition(HANDLE ahConOut, CONSOLE_SCREEN_BUFFER_INFO& csbi)
 {
-	if (!gbIsDBCS || csbi.dwSize.X <= 0 || csbi.dwCursorPosition.X <= 0)
+	if (csbi.dwSize.X <= 0 || csbi.dwCursorPosition.X <= 0)
 		return;
 
 	// Issue 577: Chinese display error on Chinese
-	// -- GetConsoleScreenBufferInfo возвращает координаты курсора в DBCS, а нам нужен wchar_t !!!
-	if (IsConsoleDoubleCellCP())
+	// -- GetConsoleScreenBufferInfo returns DBCS cursor coordinates, but we require wchar_t !!!
+	if (!IsConsoleDoubleCellCP()
+	// gh-1057: In NON DBCS systems there are cursor problems too (Win10 stable build 15063)
+		&& !NeedLegacyCursorCorrection())
+		return;
+
+	// The correction process
 	{
-		WORD Attrs[200];
-		LONG cchMax = countof(Attrs);
-		WORD* pAttrs = (csbi.dwCursorPosition.X <= cchMax) ? Attrs : (WORD*)calloc(csbi.dwCursorPosition.X, sizeof(*pAttrs));
-		if (pAttrs)
+		CHAR Chars[200];
+		LONG cchMax = countof(Chars);
+		LPSTR pChars = (csbi.dwCursorPosition.X <= cchMax) ? Chars : (LPSTR)calloc(csbi.dwCursorPosition.X, sizeof(*pChars));
+		if (pChars)
 			cchMax = csbi.dwCursorPosition.X;
 		else
-			pAttrs = Attrs; // memory allocation fail? try part of line?
+			pChars = Chars; // memory allocation fail? try part of line?
 		COORD crRead = {0, csbi.dwCursorPosition.Y};
+		// gh-1501: Windows 10 CJK version set COMMON_LVB_*_BYTE even for SOME non-ASCII characters (e.g. Greek "Α", Russian "Я", etc.)
+		#if 0
 		//120830 - DBCS uses 2 cells per hieroglyph
-		DWORD nRead = 0;
 		// TODO: Optimize
-		if (ReadConsoleOutputAttribute(ahConOut, pAttrs, cchMax, crRead, &nRead) && nRead)
+		DWORD nRead = 0;
+		BOOL bRead = NeedLegacyCursorCorrection() ? FALSE : ReadConsoleOutputCharacterA(ahConOut, pChars, cchMax, crRead, &nRead);
+		// ReadConsoleOutputCharacterA may return "???" instead of DBCS codes in Non-DBCS systems
+		if (bRead && (nRead == cchMax))
 		{
 			_ASSERTE(nRead==cchMax);
 			int nXShift = 0;
-			LPWORD p = pAttrs, pEnd = pAttrs+nRead;
+			LPSTR p = pChars, pEnd = pChars+nRead;
 			while (p < pEnd)
 			{
-				if ((*p) & COMMON_LVB_LEADING_BYTE)
+				if (IsDBCSLeadByte(*p))
 				{
 					nXShift++;
 					p++;
-					_ASSERTE((p < pEnd) && ((*p) & COMMON_LVB_TRAILING_BYTE));
+					_ASSERTE(p < pEnd);
 				}
 				p++;
 			}
 			_ASSERTE(nXShift <= csbi.dwCursorPosition.X);
-			csbi.dwCursorPosition.X = max(0,(csbi.dwCursorPosition.X - nXShift));
+			csbi.dwCursorPosition.X = std::max(0,(csbi.dwCursorPosition.X - nXShift));
 		}
-		if (pAttrs && (pAttrs != Attrs))
+		else if (IsWin10() && (NeedLegacyCursorCorrection() || (GetConsoleOutputCP() == CP_UTF8)))
+		#endif
 		{
-			free(pAttrs);
+			// Temporary workaround for conhost bug!
+			CHAR_INFO CharsEx[200];
+			CHAR_INFO* pCharsEx = (cchMax <= countof(CharsEx)) ? CharsEx
+				: (CHAR_INFO*)calloc(cchMax, sizeof(*pCharsEx));
+			if (pCharsEx)
+			{
+				COORD bufSize = {cchMax, 1}; COORD bufCoord = {0,0};
+				SMALL_RECT rgn = MakeSmallRect(0, csbi.dwCursorPosition.Y, cchMax-1, csbi.dwCursorPosition.Y);
+				BOOL bRead = ReadConsoleOutputW(ahConOut, pCharsEx, bufSize, bufCoord, &rgn);
+				if (bRead)
+				{
+					int nXShift = 0;
+					CHAR_INFO *p = pCharsEx, *pEnd = pCharsEx+cchMax;
+					// gh-1206: correct position after "こんばんはGood Evening"
+					while (p < pEnd)
+					{
+						if (!(p->Attributes & COMMON_LVB_TRAILING_BYTE)
+							/*&& get_wcwidth(p->Char.UnicodeChar) == 2*/)
+						{
+							_ASSERTE(p < pEnd);
+							if (((p + 1) < pEnd)
+								&& (p->Attributes & COMMON_LVB_LEADING_BYTE)
+								&& ((p+1)->Attributes & COMMON_LVB_TRAILING_BYTE)
+								&& (p->Char.UnicodeChar == (p+1)->Char.UnicodeChar))
+							{
+								p++; nXShift++;
+							}
+							_ASSERTE(p < pEnd);
+						}
+						p++;
+					}
+
+					_ASSERTE(nXShift <= csbi.dwCursorPosition.X);
+					csbi.dwCursorPosition.X = std::max<int>(0, (csbi.dwCursorPosition.X - nXShift));
+
+					if (pCharsEx != CharsEx)
+						free(pCharsEx);
+				}
+			}
 		}
+		if (pChars != Chars)
+			free(pChars);
 	}
 }
 
@@ -5706,7 +5820,7 @@ BOOL MyGetConsoleScreenBufferInfo(HANDLE ahConOut, PCONSOLE_SCREEN_BUFFER_INFO a
 	if (!lbRc)
 	{
 		nErrCode = GetLastError();
-		if (gpLogSize) LogSize(NULL, 0, ":MyGetConsoleScreenBufferInfo");
+		if (gpLogSize) LogSize(NULL, 0, ":MyGetConsoleScreenBufferInfo(FAIL)");
 		_ASSERTE(FALSE && "GetConsoleScreenBufferInfo failed, conhost was destroyed?");
 		goto wrap;
 	}
@@ -5717,8 +5831,16 @@ BOOL MyGetConsoleScreenBufferInfo(HANDLE ahConOut, PCONSOLE_SCREEN_BUFFER_INFO a
 		)
 	{
 		nErrCode = GetLastError();
-		if (gpLogSize) LogSize(NULL, 0, ":MyGetConsoleScreenBufferInfo");
+		if (gpLogSize) LogSize(NULL, 0, ":MyGetConsoleScreenBufferInfo(dwSize)");
 		_ASSERTE(FALSE && "GetConsoleScreenBufferInfo failed, conhost was destroyed?");
+		goto wrap;
+	}
+
+	if (csbi.srWindow.Left < 0 || csbi.srWindow.Top < 0 || csbi.srWindow.Right < csbi.srWindow.Left || csbi.srWindow.Bottom < csbi.srWindow.Top)
+	{
+		nErrCode = GetLastError();
+		if (gpLogSize) LogSize(NULL, 0, ":MyGetConsoleScreenBufferInfo(srWindow)");
+		_ASSERTE(FALSE && "GetConsoleScreenBufferInfo failed, Invalid srWindow coordinates");
 		goto wrap;
 	}
 
@@ -5750,7 +5872,7 @@ BOOL MyGetConsoleScreenBufferInfo(HANDLE ahConOut, PCONSOLE_SCREEN_BUFFER_INFO a
 			if (gpLogSize)
 			{
 				char szLabel[80];
-				_wsprintfA(szLabel, SKIPCOUNT(szLabel) "CONSOLE_FULLSCREEN_HARDWARE{x%08X}", gpSrv->dwDisplayMode);
+				sprintf_c(szLabel, "CONSOLE_FULLSCREEN_HARDWARE{x%08X}", gpSrv->dwDisplayMode);
 				LogSize(&csbi.dwSize, 0, szLabel);
 			}
 		}
@@ -5785,7 +5907,7 @@ BOOL MyGetConsoleScreenBufferInfo(HANDLE ahConOut, PCONSOLE_SCREEN_BUFFER_INFO a
 
 	// Issue 577: Chinese display error on Chinese
 	// -- GetConsoleScreenBufferInfo возвращает координаты курсора в DBCS, а нам нужен wchar_t !!!
-	if (gbIsDBCS && csbi.dwSize.X && csbi.dwCursorPosition.X)
+	if (csbi.dwSize.X && csbi.dwCursorPosition.X)
 	{
 		CorrectDBCSCursorPosition(ahConOut, csbi);
 	}
@@ -5801,13 +5923,13 @@ BOOL MyGetConsoleScreenBufferInfo(HANDLE ahConOut, PCONSOLE_SCREEN_BUFFER_INFO a
 
 			if (gpSrv->TopLeft.x >= 0)
 			{
-				csbi.srWindow.Right = min(csbi.dwSize.X, gpSrv->TopLeft.x+nWidth) - 1;
-				csbi.srWindow.Left = max(0, csbi.srWindow.Right-nWidth+1);
+				csbi.srWindow.Right = std::min<int>(csbi.dwSize.X, gpSrv->TopLeft.x + nWidth) - 1;
+				csbi.srWindow.Left = std::max<int>(0, csbi.srWindow.Right - nWidth + 1);
 			}
 			if (gpSrv->TopLeft.y >= 0)
 			{
-				csbi.srWindow.Bottom = min(csbi.dwSize.Y, gpSrv->TopLeft.y+nHeight) - 1;
-				csbi.srWindow.Top = max(0, csbi.srWindow.Bottom-nHeight+1);
+				csbi.srWindow.Bottom = std::min<int>(csbi.dwSize.Y, gpSrv->TopLeft.y+nHeight) - 1;
+				csbi.srWindow.Top = std::max<int>(0, csbi.srWindow.Bottom-nHeight+1);
 			}
 		}
 
@@ -5874,7 +5996,7 @@ static bool AdaptConsoleFontSize(const COORD& crNewSize)
 			{
 				if (gpLogSize)
 				{
-					_wsprintfA(szLogInfo, SKIPLEN(countof(szLogInfo)) "Need to reduce minSize. Cur={%i,%i}, Req={%i,%i}", minSizeX, minSizeY, crNewSize.X, crNewSize.Y);
+					sprintf_c(szLogInfo, "Need to reduce minSize. Cur={%i,%i}, Req={%i,%i}", minSizeX, minSizeY, crNewSize.X, crNewSize.Y);
 					LogString(szLogInfo);
 				}
 
@@ -5886,7 +6008,7 @@ static bool AdaptConsoleFontSize(const COORD& crNewSize)
 		}
 		if (gpLogSize)
 		{
-			_wsprintfA(szLogInfo, SKIPLEN(countof(szLogInfo)) "Console font size H=%i W=%i N=", curSizeY, curSizeX);
+			sprintf_c(szLogInfo, "Console font size H=%i W=%i N=", curSizeY, curSizeX);
 			int nLen = lstrlenA(szLogInfo);
 			WideCharToMultiByte(CP_UTF8, 0, sFontName, -1, szLogInfo+nLen, countof(szLogInfo)-nLen, NULL, NULL);
 			LogFunction(szLogInfo);
@@ -5922,7 +6044,7 @@ static bool AdaptConsoleFontSize(const COORD& crNewSize)
 
 				if (gpLogSize)
 				{
-					_wsprintfA(szLogInfo, SKIPLEN(countof(szLogInfo)) "Largest console size is {%i,%i}", crMax.X, crMax.Y);
+					sprintf_c(szLogInfo, "Largest console size is {%i,%i}", crMax.X, crMax.Y);
 					LogString(szLogInfo);
 				}
 			}
@@ -5980,8 +6102,8 @@ static bool ApplyConsoleSizeSimple(const COORD& crNewSize, const CONSOLE_SCREEN_
 		if (crNewSize.X <= (csbi.srWindow.Right-csbi.srWindow.Left) || crNewSize.Y <= (csbi.srWindow.Bottom-csbi.srWindow.Top))
 		{
 			rNewRect.Left = 0; rNewRect.Top = 0;
-			rNewRect.Right = min((crNewSize.X - 1),(csbi.srWindow.Right-csbi.srWindow.Left));
-			rNewRect.Bottom = min((crNewSize.Y - 1),(csbi.srWindow.Bottom-csbi.srWindow.Top));
+			rNewRect.Right = std::min<int>((crNewSize.X - 1), (csbi.srWindow.Right - csbi.srWindow.Left));
+			rNewRect.Bottom = std::min<int>((crNewSize.Y - 1), (csbi.srWindow.Bottom - csbi.srWindow.Top));
 
 			if (!SetConsoleWindowInfo(ghConOut, TRUE, &rNewRect))
 			{
@@ -6046,7 +6168,7 @@ static SHORT FindFirstDirtyLine(SHORT anFrom, SHORT anTo, SHORT anWidth, WORD wD
 		}
 	}
 
-	iFound = min(anTo, anFrom);
+	iFound = std::min<SHORT>(anTo, anFrom);
 wrap:
 	SafeFree(pch);
 	return iFound;
@@ -6069,8 +6191,8 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 	// не может выходить за пределы ширины буфера
 	if (rNewRect.Right > nMaxX)
 	{
-		rNewRect.Left = max(0, csbi.dwSize.X-crNewSize.X);
-		rNewRect.Right = min(nMaxX, rNewRect.Left+crNewSize.X-1);
+		rNewRect.Left = std::max<int>(0, (csbi.dwSize.X - crNewSize.X));
+		rNewRect.Right = std::min<int>(nMaxX, (rNewRect.Left + crNewSize.X - 1));
 	}
 
 	// Теперь - танцы с вертикалью. Логика такая
@@ -6087,7 +6209,7 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 	{
 		// Все просто, фиксируем нижнюю границу по размеру буфера
 		rNewRect.Bottom = csbi.dwSize.Y-1;
-		rNewRect.Top = max(0, rNewRect.Bottom-crNewSize.Y+1);
+		rNewRect.Top = std::max<int>(0, (rNewRect.Bottom - crNewSize.Y + 1));
 	}
 	else
 	{
@@ -6098,7 +6220,7 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 		{
 			_ASSERTE(nCursorAtBottom<=3);
 			// Оставить строку с курсором "приклеенной" к нижней границе окна (с макс. отступом nCursorAtBottom строк)
-			rNewRect.Bottom = min(nMaxY, csbi.dwCursorPosition.Y+nCursorAtBottom-1);
+			rNewRect.Bottom = std::min<int>(nMaxY, (csbi.dwCursorPosition.Y + nCursorAtBottom - 1));
 		}
 		// Уменьшение видимой области
 		else if (crNewSize.Y < nRectHeight)
@@ -6106,18 +6228,18 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 			if ((nScreenAtBottom > 0) && (nScreenAtBottom <= 3))
 			{
 				// Оставить nScreenAtBottom строк (включая) между anOldBottom и низом консоли
-				rNewRect.Bottom = min(nMaxY, anOldBottom+nScreenAtBottom-1);
+				rNewRect.Bottom = std::min<int>(nMaxY, anOldBottom+nScreenAtBottom-1);
 			}
 			else if (anOldBottom > (rNewRect.Top + crNewSize.Y - 1))
 			{
 				// Если нижняя граница приблизилась или перекрыла
 				// нашу старую строку (которая была anOldBottom)
-				rNewRect.Bottom = min(anOldBottom, csbi.dwSize.Y-1);
+				rNewRect.Bottom = std::min<int>(anOldBottom, csbi.dwSize.Y-1);
 			}
 			else
 			{
 				// Иначе - не трогать верхнюю границу
-				rNewRect.Bottom = min(nMaxY, rNewRect.Top+crNewSize.Y-1);
+				rNewRect.Bottom = std::min<int>(nMaxY, rNewRect.Top+crNewSize.Y-1);
 			}
 			//rNewRect.Top = rNewRect.Bottom-crNewSize.Y+1; // на 0 скорректируем в конце
 		}
@@ -6127,7 +6249,7 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 			if (nScreenAtBottom > 0)
 			{
 				// Оставить nScreenAtBottom строк (включая) между anOldBottom и низом консоли
-				rNewRect.Bottom = min(nMaxY, anOldBottom+nScreenAtBottom-1);
+				rNewRect.Bottom = std::min<int>(nMaxY, anOldBottom+nScreenAtBottom-1);
 			}
 			//rNewRect.Top = rNewRect.Bottom-crNewSize.Y+1; // на 0 скорректируем в конце
 		}
@@ -6135,7 +6257,7 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 		// Но курсор не должен уходить за пределы экрана
 		if (bCursorInScreen && (csbi.dwCursorPosition.Y < (rNewRect.Bottom-crNewSize.Y+1)))
 		{
-			rNewRect.Bottom = max(0, csbi.dwCursorPosition.Y+crNewSize.Y-1);
+			rNewRect.Bottom = std::max<int>(0, csbi.dwCursorPosition.Y+crNewSize.Y-1);
 		}
 
 		// And top, will be corrected to (>0) below
@@ -6145,12 +6267,12 @@ static void EvalVisibleResizeRect(SMALL_RECT& rNewRect,
 		if (rNewRect.Bottom > nMaxY)
 		{
 			rNewRect.Bottom = nMaxY;
-			rNewRect.Top = max(0, rNewRect.Bottom-crNewSize.Y+1);
+			rNewRect.Top = std::max<int>(0, rNewRect.Bottom-crNewSize.Y+1);
 		}
 		else if (rNewRect.Top < 0)
 		{
 			rNewRect.Top = 0;
-			rNewRect.Bottom = min(nMaxY, rNewRect.Top+crNewSize.Y-1);
+			rNewRect.Bottom = std::min<int>(nMaxY, rNewRect.Top+crNewSize.Y-1);
 		}
 	}
 
@@ -6196,7 +6318,7 @@ static bool ApplyConsoleSizeBuffer(const USHORT BufferHeight, const COORD& crNew
 		{
 			if (lbCursorInScreen)
 			{
-				nBottomLine = max(nDirtyLine, min(csbi.dwCursorPosition.Y+1/*-*/,csbi.srWindow.Bottom));
+				nBottomLine = std::max<int>(nDirtyLine, std::min<int>(csbi.dwCursorPosition.Y+1/*-*/,csbi.srWindow.Bottom));
 			}
 			else
 			{
@@ -6213,7 +6335,7 @@ static bool ApplyConsoleSizeBuffer(const USHORT BufferHeight, const COORD& crNew
 				SHORT nAboveLines = (crNewSize.Y - nScreenAtBottom);
 				if (nAboveLines <= (nScreenAtBottom + 1))
 				{
-					nCursorAtBottom = max(1, crNewSize.Y - nScreenAtBottom - 1);
+					nCursorAtBottom = std::max<int>(1, crNewSize.Y - nScreenAtBottom - 1);
 				}
 			}
 		}
@@ -6250,9 +6372,9 @@ static bool ApplyConsoleSizeBuffer(const USHORT BufferHeight, const COORD& crNew
 		#if 0
 		rcTemp.Left = 0;
 		WARNING("А при уменьшении высоты, тащим нижнюю границе окна вверх, Top глючить не будет?");
-		rcTemp.Top = max(0,(csbi.srWindow.Bottom-crNewSize.Y+1));
-		rcTemp.Right = min((crNewSize.X - 1),(csbi.srWindow.Right-csbi.srWindow.Left));
-		rcTemp.Bottom = min((BufferHeight - 1),(rcTemp.Top+crNewSize.Y-1));//(csbi.srWindow.Bottom-csbi.srWindow.Top)); //-V592
+		rcTemp.Top = std::max(0,(csbi.srWindow.Bottom-crNewSize.Y+1));
+		rcTemp.Right = std::min((crNewSize.X - 1),(csbi.srWindow.Right-csbi.srWindow.Left));
+		rcTemp.Bottom = std::min((BufferHeight - 1),(rcTemp.Top+crNewSize.Y-1));//(csbi.srWindow.Bottom-csbi.srWindow.Top)); //-V592
 		_ASSERTE(((rcTemp.Bottom-rcTemp.Top+1)==crNewSize.Y) && ((rcTemp.Bottom-rcTemp.Top)==(rNewRect.Bottom-rNewRect.Top)));
 		#endif
 
@@ -6298,7 +6420,7 @@ static bool ApplyConsoleSizeBuffer(const USHORT BufferHeight, const COORD& crNew
 		TODO("Маркеры для блокировки положения в окне после заворота строк в Win10?");
 	}
 
-	rNewRect.Bottom = min((crHeight.Y-1), (rNewRect.Top+gcrVisibleSize.Y-1)); //-V592
+	rNewRect.Bottom = std::min((crHeight.Y-1), (rNewRect.Top+gcrVisibleSize.Y-1)); //-V592
 	#endif
 
 	_ASSERTE((rNewRect.Bottom-rNewRect.Top)<200);
@@ -6317,12 +6439,12 @@ static bool ApplyConsoleSizeBuffer(const USHORT BufferHeight, const COORD& crNew
 void RefillConsoleAttributes(const CONSOLE_SCREEN_BUFFER_INFO& csbi5, WORD OldText, WORD NewText)
 {
 	wchar_t szLog[140];
-	_wsprintf(szLog, SKIPCOUNT(szLog) L"RefillConsoleAttributes started Lines=%u Cols=%u Old=x%02X New=x%02X", csbi5.dwSize.Y, csbi5.dwSize.X, OldText, NewText);
+	swprintf_c(szLog, L"RefillConsoleAttributes started Lines=%u Cols=%u Old=x%02X New=x%02X", csbi5.dwSize.Y, csbi5.dwSize.X, OldText, NewText);
 	LogString(szLog);
 
 	// Считать из консоли текущие атрибуты (построчно/поблочно)
 	// И там, где они совпадают с OldText - заменить на in.SetConColor.NewTextAttributes
-	DWORD nMaxLines = max(1,min((8000 / csbi5.dwSize.X),csbi5.dwSize.Y));
+	DWORD nMaxLines = std::max<int>(1, std::min<int>((8000 / csbi5.dwSize.X), csbi5.dwSize.Y));
 	WORD* pnAttrs = (WORD*)malloc(nMaxLines*csbi5.dwSize.X*sizeof(*pnAttrs));
 	if (!pnAttrs)
 	{
@@ -6337,7 +6459,7 @@ void RefillConsoleAttributes(const CONSOLE_SCREEN_BUFFER_INFO& csbi5, WORD OldTe
 	COORD crRead = {0,0};
 	while (crRead.Y < csbi5.dwSize.Y)
 	{
-		DWORD nReadLn = min((int)nMaxLines,(csbi5.dwSize.Y-crRead.Y));
+		DWORD nReadLn = std::min<int>(nMaxLines, (csbi5.dwSize.Y-crRead.Y));
 		DWORD nReady = 0;
 
 		perf.Start(c_read);
@@ -6395,7 +6517,7 @@ void RefillConsoleAttributes(const CONSOLE_SCREEN_BUFFER_INFO& csbi5, WORD OldTe
 
 	ULONG l_read_p, l_read = perf.GetCounter(c_read.ID, &l_read_p, NULL, NULL);
 	ULONG l_fill_p, l_fill = perf.GetCounter(c_fill.ID, &l_fill_p, NULL, NULL);
-	_wsprintf(szLog, SKIPCOUNT(szLog) L"RefillConsoleAttributes finished, Reads(%u, %u%%), Fills(%u, %u%%)", l_read, l_read_p, l_fill, l_fill_p);
+	swprintf_c(szLog, L"RefillConsoleAttributes finished, Reads(%u, %u%%), Fills(%u, %u%%)", l_read, l_read_p, l_fill, l_fill_p);
 	LogString(szLog);
 }
 
@@ -6547,7 +6669,7 @@ BOOL SetConsoleSize(USHORT BufferHeight, COORD crNewSize, SMALL_RECT rNewRect, L
 		// В режиме BufferHeight - высота ДОЛЖНА быть больше допустимого размера окна консоли
 		// иначе мы запутаемся при проверках "буферный ли это режим"...
 		if (gnBufferHeight <= (csbi.dwMaximumWindowSize.Y * 12 / 10))
-			gnBufferHeight = max(300, (SHORT)(csbi.dwMaximumWindowSize.Y * 12 / 10));
+			gnBufferHeight = std::max<int>(300, (csbi.dwMaximumWindowSize.Y * 12 / 10));
 
 		// В режиме cmd сразу уменьшим максимальный FPS
 		gpSrv->dwLastUserTick = GetTickCount() - USER_IDLE_TIMEOUT - 1;
@@ -6690,7 +6812,7 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 	if (!rpdwPID || (nMaxCount < 3))
 	{
 		_ASSERTE(rpdwPID && (nMaxCount >= 3));
-		return gpSrv->nProcessCount;
+		return gpSrv->processes->nProcessCount;
 	}
 
 
@@ -6718,7 +6840,7 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 		}
 		#endif
 
-		if (!gpSrv->nConhostPID)
+		if (!gpSrv->processes->nConhostPID)
 		{
 			// Найти порожденный conhost.exe
 			//TODO: Reuse MToolHelp.h
@@ -6734,7 +6856,7 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 						if ((PI.th32ParentProcessID == nSrvPID)
 							&& (lstrcmpi(PI.szExeFile, L"conhost.exe") == 0))
 						{
-							gpSrv->nConhostPID = PI.th32ProcessID;
+							gpSrv->processes->nConhostPID = PI.th32ProcessID;
 							break;
 						}
 					} while (Process32Next(h, &PI));
@@ -6743,26 +6865,26 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 				CloseHandle(h);
 			}
 
-			if (!gpSrv->nConhostPID)
-				gpSrv->nConhostPID = (UINT)-1;
+			if (!gpSrv->processes->nConhostPID)
+				gpSrv->processes->nConhostPID = (UINT)-1;
 		}
 
-		if (gpSrv->nConhostPID && (gpSrv->nConhostPID != (UINT)-1))
+		if (gpSrv->processes->nConhostPID && (gpSrv->processes->nConhostPID != (UINT)-1))
 		{
-			rpdwPID[nRetCount++] = gpSrv->nConhostPID;
+			rpdwPID[nRetCount++] = gpSrv->processes->nConhostPID;
 		}
 	}
 
 
 	MSectionLock CS;
 	UINT nCurCount = 0;
-	if (CS.Lock(gpSrv->csProc, TRUE/*abExclusive*/, 200))
+	if (CS.Lock(gpSrv->processes->csProc, TRUE/*abExclusive*/, 200))
 	{
-		nCurCount = gpSrv->nProcessCount;
+		nCurCount = gpSrv->processes->nProcessCount;
 
 		for (INT_PTR i1 = (nCurCount-1); (i1 >= 0) && (nRetCount < nMaxCount); i1--)
 		{
-			DWORD PID = gpSrv->pnProcesses[i1];
+			DWORD PID = gpSrv->processes->pnProcesses[i1];
 			if (PID && PID != gnSelfPID)
 			{
 				rpdwPID[nRetCount++] = PID;
@@ -6781,13 +6903,13 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 	//	rpdwPID[0] = gnSelfPID;
 
 	//	for(int i1=0, i2=(nMaxCount-1); i1<(int)nSize && i2>0; i1++, i2--)
-	//		rpdwPID[i2] = gpSrv->pnProcesses[i1]; //-V108
+	//		rpdwPID[i2] = gpSrv->processes->pnProcesses[i1]; //-V108
 
 	//	nSize = nMaxCount;
 	//}
 	//else
 	//{
-	//	memmove(rpdwPID, gpSrv->pnProcesses, sizeof(DWORD)*nSize);
+	//	memmove(rpdwPID, gpSrv->processes->pnProcesses, sizeof(DWORD)*nSize);
 
 	//	for (UINT i=nSize; i<nMaxCount; i++)
 	//		rpdwPID[i] = 0; //-V108
@@ -6800,7 +6922,7 @@ int GetProcessCount(DWORD *rpdwPID, UINT nMaxCount)
 void _printf(LPCSTR asFormat, DWORD dw1, DWORD dw2, LPCWSTR asAddLine)
 {
 	char szError[MAX_PATH];
-	_wsprintfA(szError, SKIPLEN(countof(szError)) asFormat, dw1, dw2);
+	sprintf_c(szError, asFormat, dw1, dw2);
 	_printf(szError);
 
 	if (asAddLine)
@@ -6813,7 +6935,7 @@ void _printf(LPCSTR asFormat, DWORD dw1, DWORD dw2, LPCWSTR asAddLine)
 void _printf(LPCSTR asFormat, DWORD dwErr, LPCWSTR asAddLine)
 {
 	char szError[MAX_PATH];
-	_wsprintfA(szError, SKIPLEN(countof(szError)) asFormat, dwErr);
+	sprintf_c(szError, asFormat, dwErr);
 	_printf(szError);
 
 	if (asAddLine)
@@ -6826,7 +6948,7 @@ void _printf(LPCSTR asFormat, DWORD dwErr, LPCWSTR asAddLine)
 void _printf(LPCSTR asFormat, DWORD dwErr)
 {
 	char szError[MAX_PATH];
-	_wsprintfA(szError, SKIPLEN(countof(szError)) asFormat, dwErr);
+	sprintf_c(szError, asFormat, dwErr);
 	_printf(szError);
 }
 
@@ -6924,7 +7046,7 @@ void DisableAutoConfirmExit(BOOL abFromFarPlugin)
 	}
 }
 
-bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
+bool IsKeyboardLayoutChanged(DWORD& pdwLayout, LPDWORD pdwErrCode /*= NULL*/)
 {
 	bool bChanged = false;
 
@@ -6934,7 +7056,8 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 		return false;
 	}
 
-	if (pfnGetConsoleKeyboardLayoutName)
+	static bool bGetConsoleKeyboardLayoutNameImplemented = true;
+	if (bGetConsoleKeyboardLayoutNameImplemented && pfnGetConsoleKeyboardLayoutName)
 	{
 		wchar_t szCurKeybLayout[32] = L"";
 
@@ -6944,11 +7067,11 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 		//#endif
 
 		// The expected result of GetConsoleKeyboardLayoutName is like "00000419"
-		BOOL bConApiRc;
-
-		bConApiRc = pfnGetConsoleKeyboardLayoutName(szCurKeybLayout);
+		BOOL bConApiRc = pfnGetConsoleKeyboardLayoutName(szCurKeybLayout) && szCurKeybLayout[0];
 
 		DWORD nErr = bConApiRc ? 0 : GetLastError();
+		if (pdwErrCode)
+			*pdwErrCode = nErr;
 
 		/*
 		if (!bConApiRc && (nErr == ERROR_GEN_FAILURE))
@@ -6966,6 +7089,14 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 
 		if (!bConApiRc)
 		{
+			// If GetConsoleKeyboardLayoutName is not implemented in Windows, ERROR_MR_MID_NOT_FOUND or E_NOTIMPL will be returned.
+			// (there is no matching DOS/Win32 error code for NTSTATUS code returned)
+			// When this happens, we don't want to continue to call the function.
+			if (nErr == ERROR_MR_MID_NOT_FOUND || LOWORD(nErr) == LOWORD(E_NOTIMPL))
+			{
+				bGetConsoleKeyboardLayoutNameImplemented = false;
+			}
+
 			if (gpSrv->szKeybLayout[0])
 			{
 				// Log only first error per session
@@ -6974,8 +7105,8 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 			else
 			{
 				wchar_t szErr[80];
-				_wsprintf(szErr, SKIPCOUNT(szErr) L"ConsKeybLayout failed with code=%u forcing to GetKeyboardLayoutName or 0409", nErr);
-				_ASSERTE(FALSE && "ConsKeybLayout failed");
+				swprintf_c(szErr, L"ConsKeybLayout failed with code=%u forcing to GetKeyboardLayoutName or 0409", nErr);
+				_ASSERTE(!bGetConsoleKeyboardLayoutNameImplemented && "ConsKeybLayout failed");
 				LogString(szErr);
 				if (!GetKeyboardLayoutName(szCurKeybLayout) || (szCurKeybLayout[0] == 0))
 				{
@@ -6990,7 +7121,7 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 			{
 				#ifdef _DEBUG
 				wchar_t szDbg[128];
-				_wsprintf(szDbg, SKIPLEN(countof(szDbg))
+				swprintf_c(szDbg,
 				          L"ConEmuC: InputLayoutChanged (GetConsoleKeyboardLayoutName returns) '%s'\n",
 				          szCurKeybLayout);
 				OutputDebugString(szDbg);
@@ -6999,7 +7130,7 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 				if (gpLogSize)
 				{
 					char szInfo[128]; wchar_t szWide[128];
-					_wsprintf(szWide, SKIPLEN(countof(szWide)) L"ConsKeybLayout changed from %s to %s", gpSrv->szKeybLayout, szCurKeybLayout);
+					swprintf_c(szWide, L"ConsKeybLayout changed from %s to %s", gpSrv->szKeybLayout, szCurKeybLayout);
 					WideCharToMultiByte(CP_ACP,0,szWide,-1,szInfo,128,0,0);
 					LogFunction(szInfo);
 				}
@@ -7010,15 +7141,19 @@ bool IsKeyboardLayoutChanged(DWORD* pdwLayout)
 			}
 		}
 	}
+	else if (pdwErrCode)
+	{
+		*pdwErrCode = (DWORD)-1;
+	}
 
-	if (pdwLayout)
+	// The result, if possible
 	{
 		wchar_t *pszEnd = NULL; //szCurKeybLayout+8;
 		//WARNING("BUGBUG: 16 цифр не вернет"); -- тут именно 8 цифр. Это LayoutNAME, а не string(HKL)
 		// LayoutName: "00000409", "00010409", ...
 		// А HKL от него отличается, так что передаем DWORD
 		// HKL в x64 выглядит как: "0x0000000000020409", "0xFFFFFFFFF0010409"
-		*pdwLayout = wcstoul(gpSrv->szKeybLayout, &pszEnd, 16);
+		pdwLayout = wcstoul(gpSrv->szKeybLayout, &pszEnd, 16);
 	}
 
 	return bChanged;
@@ -7034,7 +7169,7 @@ void CheckKeyboardLayout()
 	// А HKL от него отличается, так что передаем DWORD
 	// HKL в x64 выглядит как: "0x0000000000020409", "0xFFFFFFFFF0010409"
 
-	if (IsKeyboardLayoutChanged(&dwLayout))
+	if (IsKeyboardLayoutChanged(dwLayout))
 	{
 		// Сменился, Отошлем в GUI
 		CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_LANGCHANGE,sizeof(CESERVER_REQ_HDR)+sizeof(DWORD)); //-V119
@@ -7066,7 +7201,7 @@ LPVOID calloc(size_t nCount, size_t nSize)
 
 	#ifdef HEAP_LOGGING
 	wchar_t szDbg[64];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"%i: ALLOCATED   0x%08X..0x%08X   (%i bytes)\n", GetCurrentThreadId(), (DWORD)ptr, ((DWORD)ptr)+nWhole, nWhole);
+	swprintf_c(szDbg, L"%i: ALLOCATED   0x%08X..0x%08X   (%i bytes)\n", GetCurrentThreadId(), (DWORD)ptr, ((DWORD)ptr)+nWhole, nWhole);
 	DEBUGSTR(szDbg);
 	#endif
 
@@ -7093,7 +7228,7 @@ void free(LPVOID ptr)
 		#endif
 		#ifdef HEAP_LOGGING
 		wchar_t szDbg[64];
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"%i: FREE BLOCK  0x%08X..0x%08X   (%i bytes)\n", GetCurrentThreadId(), (DWORD)ptr, ((DWORD)ptr)+nMemSize, nMemSize);
+		swprintf_c(szDbg, L"%i: FREE BLOCK  0x%08X..0x%08X   (%i bytes)\n", GetCurrentThreadId(), (DWORD)ptr, ((DWORD)ptr)+nMemSize, nMemSize);
 		DEBUGSTR(szDbg);
 		#endif
 

@@ -2,7 +2,7 @@
 //TODO: И аналогично для цвета фона градусника/картинок/текста и самого градусника
 
 /*
-Copyright (c) 2010-2016 Maximus5
+Copyright (c) 2010-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,8 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //  #define SHOW_WRITING_RECTS
 #endif
 
-
-#include <windows.h>
 
 #include "../common/Common.h"
 #include "../common/CEStr.h"
@@ -105,7 +103,7 @@ BOOL gbMonitorFileChange = FALSE;
 int WINAPI GetMinFarVersionW(void)
 {
 	// ACTL_SYNCHRO required
-	return MAKEFARVERSION(2,0,max(1007,FAR_X_VER));
+	return MAKEFARVERSION(2,0,std::max(1007,FAR_X_VER));
 }
 
 void WINAPI GetPluginInfoWcmn(void *piv)
@@ -143,7 +141,7 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved
 		case DLL_PROCESS_ATTACH:
 		{
 			ghPluginModule = (HMODULE)hModule;
-			//ghWorkingModule = (u64)hModule;
+			//ghWorkingModule = hModule;
 			HeapInitialize();
 
 #ifdef SHOW_STARTED_MSGBOX
@@ -273,7 +271,7 @@ const wchar_t* szDefaultXmlName = L"Background.xml";
 void ReportFail(LPCWSTR asInfo)
 {
 	wchar_t szTitle[128];
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuBg, PID=%u", GetCurrentProcessId());
+	swprintf_c(szTitle, L"ConEmuBg, PID=%u", GetCurrentProcessId());
 
 	wchar_t* pszErr = lstrmerge(asInfo,
 		L"\n" L"Config value: ", gsXmlConfigFile[0] ? gsXmlConfigFile : szDefaultXmlName,
@@ -426,12 +424,12 @@ bool CheckXmlFile(bool abUpdateName /*= false*/)
 				LPBYTE ptrData = (LPBYTE)calloc(inf.nFileSizeLow+1, sizeof(*ptrData));
 				if (!ptrData)
 				{
-					_wsprintf(szErr, SKIPLEN(countof(szErr)) L"Can't allocate %u bytes for xml configuration", inf.nFileSizeLow+1);
+					swprintf_c(szErr, L"Can't allocate %u bytes for xml configuration", inf.nFileSizeLow+1);
 					ReportFail(szErr);
 				}
 				else if (!ReadFile(hFile, ptrData, inf.nFileSizeLow, &dwRead, NULL) || (dwRead != inf.nFileSizeLow))
 				{
-					_wsprintf(szErr, SKIPLEN(countof(szErr)) L"Can't read %u bytes from xml configuration file", inf.nFileSizeLow);
+					swprintf_c(szErr, L"Can't read %u bytes from xml configuration file", inf.nFileSizeLow);
 					ReportFail(szErr);
 				}
 				else
@@ -817,7 +815,7 @@ struct GDIPlusDecoder
 		lRc = GdipCreateBitmapFromFile(szFullName, &bmp);
 		if (lRc != Gdiplus::Ok)
 		{
-			_wsprintf(szError, SKIPLEN(cchError) L"Can't load image, Err=%i\n%s", (int)lRc, szFullName);
+			swprintf_c(szError, cchError/*#SECURELEN*/, L"Can't load image, Err=%i\n%s", (int)lRc, szFullName);
 			ReportFail(szError);
 			_ASSERTE(bmp == NULL);
 			bmp = NULL;
@@ -837,7 +835,7 @@ struct GDIPlusDecoder
 		if (((lRc = GdipGetImageWidth(bmp, &nW)) != Gdiplus::Ok) || (GdipGetImageHeight(bmp, &nH) != Gdiplus::Ok)
 			|| (nW < 1) || (nH < 1))
 		{
-			_wsprintf(szError, SKIPLEN(cchError) L"GetImageSize failed, Err=%i\n%s", (int)lRc, szFullName);
+			swprintf_c(szError, cchError/*#SECURELEN*/, L"GetImageSize failed, Err=%i\n%s", (int)lRc, szFullName);
 			ReportFail(szError);
 			goto wrap;
 		}
@@ -854,7 +852,7 @@ struct GDIPlusDecoder
 		lRc = GdipCreateFromHDC(hCompDc, &gr);
 		if (lRc != Gdiplus::Ok)
 		{
-			_wsprintf(szError, SKIPLEN(cchError) L"GdipCreateFromHDC failed, Err=%i\n%s", (int)lRc, szFullName);
+			swprintf_c(szError, cchError/*#SECURELEN*/, L"GdipCreateFromHDC failed, Err=%i\n%s", (int)lRc, szFullName);
 			ReportFail(szError);
 			goto wrap;
 		}
@@ -862,7 +860,7 @@ struct GDIPlusDecoder
 		lRc = GdipDrawImageI(gr, bmp, 0, 0);
 		if (lRc != Gdiplus::Ok)
 		{
-			_wsprintf(szError, SKIPLEN(cchError) L"GdipDrawImageI failed, Err=%i\n%s", (int)lRc, szFullName);
+			swprintf_c(szError, cchError/*#SECURELEN*/, L"GdipDrawImageI failed, Err=%i\n%s", (int)lRc, szFullName);
 			ReportFail(szError);
 			goto wrap;
 		}
@@ -870,7 +868,7 @@ struct GDIPlusDecoder
 		//lRc = GdipGetImageGraphicsContext(bmp, &gr);
 		//if (lRc != Gdiplus::Ok || !gr)
 		//{
-		//	_wsprintf(szError, SKIPLEN(cchError) L"GdipGetImageGraphicsContext failed, Err=%i\n%s", (int)lRc, szFullName);
+		//	swprintf_c(szError, cchError/*#SECURELEN*/, L"GdipGetImageGraphicsContext failed, Err=%i\n%s", (int)lRc, szFullName);
 		//	ReportFail(szError);
 		//	goto wrap;
 		//}
@@ -878,7 +876,7 @@ struct GDIPlusDecoder
 		lRc = GdipGetDC(gr, &hDc);
 		if (lRc != Gdiplus::Ok || !hDc)
 		{
-			_wsprintf(szError, SKIPLEN(cchError) L"GdipGetDC failed, Err=%i\n%s", (int)lRc, szFullName);
+			swprintf_c(szError, cchError/*#SECURELEN*/, L"GdipGetDC failed, Err=%i\n%s", (int)lRc, szFullName);
 			ReportFail(szError);
 			goto wrap;
 		}
@@ -1058,7 +1056,7 @@ bool CompareNames(LPCWSTR asMaskList, LPWSTR asPath)
 		LPCWSTR pszSep = wcschr(asMaskList, L'|');
 		if (pszSep)
 		{
-			int nLen = (int)min((INT_PTR)countof(szMask)-1,(INT_PTR)(pszSep-asMaskList));
+			int nLen = (int)std::min((INT_PTR)countof(szMask)-1,(INT_PTR)(pszSep-asMaskList));
 			lstrcpyn(szMask, asMaskList, nLen+1);
 			szMask[nLen] = 0;
 		}
@@ -1687,8 +1685,8 @@ void COLORREF2HSB(COLORREF rgbclr, HSBColor& hsb)
     RGBColor rgb; rgb.clr = rgbclr;
 
 	H = 0.0;
-	minRGB = min(min(rgb.Red, rgb.Green), rgb.Blue);
-	maxRGB = max(max(rgb.Red, rgb.Green), rgb.Blue);
+	minRGB = std::min(std::min(rgb.Red, rgb.Green), rgb.Blue);
+	maxRGB = std::max(std::max(rgb.Red, rgb.Green), rgb.Blue);
 	Delta = (maxRGB - minRGB);
 	b = maxRGB;
 
@@ -1880,10 +1878,10 @@ void RGB2HSV(const RGBColor& rgb, HSVColor& HSV)
 	// returned on [0, 1]. Exception: H is returned UNDEFINED if S==0.
 	int R = rgb.R, G = rgb.G, B = rgb.B, v, x, f;
 	int i;
-	x = min(R, G);
-	x = min(x, B);
-	v = max(R, G);
-	v = max(v, B);
+	x = std::min(R, G);
+	x = std::min(x, B);
+	v = std::max(R, G);
+	v = std::max(v, B);
 
 	if (v == x)
 	{
@@ -1987,7 +1985,7 @@ int GetStatusLineCount(struct PaintBackgroundArg* pBk, BOOL bLeft)
 	if ((rcPanel.bottom-rcPanel.top) <= ((pBk->FarPanelSettings.ShowColumnTitles) ? 5 : 4))
 		return 1; // минимальная высота панели
 
-	COORD bufSize = {(SHORT)(rcPanel.right-rcPanel.left+1),min(10,(SHORT)(rcPanel.bottom-rcPanel.top))};
+	COORD bufSize = {(SHORT)(rcPanel.right-rcPanel.left+1), std::min<SHORT>(10, (SHORT)(rcPanel.bottom-rcPanel.top))};
 	COORD bufCoord = {0,0};
 
 	HANDLE hStd = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -2066,26 +2064,26 @@ void FormatSize(ULARGE_INTEGER size, wchar_t* out)
 	if (size.QuadPart)
 	{
 		// Сформатировать размер
-		u64 lSize = size.QuadPart, lDec = 0;
+		uint64_t lSize = size.QuadPart, lDec = 0;
 		const wchar_t *SizeSymbol[]={L"B",L"KB",L"MB",L"GB",L"TB",L"PB"};
 		for (size_t n = 0; n < countof(SizeSymbol); n++)
 		{
 			if (lSize < 1000)
 			{
 				if (lDec > 0 && lDec < 10 && lSize < 10)
-					_wsprintf(out, SKIPLEN(MAX_PATH) L"%u.%u %s", (UINT)lSize, (UINT)lDec, SizeSymbol[n]);
+					swprintf_c(out, MAX_PATH/*#SECURELEN*/, L"%u.%u %s", (UINT)lSize, (UINT)lDec, SizeSymbol[n]);
 				else
-					_wsprintf(out, SKIPLEN(MAX_PATH) L"%u %s", (UINT)lSize, SizeSymbol[n]);
+					swprintf_c(out, MAX_PATH/*#SECURELEN*/, L"%u %s", (UINT)lSize, SizeSymbol[n]);
 				break;
 			}
 
-			u64 lNext = lSize >> 10;
+			uint64_t lNext = lSize >> 10;
 			lDec = (lSize % 1024) / 100;
 			lSize = lNext;
 		}
 		//if (!*szVolumeSize)
 		//{
-		//	_wsprintf(szVolumeSize, SKIPLEN(MAX_PATH) L"%u %s", (UINT)lSize, SizeSymbol[countof(SizeSymbol)-1]);
+		//	swprintf_c(szVolumeSize, MAX_PATH/*#SECURELEN*/, L"%u %s", (UINT)lSize, SizeSymbol[countof(SizeSymbol)-1]);
 		//}
 	}
 }
@@ -2105,8 +2103,8 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 	RECT rcConPanel = bLeft ? pBk->LeftPanel.rcPanelRect : pBk->RightPanel.rcPanelRect;
 	BkPanelInfo *bkInfo = bLeft ? &pBk->LeftPanel : &pBk->RightPanel;
 	// Не должен содержать рамки
-	int nPanelWidth = max(1,rcConPanel.right - rcConPanel.left + 1);  // ширина в символах
-	int nPanelHeight = max(1,rcConPanel.bottom - rcConPanel.top + 1); // высота в символах
+	int nPanelWidth = std::max<int>(1, rcConPanel.right - rcConPanel.left + 1);  // ширина в символах
+	int nPanelHeight = std::max<int>(1, rcConPanel.bottom - rcConPanel.top + 1); // высота в символах
 	RECT rcWork = {}; //rcPanel;
 	rcWork.left = rcPanel.left + ((rcPanel.right - rcPanel.left + 1) / nPanelWidth);
 	rcWork.right = rcPanel.right - ((rcPanel.right - rcPanel.left + 1) / nPanelWidth);
@@ -2224,7 +2222,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 		{
 			DWORD nPanelBackIdx = CONBACKCOLOR(pBk->nFarColors[col_PanelText]);
 			COLORREF crPanel = pBk->crPalette[nPanelBackIdx];
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"ConEmuBk: Disabled %s - {%i,%i,%i,%i) #%06X\n",
+			swprintf_c(szDbg, L"ConEmuBk: Disabled %s - {%i,%i,%i,%i) #%06X\n",
 				bLeft ? L"Left" : L"Right", rcConPanel.left, rcConPanel.top, rcConPanel.right, rcConPanel.bottom,
 				crPanel);
 			DBGSTR(szDbg);
@@ -2334,8 +2332,8 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 			RGBColor rgb; rgb.clr = *pDraw->crBack;
 			RGB2HSV(rgb, hsv);
 			hsv.H += 20;
-			hsv.S = min(100,hsv.S+25);
-			hsv.V = min(100,hsv.V+25);
+			hsv.S = std::min(100,hsv.S+25);
+			hsv.V = std::min(100,hsv.V+25);
 			HSV2RGB(hsv, rgb);
 			pDraw->crLight[0] = rgb.clr;
 			pDraw->nLightCount = 1;
@@ -2383,7 +2381,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 		// Поехали рисовать
 		if (pBk->dwLevel == 0)
 		{
-			_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"ConEmuBk: %s - {%i,%i,%i,%i) #%06X\n",
+			swprintf_c(szDbg, L"ConEmuBk: %s - {%i,%i,%i,%i) #%06X\n",
 				bLeft ? L"Left" : L"Right", rcConPanel.left, rcConPanel.top, rcConPanel.right, rcConPanel.bottom,
 				*pDraw->crBack);
 			DBGSTR(szDbg);
@@ -2393,7 +2391,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 		}
 
 		LOGFONT lf = {};
-		lf.lfHeight = max(20, (rcInt.bottom - rcInt.top) * 12 / 100);
+		lf.lfHeight = std::max<LONG>(20, (rcInt.bottom - rcInt.top) * 12 / 100);
 		lf.lfWeight = 700;
 		lstrcpy(lf.lfFaceName, L"Arial");
 
@@ -2407,7 +2405,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 		#define LINE_SHIFT_X (lf.lfHeight/6)
 
 		// Determine appropriate font size:
-		int nY = max(rcInt.top, rcInt.bottom - (LINE_SHIFT_Y));
+		int nY = std::max(rcInt.top, rcInt.bottom - (LINE_SHIFT_Y));
 		RECT rcText = {rcInt.left+IMG_SHIFT_X, nY, rcInt.right-LINE_SHIFT_X, nY+LINE_SHIFT_Y};
 		RECT rcTemp = rcText;
 
@@ -2434,8 +2432,8 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 			pI = gpDecoder->GetImage(pDraw->szPic);
 			if (pI)
 			{
-				int nPicDim = max(pI->nWidth,pI->nHeight);
-				int nW = min(nMaxPicSize,nPicDim), nH = min(nMaxPicSize,nPicDim); //TODO: Пропорционально pI->nWidth/pI->nHeight
+				int nPicDim = std::max(pI->nWidth,pI->nHeight);
+				int nW = std::min(nMaxPicSize,nPicDim), nH = std::min(nMaxPicSize,nPicDim); //TODO: Пропорционально pI->nWidth/pI->nHeight
 				if (pI && (rcWork.top <= (rcText.top - nH - IMG_SHIFT_Y)) && (rcWork.left <= (rcWork.right - nW - IMG_SHIFT_X)))
 				{
 					// - картинки чисто черного цвета
@@ -2628,7 +2626,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 		/*
 		OffsetRect(&rcText, 0, LINE_SHIFT_Y);
 
-		_wsprintf(szText, SKIPLEN(countof(szText)) L"Volume: «%s» %s, Format: «%s»", szVolume, szVolumeSize, bkInfo->szFormat ? bkInfo->szFormat : L"");
+		swprintf_c(szText, L"Volume: «%s» %s, Format: «%s»", szVolume, szVolumeSize, bkInfo->szFormat ? bkInfo->szFormat : L"");
 		DrawText(pBk->hdc, szText, -1, &rcText, DT_HIDEPREFIX|DT_RIGHT|DT_SINGLELINE|DT_TOP);
 		OffsetRect(&rcText, 0, LINE_SHIFT_Y);
 
@@ -2648,7 +2646,7 @@ int PaintPanel(struct PaintBackgroundArg* pBk, BOOL bLeft, COLORREF& crOtherColo
 			RECT rcUsed = (pDraw->nSpaceBar == DrawInfo::dib_Small) ? rcWork : rcPanel;
 			int iShift = (pDraw->nSpaceBar == DrawInfo::dib_Small) ? 0 : 2;
 			rcUsed.top = rcUsed.bottom - (nStatusLines+iShift) * ((rcPanel.bottom - rcPanel.top + 1) / nPanelHeight);
-			rcUsed.right = rcUsed.right - (int)((u64)(rcUsed.right - rcUsed.left + 1) * llFreeSize.QuadPart / llTotalSize.QuadPart);
+			rcUsed.right = rcUsed.right - (int)((uint64_t)(rcUsed.right - rcUsed.left + 1) * llFreeSize.QuadPart / llTotalSize.QuadPart);
 			if (rcUsed.right > rcWork.right)
 			{
 				_ASSERTE(rcUsed.right <= rcWork.right);
@@ -2714,7 +2712,7 @@ int WINAPI PaintConEmuBackground(struct PaintBackgroundArg* pBk)
 	else
 	{
 		RECT rcConPanel = pBk->LeftPanel.rcPanelRect;
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"ConEmuBk: Invisible Left - {%i,%i,%i,%i)\n",
+		swprintf_c(szDbg, L"ConEmuBk: Invisible Left - {%i,%i,%i,%i)\n",
 			rcConPanel.left, rcConPanel.top, rcConPanel.right, rcConPanel.bottom);
 		DBGSTR(szDbg);
 	}
@@ -2726,7 +2724,7 @@ int WINAPI PaintConEmuBackground(struct PaintBackgroundArg* pBk)
 	else
 	{
 		RECT rcConPanel = pBk->RightPanel.rcPanelRect;
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"ConEmuBk: Invisible Right - {%i,%i,%i,%i)\n",
+		swprintf_c(szDbg, L"ConEmuBk: Invisible Right - {%i,%i,%i,%i)\n",
 			rcConPanel.left, rcConPanel.top, rcConPanel.right, rcConPanel.bottom);
 		DBGSTR(szDbg);
 	}

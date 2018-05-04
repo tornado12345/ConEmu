@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include "RefRelease.h"
-#include "../common/RConStartArgs.h"
+#include "../common/RConStartArgsEx.h"
 #include "../common/MArray.h"
 
 class CVirtualConsole;
@@ -37,28 +37,16 @@ class CVConGuard;
 class CTabID;
 struct AppSettings;
 
-// this is NOT a bitmask field!
-// only exact values are allowed!
-enum EnumVConFlags
-{
-	evf_Active  = 1,
-	evf_Visible = 2,
-	evf_All     = 3,
-};
+
+// used with enum EnumVConFlags, callback for EnumVCon
 typedef bool (*EnumVConProc)(CVirtualConsole* pVCon, LPARAM lParam);
 
-enum GroupInputCmd
-{
-	gic_Switch  = 0,
-	gic_Enable  = 1,
-	gic_Disable = 2,
-};
 
 class CVConGroup : public CRefRelease
 {
 protected:
 	CVirtualConsole* mp_Item;     // консоль, к которой привязан этот "Pane"
-	RConStartArgs::SplitType m_SplitType; // eSplitNone/eSplitHorz/eSplitVert
+	RConStartArgsEx::SplitType m_SplitType; // eSplitNone/eSplitHorz/eSplitVert
 	UINT mn_SplitPercent10; // (0.1% - 99.9%)*10
 	CVConGroup *mp_Grp1, *mp_Grp2; // Ссылки на "дочерние" панели
 	CVConGroup *mp_Parent; // Ссылка на "родительскую" панель
@@ -92,7 +80,7 @@ protected:
 
 	void StoreActiveVCon(CVirtualConsole* pVCon);
 	bool ReSizeSplitter(int iCells);
-	void PaintSplitter(HDC hdc, HBRUSH hbr);
+	void OnPaintSplitter(HDC hdc, HBRUSH hbr);
 
 	CVConGroup* FindNextPane(const RECT& rcPrev, int nHorz /*= 0*/, int nVert /*= 0*/);
 
@@ -103,10 +91,10 @@ protected:
 	static void StopSplitDragging();
 
 private:
-	static CVirtualConsole* CreateVCon(RConStartArgs *args, CVirtualConsole*& ppVConI, int index);
+	static CVirtualConsole* CreateVCon(RConStartArgsEx *args, CVirtualConsole*& ppVConI, int index);
 
 	static CVConGroup* CreateVConGroup();
-	CVConGroup* SplitVConGroup(RConStartArgs::SplitType aSplitType = RConStartArgs::eSplitHorz/*eSplitVert*/, UINT anPercent10 = 500);
+	CVConGroup* SplitVConGroup(RConStartArgsEx::SplitType aSplitType = RConStartArgsEx::eSplitHorz/*eSplitVert*/, UINT anPercent10 = 500);
 
 	void PopulateSplitPanes(UINT nParent, UINT& nSplits, MArray<CVConGuard*>& VCons);
 	CVConGroup* GetLeafLeft();
@@ -131,9 +119,16 @@ protected:
 	static void setActiveVConAndFlags(CVirtualConsole* apNewVConActive);
 
 public:
+	enum CloseConsoleMode
+	{
+		CloseSimple,
+		CloseZombie,
+		Close2Right,
+	};
+public:
 	static void Initialize();
 	static void Deinitialize();
-	static CVirtualConsole* CreateCon(RConStartArgs *args, bool abAllowScripts = false, bool abForceCurConsole = false);
+	static CVirtualConsole* CreateCon(RConStartArgsEx *args, bool abAllowScripts = false, bool abForceCurConsole = false);
 	static void OnVConDestroyed(CVirtualConsole* apVCon);
 
 	static bool InCreateGroup();
@@ -183,27 +178,31 @@ public:
 	static void OnUpdateTextColorSettings(bool ChangeTextAttr = true, bool ChangePopupAttr = true, const AppSettings* apDistinct = NULL);
 	static bool OnCloseQuery(bool* rbMsgConfirmed = NULL);
 	static bool DoCloseAllVCon(bool bMsgConfirmed = false);
-	static void CloseAllButActive(CVirtualConsole* apVCon/*may be null*/, bool abZombies, bool abNoConfirm);
+	static void CloseAllButActive(CVirtualConsole* apVCon/*may be null*/, CloseConsoleMode closeMode, bool abNoConfirm);
 	static void CloseGroup(CVirtualConsole* apVCon/*may be null*/, bool abKillActiveProcess = false);
 	static void OnDestroyConEmu();
 	static void OnVConClosed(CVirtualConsole* apVCon);
 	static void OnUpdateProcessDisplay(HWND hInfo);
 	static void OnDosAppStartStop(HWND hwnd, StartStopType sst, DWORD idChild);
 	static void UpdateWindowChild(CVirtualConsole* apVCon);
-	static void RePaint();
+	//static void RePaint();
 	static void Update(bool isForce = false);
 	static HWND DoSrvCreated(const DWORD nServerPID, const HWND hWndCon, const DWORD dwKeybLayout, DWORD& t1, DWORD& t2, int& iFound, CESERVER_REQ_SRVSTARTSTOPRET& pRet);
-	static void OnVConCreated(CVirtualConsole* apVCon, const RConStartArgs *args);
+	static void OnVConCreated(CVirtualConsole* apVCon, const RConStartArgsEx *args);
 	static void OnGuiFocused(bool abFocus, bool abForceChild = FALSE);
+
+	static void ResetGroupInput(CConEmuMain* pOwner, GroupInputCmd cmd);
 	static void GroupInput(CVirtualConsole* apVCon, GroupInputCmd cmd);
+	static void GroupSelectedInput(CVirtualConsole* apVCon);
 
 	static bool Activate(CVirtualConsole* apVCon);
 	static void MoveActiveTab(CVirtualConsole* apVCon, bool bLeftward);
 
+	static bool ExchangePanes(CVirtualConsole* apVCon, int nHorz = 0, int nVert = 0);
 	static bool ActivateNextPane(CVirtualConsole* apVCon, int nHorz = 0, int nVert = 0);
 	static bool PaneActivateNext(bool abNext);
 	static void PaneMaximizeRestore(CVirtualConsole* apVCon);
-	static void ReSizePanes(RECT mainClient);
+	static void ReSizePanes(RECT workspace);
 	static bool ReSizeSplitter(CVirtualConsole* apVCon, int iHorz = 0, int iVert = 0);
 
 	static void OnUpdateGuiInfoMapping(ConEmuGuiMapping* apGuiInfo);
@@ -212,7 +211,7 @@ public:
 	static void OnTaskbarCreated();
 
 	static void MoveAllVCon(CVirtualConsole* pVConCurrent, RECT rcNewCon);
-	static HRGN GetExclusionRgn(bool abTestOnly = false);
+	static HRGN GetExclusionRgn();
 	static void OnConActivated(CVirtualConsole* pVCon);
 	static bool ConActivate(int nCon);
 	private:
@@ -234,23 +233,23 @@ public:
 	static void LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = NULL);
 
 	static RECT CalcRect(enum ConEmuRect tWhat, RECT rFrom, enum ConEmuRect tFrom, CVirtualConsole* pVCon, enum ConEmuMargins tTabAction=CEM_TAB);
-	static bool PreReSize(uint WindowMode, RECT rcWnd, enum ConEmuRect tFrom = CER_MAIN, bool bSetRedraw = false);
+	static bool PreReSize(unsigned WindowMode, RECT rcWnd, enum ConEmuRect tFrom = CER_MAIN, bool bSetRedraw = false);
 	static void SyncWindowToConsole(); // -- функция пустая, игнорируется
 	static void SyncConsoleToWindow(LPRECT prcNewWnd=NULL, bool bSync=false);
 	static void LockSyncConsoleToWindow(bool abLockSync);
-	static void SetAllConsoleWindowsSize(RECT rcWnd, enum ConEmuRect tFrom /*= CER_MAIN or CER_MAINCLIENT*/, COORD size, bool bSetRedraw /*= false*/);
-	static void SyncAllConsoles2Window(RECT rcWnd, enum ConEmuRect tFrom = CER_MAIN, bool bSetRedraw = false);
+	static void SetAllConsoleWindowsSize(RECT rcWorkspace, COORD size, bool bSetRedraw /*= false*/);
+	static void SyncAllConsoles2Window(RECT rcWorkspace, bool bSetRedraw = false);
 	static void OnConsoleResize(bool abSizingToDo);
 
 	static LRESULT OnMouseEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	static RConStartArgs::SplitType isSplitterDragging();
+	static RConStartArgsEx::SplitType isSplitterDragging();
 
 	static void NotifyChildrenWindows();
 
 	static void SetRedraw(bool abRedrawEnabled);
 	static void Redraw();
 	static void InvalidateGaps();
-	static void PaintGaps(HDC hDC);
+	static void OnPaintGaps(HDC hDC);
 	static void InvalidateAll();
 
 	static bool OnFlashWindow(DWORD nOpt, DWORD nFlags, DWORD nCount, HWND hCon);

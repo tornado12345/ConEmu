@@ -1,7 +1,7 @@
 ﻿
 
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -135,5 +135,30 @@ int MsgBox(LPCTSTR lpText, UINT uType, LPCTSTR lpCaption = NULL, HWND ahParent =
 void AssertBox(LPCTSTR szText, LPCTSTR szFile, UINT nLine, LPEXCEPTION_POINTERS ExceptionInfo = NULL);
 void PatchMsgBoxIcon(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
 
+#include "../ConEmu/version_stage.h"
+#if ConEmuVersionStage == CEVS_STABLE
+#define Assert(V)
+#define AssertMsg(V)
+#else
 #define Assert(V) if ((V)==FALSE) { AssertBox(_T(#V), _T(__FILE__), __LINE__); }
 #define AssertMsg(V) AssertBox(V, _T(__FILE__), __LINE__);
+#endif
+
+struct NestedCallCounter
+{
+	LONG& ncl;
+	NestedCallCounter(LONG& NestedCallLevel)
+		: ncl(NestedCallLevel)
+	{
+		InterlockedIncrement(&ncl);
+	};
+	~NestedCallCounter()
+	{
+		InterlockedDecrement(&ncl);
+	};
+};
+
+#define NestedCallAssert(level) \
+	static LONG NestedCallLevel = 0; \
+	NestedCallCounter ncCounter(NestedCallLevel); \
+	Assert(NestedCallLevel <= level);

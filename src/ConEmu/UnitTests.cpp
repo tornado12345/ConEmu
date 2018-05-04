@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -59,6 +59,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifdef _DEBUG
+#include "Registry.h"
+#endif
+
+#ifdef _DEBUG
+
+// Hide from global namespace
+namespace {
+
 void UnitMaskTests()
 {
 	struct {
@@ -211,11 +219,11 @@ void DebugVersionTest()
 
 	_ASSERTE(_WIN32_WINNT_WIN7==0x601);
 	OSVERSIONINFOEXW osvi7 = {sizeof(osvi7), HIBYTE(_WIN32_WINNT_WIN7), LOBYTE(_WIN32_WINNT_WIN7)};
-	bool bWin7 = VerifyVersionInfoW(&osvi7, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) != 0;
+	bool bWin7 = _VerifyVersionInfo(&osvi7, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) != 0;
 
 	_ASSERTE(_WIN32_WINNT_VISTA==0x600);
 	OSVERSIONINFOEXW osvi6 = {sizeof(osvi6), HIBYTE(_WIN32_WINNT_VISTA), LOBYTE(_WIN32_WINNT_VISTA)};
-	bool bWin6 = VerifyVersionInfoW(&osvi6, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) != 0;
+	bool bWin6 = _VerifyVersionInfo(&osvi6, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) != 0;
 
 	OSVERSIONINFOW osv = {sizeof(OSVERSIONINFOW)};
 	GetOsVersionInformational(&osv);
@@ -259,7 +267,7 @@ void DebugNeedCmdUnitTests()
 	for (INT_PTR i = 0; i < countof(Tests); i++)
 	{
 		szExe.Empty();
-		RConStartArgs rcs; rcs.pszSpecialCmd = lstrdup(Tests[i].pszCmd);
+		RConStartArgsEx rcs; rcs.pszSpecialCmd = lstrdup(Tests[i].pszCmd);
 		rcs.ProcessNewConArg();
 		b = IsNeedCmd(TRUE, rcs.pszSpecialCmd, szExe, &psArgs, &bNeedCut, &bRootIsCmd, &bAlwaysConfirm, &bAutoDisable);
 		_ASSERTE(b == Tests[i].bNeed);
@@ -268,7 +276,7 @@ void DebugNeedCmdUnitTests()
 
 void DebugCmdParserTests()
 {
-	RConStartArgs::RunArgTests();
+	RConStartArgsEx::RunArgTests();
 
 	struct strTests { wchar_t szTest[100], szCmp[100]; }
 	Tests[] = {
@@ -486,6 +494,37 @@ void DebugJsonTest()
 	b = v2.getItem(L"en", v4);
 }
 
+void XmlValueConvertTest()
+{
+	struct xml_test { const char* sType; const char* sData; DWORD expected; bool success; };
+	xml_test tests[] = {
+		{"ulong", "0", 0, true },
+		{"ulong", "0123456789", 123456789, true },
+		{"dword", "0", 0, true },
+		{"dword", "12345678", 0x12345678, true },
+		{"dword", "eA7bfE30", 0xeA7bfE30, true },
+		{"long", "0", 0, true },
+		{"long", "1234567891", 1234567891, true },
+		{"long", "-1234567891", (DWORD)-1234567891, true },
+		{"hex", "00", 0x00, true },
+		{"hex", "AB", 0xAB, true },
+		{"hex", "AB,CD", 0xCDAB, true },
+		{"hex", "ABCD", 0xAB, true }, // data is partially incorrect (no commas), we shall take only "AB"
+		{"hex", "A,B,C,D", 0x0D0C0B0A, true },
+	};
+
+	DWORD value;
+	bool rc;
+	for (const auto& test : tests)
+	{
+		value = 0x12345678;
+		rc = SettingsXML::ConvertData(test.sType, test.sData, (LPBYTE)&value, sizeof(value));
+		_ASSERTE(rc == test.success && (!test.success || (value == test.expected)));
+	}
+}
+
+} // end of namespace
+
 void DebugUnitTests()
 {
 	DebugNeedCmdUnitTests();
@@ -510,6 +549,7 @@ void DebugUnitTests()
 	DebugMapsTests();
 	DebugArrayTests();
 	DebugJsonTest();
+	XmlValueConvertTest();
 }
 #endif
 

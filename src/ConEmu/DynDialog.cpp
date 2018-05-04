@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/CEStr.h"
 #include "DynDialog.h"
 #include "LngRc.h"
+
+#if defined(_DEBUG)
+#include "OptionsFast.h"
+#endif
 
 wchar_t CDynDialog::Button[] = L"Button";
 wchar_t CDynDialog::Edit[] = L"Edit";
@@ -266,34 +270,34 @@ bool CDynDialog::LoadTemplate()
 	if (!hsrc)
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"FindResource failed, RT_DIALOG=%u", mn_DlgId);
+		swprintf_c(szInfo, L"FindResource failed, RT_DIALOG=%u", mn_DlgId);
 		goto wrap;
 	}
 	hrc = LoadResource(g_hInstance, hsrc);
 	if (!hrc)
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"LoadResource failed, RT_DIALOG=%u", mn_DlgId);
+		swprintf_c(szInfo, L"LoadResource failed, RT_DIALOG=%u", mn_DlgId);
 		goto wrap;
 	}
 	mn_TemplateLength = SizeofResource(g_hInstance, hsrc);
 	if (!mn_TemplateLength)
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"SizeofResource failed, RT_DIALOG=%u", mn_DlgId);
+		swprintf_c(szInfo, L"SizeofResource failed, RT_DIALOG=%u", mn_DlgId);
 		goto wrap;
 	}
 	ptr = (DLGTEMPLATEEX*)LockResource(hrc);
 	if (!ptr)
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"LockResource failed, RT_DIALOG=%u", mn_DlgId);
+		swprintf_c(szInfo, L"LockResource failed, RT_DIALOG=%u", mn_DlgId);
 		goto wrap;
 	}
 	if ((ptr->signature == 0xFFFF) && (ptr->dlgVer != 1))
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Unsupported dialog resource type, RT_DIALOG=%u, ver=x%04X, sign=x%04X", mn_DlgId, ptr->dlgVer, ptr->signature);
+		swprintf_c(szInfo, L"Unsupported dialog resource type, RT_DIALOG=%u, ver=x%04X, sign=x%04X", mn_DlgId, ptr->dlgVer, ptr->signature);
 		goto wrap;
 	}
 
@@ -301,7 +305,7 @@ bool CDynDialog::LoadTemplate()
 	if (!mlp_Template)
 	{
 		nErr = GetLastError();
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Resource data allocation failed, RT_DIALOG=%u, size=%u", mn_DlgId, mn_TemplateLength);
+		swprintf_c(szInfo, L"Resource data allocation failed, RT_DIALOG=%u, size=%u", mn_DlgId, mn_TemplateLength);
 		goto wrap;
 	}
 
@@ -314,7 +318,7 @@ bool CDynDialog::LoadTemplate()
 		{
 			size_t cchPos = data - (DWORD_PTR)mlp_Template;
 			nErr = (DWORD)-1;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Parse DialogEx failed, RT_DIALOG=%u, pos=%u", mn_DlgId, (DWORD)cchPos);
+			swprintf_c(szInfo, L"Parse DialogEx failed, RT_DIALOG=%u, pos=%u", mn_DlgId, (DWORD)cchPos);
 			goto wrap;
 		}
 	}
@@ -324,7 +328,7 @@ bool CDynDialog::LoadTemplate()
 		{
 			size_t cchPos = data - (DWORD_PTR)mlp_Template;
 			nErr = (DWORD)-1;
-			_wsprintf(szInfo, SKIPCOUNT(szInfo) L"Parse Dialog failed, RT_DIALOG=%u, pos=%u", mn_DlgId, (DWORD)cchPos);
+			swprintf_c(szInfo, L"Parse Dialog failed, RT_DIALOG=%u, pos=%u", mn_DlgId, (DWORD)cchPos);
 			goto wrap;
 		}
 	}
@@ -644,7 +648,7 @@ void CDynDialog::LocalizeDialog(HWND hDlg, UINT nTitleRsrcId /*= 0*/)
 {
 	#if defined(_DEBUG)
 	static HWND hLastDlg = NULL;
-	if (hLastDlg != hDlg)
+	if (hLastDlg != hDlg || hDlg == FastConfig::ghFastCfg)
 		hLastDlg = hDlg;
 	else
 		_ASSERTE(hLastDlg != hDlg); // avoid re-localization

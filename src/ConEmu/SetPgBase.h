@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 #include <CommCtrl.h>
 #include "LngDataEnum.h"
@@ -40,7 +40,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //HWND hMain, hExt, hFar, hKeys, hTabs, hColors, hCmdTasks, hViews, hInfo, hDebug, hUpdate, hSelection;
 enum TabHwndIndex
 {
-	thi_Fonts = 0,    // "Main"
+	thi_General = 0,  // "General"
+	thi_Fonts,        //   "Fonts"
 	thi_SizePos,      //   "Size & Pos"
 	thi_Appear,       //   "Appearance"
 	thi_Quake,        //   "Quake style"
@@ -125,6 +126,7 @@ struct ConEmuSetupPages
 	int              Level;        // 0, 1
 	LngResources     PageNameRsrc; // Label in treeview
 	TabHwndIndex     PageIndex;    // thi_Fonts, thi_SizePos, etc.
+	LPCWSTR          wikiPage;     // "SettingsMain.html", etc.
 	CSetPgBase*    (*CreateObj)();
 	bool             Collapsed;
 	// Filled after creation
@@ -141,15 +143,15 @@ class CSetPgBase
 	: public CSetDlgButtons
 {
 protected:
-	HWND mh_Dlg;
-	HWND mh_Parent;
-	bool mb_SkipSelChange;
-	bool mb_DpiChanged;
-	UINT mn_ActivateTabMsg;
-	CDpiForDialog* mp_DpiAware;
-	CDynDialog* mp_DynDialog;
-	const CDpiForDialog* mp_ParentDpi;
-	ConEmuSetupPages* mp_InfoPtr;
+	HWND mh_Dlg = NULL;
+	HWND mh_Parent = NULL;
+	bool mb_SkipSelChange = false;
+	bool mb_DpiChanged = false;
+	UINT mn_ActivateTabMsg = WM_APP;
+	CDpiForDialog* mp_DpiAware = nullptr;
+	CDynDialog* mp_DynDialog = nullptr;
+	const CDpiForDialog* mp_ParentDpi = nullptr;
+	ConEmuSetupPages* mp_InfoPtr = nullptr;
 
 public:
 	static bool mb_IgnoreEditChanged;

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -245,7 +245,7 @@ void CSetPgKeys::FillHotKeysList(HWND hDlg, bool abInitial)
 			case chk_User:
 				wcscpy_c(szName, L"User"); break;
 			case chk_Macro:
-				_wsprintf(szName, SKIPLEN(countof(szName)) L"Macro %02i", ppHK->DescrLangID-vkGuiMacro01+1); break;
+				swprintf_c(szName, L"Macro %02i", ppHK->DescrLangID-vkGuiMacro01+1); break;
 			case chk_Modifier:
 			case chk_Modifier2:
 				wcscpy_c(szName, L"Modifier"); break;
@@ -621,15 +621,28 @@ LRESULT CSetPgKeys::OnEditChanged(HWND hDlg, WORD nCtrlId)
 	{
 	case hkHotKeySelect:
 		{
-			UINT nHotKey = CHotKeyDialog::dlgGetHotkey(hDlg, hkHotKeySelect, lbHotKeyList);
+			DWORD hHotKeyMods = CHotKeyDialog::dlgGetHotkey(hDlg, hkHotKeySelect, lbHotKeyList);
+			DWORD nHotKey = LOBYTE(hHotKeyMods);
 
 			if (mp_ActiveHotKey && mp_ActiveHotKey->CanChangeVK())
 			{
-				DWORD nCurMods = (CEHOTKEY_MODMASK & mp_ActiveHotKey->GetVkMod());
-				if (!nCurMods)
-					nCurMods = CEHOTKEY_NOMOD;
+				if (!(hHotKeyMods & cvk_ALLMASK))
+				{
+					DWORD nCurMods = (CEHOTKEY_MODMASK & mp_ActiveHotKey->GetVkMod());
+					if (!nCurMods)
+						nCurMods = CEHOTKEY_NOMOD;
 
-				SetHotkeyVkMod(mp_ActiveHotKey, nHotKey | nCurMods);
+					SetHotkeyVkMod(mp_ActiveHotKey, nHotKey | nCurMods);
+				}
+				else
+				{
+					mp_ActiveHotKey->Key.Set(LOBYTE(hHotKeyMods), (hHotKeyMods & cvk_ALLMASK));
+				}
+
+				if (hHotKeyMods & CEHOTKEY_MODMASK)
+				{
+					CHotKeyDialog::FillModifierBoxes(*mp_ActiveHotKey, hDlg);
+				}
 
 				FillHotKeysList(hDlg, false);
 			}
@@ -761,6 +774,8 @@ INT_PTR CSetPgKeys::OnComboBox(HWND hDlg, WORD nCtrlId, WORD code)
 				{
 					vk = vkChange;
 					CSetDlgLists::FillListBoxItems(GetDlgItem(hDlg, lbHotKeyMod1+i), CSetDlgLists::eModifiers, vkChange, false);
+					// You can't choose distinctive (R/L) modifier for Global hotkeys due to WinAPI limitation
+					gpSetCls->ShowModifierErrorTip(CLngRc::getRsrc(lng_HkGlblGnrlMsg), hDlg, nCtrlId);
 				}
 
 				if (vk)

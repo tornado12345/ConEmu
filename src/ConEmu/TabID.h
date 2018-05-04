@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -111,12 +111,12 @@ struct TabName
 {
 private:
 	int nLen;
-	wchar_t sz[CONEMUTABMAX];
+	wchar_t sz[CONEMUTABMAX]; // it's 0x400 now
 public:
 	TabName();
 	TabName(LPCWSTR asName);
 public:
-	LPCWSTR Set(LPCWSTR asName);
+	LPCWSTR Set(LPCWSTR asName, bool escape = false);
 	void Release();
 	LPCWSTR Ptr() const;
 	int Length() const;

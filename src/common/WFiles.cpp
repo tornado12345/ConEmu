@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -316,6 +316,14 @@ bool MakePathProperCase(CEStr& rsPath)
 	}
 
 	return bFound;
+}
+
+int ReadTextFile(LPCWSTR asPath, DWORD cchMax, char*& rsBuffer, DWORD& rnChars, DWORD& rnErrCode)
+{
+	wchar_t* ptrData = nullptr;
+	int iRc = ReadTextFile(asPath, cchMax, ptrData, rnChars, rnErrCode, (DWORD)-1);
+	rsBuffer = (char*)ptrData;
+	return iRc;
 }
 
 int ReadTextFile(LPCWSTR asPath, DWORD cchMax, wchar_t*& rsBuffer, DWORD& rnChars, DWORD& rnErrCode, DWORD DefaultCP /*= 0*/)

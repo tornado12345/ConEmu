@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,7 @@ BOOL CreateProcessDemoted(LPWSTR lpCommandLine,
 							 BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
 							 LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
 							 LPDWORD pdwLastError = NULL);
-BOOL CreateProcessSystem(LPWSTR lpCommandLine,
+BOOL CreateProcessSystem(DWORD anSessionId, LPWSTR lpCommandLine,
 						     LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
 						     BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
 						     LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,

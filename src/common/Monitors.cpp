@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2015 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "Common.h"
 #include "MAssert.h"
 #include "MArray.h"
@@ -419,11 +419,15 @@ HWND FindTaskbarWindow(LPRECT rcMon /*= NULL*/)
 	return hTaskbar;
 }
 
-bool IsTaskbarAutoHidden(LPRECT rcMon /*= NULL*/, PUINT pEdge /*= NULL*/)
+bool IsTaskbarAutoHidden(LPRECT rcMon /*= NULL*/, PUINT pEdge /*= NULL*/, HWND* pTaskbar /*= NULL*/)
 {
 	HWND hTaskbar = FindTaskbarWindow(rcMon);
+	if (pTaskbar)
+		*pTaskbar = hTaskbar;
 	if (!hTaskbar)
 	{
+		if (pEdge)
+			*pEdge = (UINT)-1;
 		return false;
 	}
 

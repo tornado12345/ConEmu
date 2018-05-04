@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,9 @@ class CDynDialog;
 
 struct CEFindDlg
 {
-	HWND mh_FindDlg;
-	CDynDialog* mp_Dlg;
-	CDpiForDialog* mp_DpiAware;
+	HWND mh_FindDlg = NULL;
+	CDynDialog* mp_Dlg = nullptr;
+	CDpiForDialog* mp_DpiAware = nullptr;
 
 	CEFindDlg();
 

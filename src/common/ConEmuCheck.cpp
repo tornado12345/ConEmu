@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -50,7 +50,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 SECURITY_ATTRIBUTES* gpLocalSecurity = NULL;
 
 // Informational. Will be set in pHdr->hModule on calls
-u64 ghWorkingModule = 0;
+HANDLE2 ghWorkingModule = {};
 
 #ifdef _DEBUG
 bool gbPipeDebugBoxes = false;
@@ -238,9 +238,9 @@ HANDLE ExecuteOpenPipe(const wchar_t* szPipeName, wchar_t (&szErr)[MAX_PATH*2], 
 	int nTries = nDefaultTries;
 	// nTimeout должен ограничивать ВЕРХНЮЮ границу времени ожидания
 	_ASSERTE(EXECUTE_CMD_OPENPIPE_TIMEOUT >= nTimeout);
-	DWORD nOpenPipeTimeout = nTimeout ? min(nTimeout,EXECUTE_CMD_OPENPIPE_TIMEOUT) : EXECUTE_CMD_OPENPIPE_TIMEOUT;
+	DWORD nOpenPipeTimeout = nTimeout ? std::min<DWORD>(nTimeout, EXECUTE_CMD_OPENPIPE_TIMEOUT) : EXECUTE_CMD_OPENPIPE_TIMEOUT;
 	_ASSERTE(nOpenPipeTimeout > 0);
-	DWORD nWaitPipeTimeout = min(250,nOpenPipeTimeout);
+	DWORD nWaitPipeTimeout = std::min<DWORD>(250, nOpenPipeTimeout);
 
 	BOOL bWaitPipeRc = FALSE, bWaitCalled = FALSE;
 	DWORD nWaitPipeErr = 0;
@@ -525,7 +525,7 @@ BOOL LoadSrvMapping(HWND hConWnd, CESERVER_CONSOLE_MAPPING_HDR& SrvMapping)
 		return FALSE;
 	else
 	{
-		memmove(&SrvMapping, pInfo, min(pInfo->cbSize, sizeof(SrvMapping)));
+		memmove(&SrvMapping, pInfo, std::min<size_t>(pInfo->cbSize, sizeof(SrvMapping)));
 	}
 	SrvInfoMapping.CloseMap();
 
@@ -546,7 +546,7 @@ BOOL LoadGuiMapping(DWORD nConEmuPID, ConEmuGuiMapping& GuiMapping)
 		return FALSE;
 	else
 	{
-		memmove(&GuiMapping, pInfo, min(pInfo->cbSize, sizeof(GuiMapping)));
+		memmove(&GuiMapping, pInfo, std::min<size_t>(pInfo->cbSize, sizeof(GuiMapping)));
 	}
 	GuiInfoMapping.CloseMap();
 
@@ -617,9 +617,9 @@ CESERVER_REQ* ExecuteNewCmdOnCreate(CESERVER_CONSOLE_MAPPING_HDR* pSrvMap, HWND 
 	//pIn->OnCreateProc.bUnicode = TRUE;
 	pIn->OnCreateProc.nImageSubsystem = mn_ImageSubsystem;
 	pIn->OnCreateProc.nImageBits = mn_ImageBits;
-	pIn->OnCreateProc.hStdIn = (unsigned __int64)hStdIn;
-	pIn->OnCreateProc.hStdOut = (unsigned __int64)hStdOut;
-	pIn->OnCreateProc.hStdErr = (unsigned __int64)hStdErr;
+	pIn->OnCreateProc.hStdIn = (unsigned __int64)(hStdIn ? hStdIn : GetStdHandle(STD_INPUT_HANDLE));
+	pIn->OnCreateProc.hStdOut = (unsigned __int64)(hStdOut ? hStdOut : GetStdHandle(STD_OUTPUT_HANDLE));
+	pIn->OnCreateProc.hStdErr = (unsigned __int64)(hStdErr ? hStdErr : GetStdHandle(STD_ERROR_HANDLE));
 	
 	switch (aCmd)
 	{
@@ -681,7 +681,7 @@ CESERVER_REQ* ExecuteGuiCmd(HWND hConWnd, CESERVER_REQ* pIn, HWND hOwner, BOOL b
 		return NULL;
 
 	DWORD nLastErr = GetLastError();
-	//_wsprintf(szGuiPipeName, SKIPLEN(countof(szGuiPipeName)) CEGUIPIPENAME, L".", (DWORD)hConWnd);
+	//swprintf_c(szGuiPipeName, CEGUIPIPENAME, L".", (DWORD)hConWnd);
 	msprintf(szGuiPipeName, countof(szGuiPipeName), CEGUIPIPENAME, L".", LODWORD(hConWnd));
 
 	#ifdef _DEBUG
@@ -713,6 +713,27 @@ CESERVER_REQ* ExecuteGuiCmd(HWND hConWnd, CESERVER_REQ* pIn, HWND hOwner, BOOL b
 	return lpRet;
 }
 
+CESERVER_REQ* ExecuteGuiCmd(HWND hConWnd, DWORD nCmd, size_t cbDataSize, LPBYTE data, HWND hOwner, BOOL bAsyncNoResult /*= FALSE*/)
+{
+	CESERVER_REQ* pOut = NULL;
+	CESERVER_REQ* pIn = ExecuteNewCmd(nCmd, sizeof(CESERVER_REQ_HDR)+cbDataSize);
+
+	if (pIn)
+	{
+		if (cbDataSize)
+		{
+			_ASSERTEX(data != NULL);
+			memmove(pIn->Data, data, cbDataSize);
+		}
+
+		pOut = ExecuteGuiCmd(hConWnd, pIn, hOwner, bAsyncNoResult);
+
+		ExecuteFreeResult(pIn);
+	}
+
+	return pOut;
+}
+
 // Выполнить в ConEmuC
 CESERVER_REQ* ExecuteSrvCmd(DWORD dwSrvPID, CESERVER_REQ* pIn, HWND hOwner, BOOL bAsyncNoResult, DWORD nTimeout /*= 0*/, BOOL bIgnoreAbsence /*= FALSE*/)
 {
@@ -722,7 +743,7 @@ CESERVER_REQ* ExecuteSrvCmd(DWORD dwSrvPID, CESERVER_REQ* pIn, HWND hOwner, BOOL
 		return NULL;
 
 	DWORD nLastErr = GetLastError();
-	//_wsprintf(szPipeName, SKIPLEN(countof(szPipeName)) CESERVERPIPENAME, L".", (DWORD)dwSrvPID);
+	//swprintf_c(szPipeName, CESERVERPIPENAME, L".", (DWORD)dwSrvPID);
 	msprintf(szPipeName, countof(szPipeName), CESERVERPIPENAME, L".", (DWORD)dwSrvPID);
 	CESERVER_REQ* lpRet = ExecuteCmd(szPipeName, pIn, nTimeout, hOwner, bAsyncNoResult, dwSrvPID, bIgnoreAbsence);
 	_ASSERTE(pIn->hdr.bAsync == bAsyncNoResult);
@@ -739,7 +760,7 @@ CESERVER_REQ* ExecuteHkCmd(DWORD dwHkPID, CESERVER_REQ* pIn, HWND hOwner, BOOL b
 		return NULL;
 
 	DWORD nLastErr = GetLastError();
-	//_wsprintf(szPipeName, SKIPLEN(countof(szPipeName)) CESERVERPIPENAME, L".", (DWORD)dwSrvPID);
+	//swprintf_c(szPipeName, CESERVERPIPENAME, L".", (DWORD)dwSrvPID);
 	msprintf(szPipeName, countof(szPipeName), CEHOOKSPIPENAME, L".", (DWORD)dwHkPID);
 	CESERVER_REQ* lpRet = ExecuteCmd(szPipeName, pIn, 1000, hOwner, bAsyncNoResult, dwHkPID, bIgnoreAbsence);
 	SetLastError(nLastErr); // Чтобы не мешать процессу своими возможными ошибками общения с пайпом
@@ -778,7 +799,7 @@ CESERVER_REQ* ExecuteCmd(const wchar_t* szPipeName, CESERVER_REQ* pIn, DWORD nWa
 	}
 
 	#ifdef _DEBUG
-	_wsprintf(szDbgPrefix, SKIPLEN(countof(szDbgPrefix)) L">> ExecCmd: PID=%5u  TID=%5u  Cmd=%3u  ", GetCurrentProcessId(), GetCurrentThreadId(), pIn->hdr.nCmd);
+	swprintf_c(szDbgPrefix, L">> ExecCmd: PID=%5u  TID=%5u  Cmd=%3u  ", GetCurrentProcessId(), GetCurrentThreadId(), pIn->hdr.nCmd);
 	pszDbgMsg = lstrmerge(szDbgPrefix, szPipeName, L"\n");
 	if (pszDbgMsg) { DEBUGSTRCMD(pszDbgMsg); free(pszDbgMsg); }
 	#endif
@@ -818,8 +839,12 @@ CESERVER_REQ* ExecuteCmd(const wchar_t* szPipeName, CESERVER_REQ* pIn, DWORD nWa
 	}
 
 	#ifdef _DEBUG
-	bIsAltSrvCmd = (pIn->hdr.nCmd==CECMD_ALTBUFFER || pIn->hdr.nCmd==CECMD_ALTBUFFERSTATE || pIn->hdr.nCmd==CECMD_SETCONSCRBUF || pIn->hdr.nCmd == CECMD_LOCKSTATION || pIn->hdr.nCmd == CECMD_UNLOCKSTATION);
-	_ASSERTE(pIn->hdr.nSrcThreadId==GetCurrentThreadId() || (bIsAltSrvCmd && pIn->hdr.nSrcPID!=GetCurrentProcessId()));
+	// Some commands come from different process than specified in hdr
+	bIsAltSrvCmd = (pIn->hdr.nCmd == CECMD_ALTBUFFER || pIn->hdr.nCmd == CECMD_ALTBUFFERSTATE
+		|| pIn->hdr.nCmd == CECMD_SETCONSCRBUF
+		|| pIn->hdr.nCmd == CECMD_STARTXTERM
+		|| pIn->hdr.nCmd == CECMD_LOCKSTATION || pIn->hdr.nCmd == CECMD_UNLOCKSTATION);
+	_ASSERTE(pIn->hdr.nSrcThreadId==GetCurrentThreadId() || (bIsAltSrvCmd && pIn->hdr.nSrcPID != GetCurrentProcessId()));
 	#endif
 
 	if (bAsyncNoResult)
@@ -950,7 +975,7 @@ CESERVER_REQ* ExecuteCmd(const wchar_t* szPipeName, CESERVER_REQ* pIn, DWORD nWa
 wrap:
 	#ifdef _DEBUG
 	if (pOut)
-		_wsprintf(szDbgResult, SKIPLEN(countof(szDbgResult)) L"- Data=%5u  Err=%u\n", pOut->DataSize(), dwErr);
+		swprintf_c(szDbgResult, L"- Data=%5u  Err=%u\n", pOut->DataSize(), dwErr);
 	else
 		lstrcpyn(szDbgResult, L"[NULL]\n", countof(szDbgResult));
 	pszDbgMsg = lstrmerge(szDbgPrefix, szDbgResult);
@@ -1195,7 +1220,7 @@ HWND GetConEmuHWND(int aiType)
 		pIn = (CESERVER_REQ*)calloc(1,sizeof(CESERVER_REQ));
 
 		ExecutePrepareCmd(pIn, CECMD_GETGUIHWND, sizeof(CESERVER_REQ_HDR));
-		//_wsprintf(szGuiPipeName, SKIPLEN(countof(szGuiPipeName)) CEGUIPIPENAME, L".", (DWORD)FarHwnd);
+		//swprintf_c(szGuiPipeName, CEGUIPIPENAME, L".", (DWORD)FarHwnd);
 		msprintf(szGuiPipeName, cchMax, CEGUIPIPENAME, L".", (DWORD)FarHwnd);
 		// Таймаут уменьшим, т.к. на результат не надеемся
 		pOut = ExecuteCmd(szGuiPipeName, pIn, 250, FarHwnd);

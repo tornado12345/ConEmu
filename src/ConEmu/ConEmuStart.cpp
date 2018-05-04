@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -174,6 +174,7 @@ CConEmuStart::CConEmuStart(CConEmuMain* pOwner)
 	m_StartDetached = crb_Undefined;
 	mb_ConEmuHere = false;
 	mb_ForceQuitOnClose = false;
+	mb_SettingsRequested = false;
 	isCurCmdList = false;
 	SetDefaultCmd(L"far");
 	mn_ShellExitCode = STILL_ACTIVE;
@@ -202,7 +203,7 @@ void CConEmuStart::SetDefaultCmd(LPCWSTR asCmd)
 		CEStr szSearch;
 		FindBashLocation(szSearch);
 
-		_wsprintf(szDefCmd, SKIPLEN(countof(szDefCmd))
+		swprintf_c(szDefCmd,
 			(wcschr(szSearch, L' ') != NULL)
 				? L"\"%s\" --login -i" /* -new_console:n" */
 				: L"%s --login -i" /* -new_console:n" */,
@@ -244,7 +245,7 @@ LPCTSTR CConEmuStart::GetCmd(bool *pIsCmdList, bool bNoTask /*= false*/)
 		*pIsCmdList = false;
 
 	// User've choosed default task?
-	if (mp_ConEmu->mn_StartupFinished >= CConEmuMain::ss_Started)
+	if (mp_ConEmu->GetStartupStage() >= CConEmuMain::ss_Started)
 	{
 		if ((pszCmd = GetDefaultTask()) != NULL)
 			return pszCmd;
@@ -279,7 +280,7 @@ LPCTSTR CConEmuStart::GetCmd(bool *pIsCmdList, bool bNoTask /*= false*/)
 	}
 
 	// User've choosed default task?
-	if (mp_ConEmu->mn_StartupFinished < CConEmuMain::ss_Started)
+	if (mp_ConEmu->GetStartupStage() < CConEmuMain::ss_Started)
 	{
 		if ((pszCmd = GetDefaultTask()) != NULL)
 			return pszCmd;
@@ -499,7 +500,7 @@ bool CConEmuStart::GetCfgParm(LPCWSTR& cmdLineRest, CESwitch& Val, int nMaxLen, 
 		wchar_t* psz = (wchar_t*)calloc(nCchSize,sizeof(wchar_t));
 		if (psz)
 		{
-			_wsprintf(psz, SKIPLEN(nCchSize) L"Too long %s value (%i chars).\r\n", pszName, nLen);
+			swprintf_c(psz, nCchSize/*#SECURELEN*/, L"Too long %s value (%i chars).\r\n", pszName, nLen);
 			_wcscat_c(psz, nCchSize, curCommand);
 			MBoxA(psz);
 			free(psz);
@@ -593,7 +594,7 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 	CEStr   szExeName, szExeNameOnly;
 
 	// Set %ConEmuArgs% env var
-	// It may be usefull if we need to restart ConEmu
+	// It may be useful if we need to restart ConEmu
 	// from batch/script with the same arguments (selfupdate etc.)
 	LPCWSTR pszCopyToEnvStart = NULL;
 
@@ -740,7 +741,7 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 						cchMax += 16; // + quotations, spaces and so on
 
 						wchar_t* pszCmd = (wchar_t*)calloc(cchMax, sizeof(*pszCmd));
-						_wsprintf(pszCmd, SKIPLEN(cchMax) L"\"%s\"%s%s%s", szNext.ms_Val,
+						swprintf_c(pszCmd, cchMax/*#SECURELEN*/, L"\"%s\"%s%s%s", szNext.ms_Val,
 							pszArg1 ? L" \"" : L"", pszArg1 ? pszArg1 : L"", pszArg1 ? L"\"" : L"");
 
 
@@ -762,7 +763,7 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 					iResult = nSetupRc;
 					goto wrap;
 				}
-				else if (szArg.OneOfSwitches(L"-bypass", L"-apparent", L"-system", L"-interactive", L"-demote"))
+				else if (szArg.OneOfSwitches(L"-bypass", L"-apparent", L"-system:", L"-interactive:", L"-demote"))
 				{
 					// -bypass
 					// Этот ключик был придуман для прозрачного запуска консоли
@@ -846,14 +847,16 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 						b = CreateProcessDemoted(opt.runCommand.ms_Val, NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL,
 							szCurDir, &si, &pi, &nErr);
 					}
-					else if (szArg.IsSwitch(L"-system"))
+					else if (szArg.IsSwitch(L"-system:"))
 					{
-						b = CreateProcessSystem(opt.runCommand.ms_Val, NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL,
+						DWORD nSessionID = wcstoul(szArg.ms_Val+wcslen(L"-system:"), NULL, 10);
+						b = CreateProcessSystem(nSessionID, opt.runCommand.ms_Val, NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS, NULL,
 							szCurDir, &si, &pi);
 					}
-					else if (szArg.IsSwitch(L"-interactive"))
+					else if (szArg.IsSwitch(L"-interactive:"))
 					{
-						b = CreateProcessInteractive((DWORD)-1, NULL, opt.runCommand.ms_Val, NULL, NULL, TRUE, NORMAL_PRIORITY_CLASS, NULL,
+						DWORD nSessionID = wcstoul(szArg.ms_Val+wcslen(L"-interactive:"), NULL, 10);
+						b = CreateProcessInteractive(nSessionID, NULL, opt.runCommand.ms_Val, NULL, NULL, TRUE, NORMAL_PRIORITY_CLASS, NULL,
 							szCurDir, &si, &pi, &nErr);
 						bFromScheduler = true;
 					}
@@ -871,14 +874,14 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 						if (b)
 						{
 							if (pi.dwProcessId)
-								_wsprintf(szExtra, SKIPCOUNT(szExtra) L", PID=%u", pi.dwProcessId);
+								swprintf_c(szExtra, L", PID=%u", pi.dwProcessId);
 							lsLog = lstrmerge(
 								L"Process was created successfully",
 								szExtra);
 						}
 						else
 						{
-							_wsprintf(szExtra, SKIPCOUNT(szExtra) L", ErrorCode=%u", nErr);
+							swprintf_c(szExtra, L", ErrorCode=%u", nErr);
 							lsLog = lstrmerge(
 								L"Failed to start process",
 								szExtra);
@@ -1025,6 +1028,10 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 				{
 					gpConEmu->m_StartDetached = crb_On;
 					opt.Detached = true;
+				}
+				else if (szArg.IsSwitch(L"-NoAutoClose"))
+				{
+					opt.NoAutoClose = true;
 				}
 				else if (szArg.IsSwitch(L"-here"))
 				{
@@ -1367,6 +1374,10 @@ bool CConEmuStart::ParseCommandLine(LPCWSTR pszCmdLine, int& iResult)
 						goto wrap;
 					}
 					gpConEmu->SetTitleTemplate(pszTitle.GetStr());
+				}
+				else if (szArg.IsSwitch(L"-Settings"))
+				{
+					gpConEmu->mb_SettingsRequested = true;
 				}
 				else if (szArg.IsSwitch(L"-FindBugMode"))
 				{

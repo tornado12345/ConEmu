@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,14 +29,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
+#include "../common/CEStr.h"
 
 struct TermX
 {
-	bool AppCursorKeys;
+	bool   AppCursorKeys;
+	BYTE   MouseButtons;
+	COORD  LastMousePos;
+	WORD   LastDeadCharVK;
 
-	bool GetSubstitute(const KEY_EVENT_RECORD& k, wchar_t (&szSubst)[16]);
-	bool GetSubstitute(const MOUSE_EVENT_RECORD& m, wchar_t (&szSubst)[16]);
+	bool GetSubstitute(const KEY_EVENT_RECORD& k, CEStr& lsSubst);
+	bool GetSubstitute(const MOUSE_EVENT_RECORD& m, TermMouseMode MouseMode, CEStr& lsSubst);
 
 	TermX();
 	void Reset();

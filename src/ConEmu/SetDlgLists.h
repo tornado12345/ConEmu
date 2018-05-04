@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -94,24 +94,11 @@ protected:
 	static const DWORD ExtendFonts[]; // {lbExtendFontBoldIdx, lbExtendFontItalicIdx, lbExtendFontNormalIdx};
 
 	static const ListBoxItem TabBtnDblClickActions[];
-							//{// gpSet->nTabBtnDblClickAction
-							//	{ 0, L"No action" },
-							//	{ 1, L"Maximize/restore window size" },
-							//	{ 2, L"Close tab" },
-							//	{ 3, L"Restart tab" },
-							//	{ 4, L"Duplicate tab" },
-							//};
 	static const ListBoxItem TabBarDblClickActions[];
-							//{// gpSet->nTabBarDblClickAction
-							//	{ 0, L"No action" },
-							//	{ 1, L"Auto" },
-							//	{ 2, L"Maximize/restore window size" },
-							//	{ 3, L"Open new shell" },
-							//};
 
 public:
-	static uint GetListItems(eFillListBoxItems eWhat, const ListBoxItem*& pItems);
-	static uint GetListItems(eWordItems eWhat, const DWORD*& pItems);
+	static unsigned GetListItems(eFillListBoxItems eWhat, const ListBoxItem*& pItems);
+	static unsigned GetListItems(eWordItems eWhat, const DWORD*& pItems);
 
 	static void FillListBox(HWND hList, WORD nCtrlId, eFillListBoxItems eWhat);
 	static void FillListBoxItems(HWND hList, eFillListBoxItems eWhat, UINT& nValue, bool abExact);
@@ -126,7 +113,7 @@ public:
 	static bool GetListBoxItem(HWND hWnd, WORD nCtrlId, eWordItems eWhat, UINT& nValue);
 	static bool GetListBoxItem(HWND hWnd, WORD nCtrlId, eWordItems eWhat, BYTE& nValue);
 
-	static INT_PTR GetSelectedString(HWND hParent, WORD nListCtrlId, wchar_t** ppszStr);
+	static INT_PTR GetSelectedString(HWND hParent, WORD nListCtrlId, CEStr& szStr);
 	static int SelectString(HWND hParent, WORD nCtrlId, LPCWSTR asText);
 	static int SelectStringExact(HWND hParent, WORD nCtrlId, LPCWSTR asText);
 

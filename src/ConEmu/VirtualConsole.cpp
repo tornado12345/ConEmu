@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -253,7 +253,6 @@ CVirtualConsole::CVirtualConsole(CConEmuMain* pOwner, int index)
 	, bgBmpSize()
 	, mb_IsForceUpdate(false)
 	, mb_InUpdate(false)
-	, hBrush0(NULL)
 	, hSelectedBrush(NULL)
 	, hOldBrush(NULL)
 	, isEditor(false)
@@ -296,6 +295,11 @@ CVirtualConsole::CVirtualConsole(CConEmuMain* pOwner, int index)
 	_ASSERTE(mh_WndDC == NULL);
 }
 
+CConEmuMain* CVirtualConsole::Owner()
+{
+	return this ? mp_ConEmu : NULL;
+}
+
 int CVirtualConsole::Index()
 {
 	return mn_Index;
@@ -303,7 +307,8 @@ int CVirtualConsole::Index()
 
 LPCWSTR CVirtualConsole::IndexStr()
 {
-	return _itow(mn_Index, ms_Idx, 10);
+	ltow_s(mn_Index, ms_Idx, 10);
+	return ms_Idx;
 }
 
 int CVirtualConsole::ID()
@@ -313,7 +318,8 @@ int CVirtualConsole::ID()
 
 LPCWSTR CVirtualConsole::IDStr()
 {
-	return _itow(mn_ID, ms_ID, 10);
+	ltow_s(mn_ID, ms_ID, 10);
+	return ms_ID;
 }
 
 bool CVirtualConsole::SetFlags(VConFlags Set, VConFlags Mask, int index)
@@ -339,7 +345,7 @@ bool CVirtualConsole::SetFlags(VConFlags Set, VConFlags Mask, int index)
 	return bChanged;
 }
 
-bool CVirtualConsole::Constructor(RConStartArgs *args)
+bool CVirtualConsole::Constructor(RConStartArgsEx *args)
 {
 	#ifdef __GNUC__
 	MModule gdi32(GetModuleHandle(L"gdi32.dll"));
@@ -599,13 +605,17 @@ bool CVirtualConsole::isGroup()
 	return CVConGroup::isGroup(this);
 }
 
-bool CVirtualConsole::isGroupedInput()
+EnumVConFlags CVirtualConsole::isGroupedInput()
 {
 	if (!this)
-		return false;
-	if (!(mn_Flags & vf_Grouped))
-		return false;
-	return true;
+		return evf_None;
+	if (mp_ConEmu->isInputGrouped())
+		return evf_All;
+	if ((mn_Flags & vf_GroupSplit))
+		return evf_Visible;
+	if ((mn_Flags & vf_GroupSet))
+		return evf_GroupSet;
+	return evf_None;
 }
 
 void CVirtualConsole::PointersFree()
@@ -634,7 +644,7 @@ bool CVirtualConsole::PointersAlloc()
 	mb_PointersAllocated = false;
 	HEAPVAL;
 
-	uint nWidthHeight = (m_Sizes.nMaxTextWidth * m_Sizes.nMaxTextHeight);
+	unsigned nWidthHeight = (m_Sizes.nMaxTextWidth * m_Sizes.nMaxTextHeight);
 #ifdef AllocArray
 #undef AllocArray
 #endif
@@ -655,7 +665,7 @@ bool CVirtualConsole::PointersAlloc()
 
 void CVirtualConsole::PointersZero()
 {
-	uint nWidthHeight = (m_Sizes.nMaxTextWidth * m_Sizes.nMaxTextHeight);
+	unsigned nWidthHeight = (m_Sizes.nMaxTextWidth * m_Sizes.nMaxTextHeight);
 	//100607: Сбрасывать ВСЕ не будем. Эти массивы могут использоваться и в других нитях!
 	HEAPVAL;
 	//ZeroMemory(mpsz_ConChar, nWidthHeight*sizeof(*mpsz_ConChar));
@@ -694,8 +704,8 @@ bool CVirtualConsole::InitDC(bool abNoDc, bool abNoWndResize, MSectionLock *pSDC
 	if (!(pSCON ? pSCON : &_SCON)->isLocked())
 		(pSCON ? pSCON : &_SCON)->Lock(&csCON);
 	BOOL lbNeedCreateBuffers = FALSE;
-	uint rTextWidth = mp_RCon->TextWidth();
-	uint rTextHeight = mp_RCon->TextHeight();
+	unsigned rTextWidth = mp_RCon->TextWidth();
+	unsigned rTextHeight = mp_RCon->TextHeight();
 
 	if (!rTextWidth || !rTextHeight)
 	{
@@ -789,7 +799,8 @@ bool CVirtualConsole::InitDC(bool abNoDc, bool abNoWndResize, MSectionLock *pSDC
 		m_Sizes.Width = m_Sizes.TextWidth * m_Sizes.nFontWidth;
 		m_Sizes.Height = m_Sizes.TextHeight * m_Sizes.nFontHeight;
 
-		UINT Pad = min(gpSet->nCenterConsolePad,CENTERCONSOLEPAD_MAX)*2 + max(m_Sizes.nFontHeight,m_Sizes.nFontWidth)*3;
+		UINT Pad = std::min<UINT>(gpSet->nCenterConsolePad, CENTERCONSOLEPAD_MAX) * 2
+			+ std::max<LONG>(m_Sizes.nFontHeight, m_Sizes.nFontWidth) * 3;
 
 		#ifdef _DEBUG
 		if (m_Sizes.Height > 2000)
@@ -864,7 +875,7 @@ bool CVirtualConsole::Dump(LPCWSTR asFile)
 	LPCTSTR pszTitle = mp_ConEmu->GetLastTitle();
 	WriteFile(hFile, pszTitle, _tcslen(pszTitle)*sizeof(*pszTitle), &dw, NULL);
 	wchar_t temp[100];
-	_wsprintf(temp, SKIPCOUNT(temp) L"\r\nSize: %ix%i   Cursor: %ix%i\r\n", m_Sizes.TextWidth, m_Sizes.TextHeight, Cursor.x, Cursor.y);
+	swprintf_c(temp, L"\r\nSize: %ix%i   Cursor: %ix%i\r\n", m_Sizes.TextWidth, m_Sizes.TextHeight, Cursor.x, Cursor.y);
 	WriteFile(hFile, temp, wcslen(temp)*sizeof(wchar_t), &dw, NULL);
 	WriteFile(hFile, mpsz_ConChar, m_Sizes.TextWidth * m_Sizes.TextHeight * sizeof(*mpsz_ConChar), &dw, NULL);
 	WriteFile(hFile, mpn_ConAttrEx, m_Sizes.TextWidth * m_Sizes.TextHeight * sizeof(*mpn_ConAttrEx), &dw, NULL);
@@ -909,239 +920,69 @@ bool CVirtualConsole::LoadDumpConsole()
 }
 
 
-void CVirtualConsole::PaintBackgroundImage(const RECT& rcText, const COLORREF crBack)
+void CVirtualConsole::PaintBackgroundImage(HDC hdc, const RECT& rcText, const COLORREF crBack, bool Background /*= false*/)
 {
-	WARNING("CVirtualConsole::PaintBackgroundImage - crBack игнорируется");
-
-	const int inX = rcText.left;
-	const int inY = rcText.top;
-	const int inX2 = rcText.right;
-	const int inY2 = rcText.bottom;
-	const int inWidth = inX2 - inX;
-	const int inHeight = inY2 - inY;
-
 	#ifdef _DEBUG
-	BOOL lbDump = FALSE;
+	bool lbDump = false;
 	if (lbDump) DumpImage(hBgDc, NULL, bgBmpSize.X, bgBmpSize.Y, L"F:\\bgtemp.png");
 	#endif
 
-	RECT rcFill1 = {0}, rcFill2 = {0};
-	#if 0
-	RECT rcFill3 = {0}, rcFill4 = {0};
-	#endif
-	int bgX = inX, bgY = inY;
-
-	BackgroundOp op = (BackgroundOp)gpSet->bgOperation;
+	// If Back is larger than DC (gap or non-integral size)
+	const POINT dcOffset = {Background ? 0 : (int)m_Sizes.OffsetX, Background ? 0 : (int)m_Sizes.OffsetY};
+	// Where to place bitmap
+	const BackgroundOp& op = (BackgroundOp)gpSet->bgOperation;
+	// We shall get coordinates relative to our DC due to `op`
+	RECT bgRect = {0, 0, bgBmpSize.X, bgBmpSize.Y};
+	POINT bgOffset = {};
 
 	if (op == eUpRight)
 	{
-		int xShift = max(0,((int)m_Sizes.Width - bgBmpSize.X));
-		bgX = inX - xShift; bgY = inY;
-
-		if ((bgBmpSize.X < (int)m_Sizes.Width) || (bgBmpSize.Y < (int)m_Sizes.Height))
-		{
-			if (inY < bgBmpSize.Y)
-			{
-				rcFill1 = MakeRect(inX, inY, min(inX2,xShift), min(bgBmpSize.Y,inY2));
-				rcFill2 = MakeRect(inX, max(inY,bgBmpSize.Y), min(inX2,xShift), inY2);
-			}
-			else
-			{
-				rcFill1 = MakeRect(inX, inY, inX2, inY2);
-			}
-		}
+		bgOffset.x = std::max(0,((int)m_Sizes.BackWidth - bgBmpSize.X));
 	}
 	else if (op == eDownLeft)
 	{
-		int yShift = max(0,((int)m_Sizes.Height - bgBmpSize.Y));
-		bgX = inX; bgY = inY - yShift;
-
-		if ((bgBmpSize.X < (int)m_Sizes.Width) || (bgBmpSize.Y < (int)m_Sizes.Height))
-		{
-			if (inY2 >= yShift)
-			{
-				rcFill1 = MakeRect(inX, inY, inX2, min(yShift,inY2));
-				rcFill2 = MakeRect(bgBmpSize.X, max(inY,yShift), inX2, inY2);
-			}
-			else
-			{
-				rcFill1 = MakeRect(inX, inY, inX2, inY2);
-			}
-		}
-
+		bgOffset.y = std::max(0,((int)m_Sizes.BackHeight - bgBmpSize.Y));
 	}
 	else if (op == eDownRight)
 	{
-		int xShift = max(0,((int)m_Sizes.Width - bgBmpSize.X));
-		int yShift = max(0,((int)m_Sizes.Height - bgBmpSize.Y));
-		bgX = inX - xShift; bgY = inY - yShift;
-
-		if ((bgBmpSize.X < (int)m_Sizes.Width) || (bgBmpSize.Y < (int)m_Sizes.Height))
-		{
-			rcFill1 = MakeRect(inX, inY, inX2, min(yShift,inY2));
-			rcFill2 = MakeRect(inX, max(inY,yShift), min(inX2,xShift), inY2);
-		}
-
+		bgOffset.x = std::max(0,((int)m_Sizes.BackWidth - bgBmpSize.X));
+		bgOffset.y = std::max(0,((int)m_Sizes.BackHeight - bgBmpSize.Y));
 	}
 	else if ((op == eFit) || (op == eFill) || (op == eCenter))
 	{
-		int xShift = ((int)m_Sizes.Width - bgBmpSize.X)/2;
-		int yShift = ((int)m_Sizes.Height - bgBmpSize.Y)/2;
-		bgX = inX - xShift; bgY = inY - yShift;
+		bgOffset.x = ((int)m_Sizes.BackWidth - bgBmpSize.X)/2;
+		bgOffset.y = ((int)m_Sizes.BackHeight - bgBmpSize.Y)/2;
+	}
 
-		if (op == eFit)
-		{
-			if (xShift > 0)
-			{
-				rcFill1 = MakeRect(inX, inY, min(inX2,xShift), inY2);
-				if (inX2 > (bgBmpSize.X + xShift))
-					rcFill2 = MakeRect(xShift+bgBmpSize.X, inY, inX2, inY2);
-			}
-			else if (yShift > 0)
-			{
-				rcFill1 = MakeRect(inX, inY, inX2, min(inY2,yShift));
-				if (inY2 > (bgBmpSize.Y + yShift))
-					rcFill2 = MakeRect(inX, yShift+bgBmpSize.Y, inX2, inY2);
-			}
-		}
-		else if (op == eCenter)
-		{
-			WARNING("OPTIMIZE!");
-		#if 1
-			if (inX < xShift || inY < yShift || inX2 > (bgBmpSize.X + xShift) || inY2 > (bgBmpSize.Y + yShift))
-				rcFill1 = rcText;
-		#else
-			LPRECT prc[] = {&rcFill1, &rcFill2, &rcFill3, &rcFill4}; int iRct = 0;
+	RECT dcMapped = rcText;
+	POINT totalOffset = {dcOffset.x - bgOffset.x, dcOffset.y - bgOffset.y};
+	OffsetRect(&dcMapped, totalOffset.x, totalOffset.y);
 
-			// Full?
-			if (((yShift > 0) && ((yShift >= inY2) || (inY >= (bgBmpSize.Y + yShift)))) // All above or below
-				|| ((xShift > 0) && ((xShift >= inX2) || (inX >= (bgBmpSize.X + xShift))))) // All leftward or rightward
-			{
-				*(prc[iRct++]) = MakeRect(inX, inY, inX2, min(inY2,yShift));
-			}
-			else
-			{
-				// Parts
-				if (xShift > 0)
-				{
-					*(prc[iRct++]) = MakeRect(inX, inY, min(inX2,xShift), inY2);
+	HRGN hRgnDc = CreateRectRgnIndirect(&rcText);
 
-					if (inX2 > (bgBmpSize.X + xShift))
-					{
-						if (iRct < countof(prc))
-							*(prc[iRct++]) = MakeRect(xShift+bgBmpSize.X, inY, inX2, inY2);
-						else
-							_ASSERTE(iRct<=1);
-					}
-				}
-				if (yShift > 0)
-				{
-					if (iRct < countof(prc))
-						*(prc[iRct++]) = MakeRect(inX, inY, inX2, min(inY2,yShift));
-					else
-						_ASSERTE(iRct<=1);
+	// Background part
+	RECT blt = {};
+	if (IntersectRect(&blt, &dcMapped, &bgRect))
+	{
+		POINT bltPos = {blt.left - totalOffset.x, blt.top - totalOffset.y};
+		BitBlt(hdc, bltPos.x, bltPos.y, RectWidth(blt), RectHeight(blt), hBgDc, blt.left, blt.top, SRCCOPY);
 
-					if (inY2 > (bgBmpSize.Y + yShift))
-					{
-						if (iRct < countof(prc))
-							*(prc[iRct++]) = MakeRect(inX, yShift+bgBmpSize.Y, inX2, inY2);
-						else
-							_ASSERTE(iRct<=1);
-					}
-				}
-			}
+		HRGN hRgnBg = CreateRectRgn(bltPos.x, bltPos.y, bltPos.x + RectWidth(blt), bltPos.y + RectHeight(blt));
+		if (hRgnDc && hRgnBg)
+			CombineRgn(hRgnDc, hRgnDc, hRgnBg, RGN_DIFF);
+		if (hRgnBg)
+			DeleteObject(hRgnBg);
+	}
+
+	// Fill with requested color (if background image is not large enough)
+	if (hRgnDc)
+	{
+		#ifndef SKIP_ALL_FILLRECT
+		HBRUSH hBr = PartBrush(L' ', crBack, crBack);
+		if (hBr)
+			FillRgn(hdc, hRgnDc, hBr);
 		#endif
-		}
-	}
-	else
-	{
-		//if (bgBmpSize.X>inX && bgBmpSize.Y>inY)
-		//{
-		//	BitBlt((HDC)m_DC, inX, inY, inWidth, inHeight, hBgDc, inX, inY, SRCCOPY);
-		//}
-
-		// Заливка цветом (там где нет картинки)
-		if ((bgBmpSize.X < (inX+inWidth)) || (bgBmpSize.Y < (inY+inHeight)))
-		{
-			//if (hBrush0 == NULL)
-			//{
-			//	hBrush0 = CreateSolidBrush(mp_Colors[0]);
-			//	SelectBrush(hBrush0);
-			//}
-
-			rcFill1 = MakeRect(max(inX,bgBmpSize.X), inY, inX+inWidth, inY+inHeight);
-
-			//#ifndef SKIP_ALL_FILLRECT
-			//if (!IsRectEmpty(&rect))
-			//{
-			//	FillRect((HDC)m_DC, &rect, hBrush0);
-			//}
-			//#endif
-
-			if (bgBmpSize.X>inX)
-			{
-				//rect.left = inX; rect.top = max(inY,bgBmpSize.Y); rect.right = bgBmpSize.X;
-				rcFill2 = MakeRect(inX, max(inY,bgBmpSize.Y), bgBmpSize.X, inY+inHeight);
-
-				//#ifndef SKIP_ALL_FILLRECT
-				//if (!IsRectEmpty(&rect))
-				//{
-				//	FillRect((HDC)m_DC, &rect, hBrush0);
-				//}
-				//#endif
-			}
-		}
-	}
-
-	for (int i = 0; i <= 1; i++)
-	{
-		if (((i == 0) && (op != eCenter)) || ((i != 0) && (op == eCenter)))
-		{
-			// Background part
-			if (bgBmpSize.X>bgX && bgBmpSize.Y>bgY)
-			{
-				BitBlt((HDC)m_DC, inX, inY, inWidth, inHeight, hBgDc, bgX, bgY, SRCCOPY);
-			}
-		}
-		else
-		{
-			// Fill with color#0 (if background image is not large enough)
-			HBRUSH hBr = NULL;
-			#if 0
-			hBr = PartBrush(L' ', crBack, 0);
-			#else
-			if (hBrush0 == NULL)
-			{
-				hBrush0 = CreateSolidBrush(mp_Colors[0]);
-				//SelectBrush(hBrush0);
-			}
-			hBr = hBrush0;
-			#endif
-
-			#ifndef SKIP_ALL_FILLRECT
-			if (!IsRectEmpty(&rcFill1))
-			{
-				FillRect((HDC)m_DC, &rcFill1, hBrush0);
-			}
-
-			if (!IsRectEmpty(&rcFill2))
-			{
-				FillRect((HDC)m_DC, &rcFill2, hBrush0);
-			}
-
-			#if 0
-			if (!IsRectEmpty(&rcFill3))
-			{
-				FillRect((HDC)m_DC, &rcFill3, hBrush0);
-			}
-
-			if (!IsRectEmpty(&rcFill4))
-			{
-				FillRect((HDC)m_DC, &rcFill4, hBrush0);
-			}
-			#endif
-			#endif
-		}
+		DeleteObject(hRgnDc);
 	}
 }
 
@@ -1672,7 +1513,7 @@ bool CVirtualConsole::Update(bool abForce, HDC *ahDc)
 		{
 			// Скинуть буферы в лог
 			mn_LogScreenIdx++;
-			wchar_t szLogPath[MAX_PATH]; _wsprintf(szLogPath, SKIPLEN(countof(szLogPath)) mpsz_LogScreen, mp_RCon->GetServerPID(), mn_LogScreenIdx);
+			wchar_t szLogPath[MAX_PATH]; swprintf_c(szLogPath, mpsz_LogScreen, mp_RCon->GetServerPID(), mn_LogScreenIdx);
 			Dump(szLogPath);
 		}
 
@@ -1702,11 +1543,6 @@ bool CVirtualConsole::Update(bool abForce, HDC *ahDc)
 	/*       Finalization, release objects       */
 	/* ***************************************** */
 	SelectBrush(NULL);
-
-	if (hBrush0)    // создается в BlitPictureTo
-	{
-		DeleteObject(hBrush0); hBrush0 = NULL;
-	}
 
 	/*
 	for (UINT br=0; br<m_PartBrushes.size(); br++) {
@@ -1742,9 +1578,7 @@ void CVirtualConsole::PatInvertRect(HDC hPaintDC, const RECT& rect, HDC hFromDC,
 void CVirtualConsole::ResetHighlightCoords()
 {
 	ResetHighlightHyperlinks();
-	ZeroStruct(m_HighlightInfo.mrc_LastRow);
-	ZeroStruct(m_HighlightInfo.mrc_LastCol);
-	ZeroStruct(m_HighlightInfo.mrc_LastHyperlink);
+	m_HighlightInfo.LastRect.eraseall();
 	m_HighlightInfo.m_Last.X = m_HighlightInfo.m_Last.Y = -1;
 	m_HighlightInfo.m_Cur.X = m_HighlightInfo.m_Cur.Y = -1;
 }
@@ -1865,9 +1699,10 @@ bool CVirtualConsole::WasHighlightRowColChanged()
 	// If cursor goes out of VCon - leave row/col marks?
 	if (!CalcHighlightRowCol(&crPos))
 	{
-		if (!IsRectEmpty(&m_HighlightInfo.mrc_LastRow)
-			|| !IsRectEmpty(&m_HighlightInfo.mrc_LastCol))
+		for (INT_PTR i = 0; !bInvalidate && i < m_HighlightInfo.LastRect.size(); ++i)
 		{
+			if (!m_HighlightInfo.LastRect[i].crPatColor)
+				continue;
 			bInvalidate = true;
 		}
 		goto wrap;
@@ -1969,9 +1804,7 @@ bool CVirtualConsole::CalcHighlightRowCol(COORD* pcrPos)
 
 void CVirtualConsole::UpdateHighlights()
 {
-	ZeroStruct(m_HighlightInfo.mrc_LastRow);
-	ZeroStruct(m_HighlightInfo.mrc_LastCol);
-	ZeroStruct(m_HighlightInfo.mrc_LastHyperlink);
+	m_HighlightInfo.LastRect.eraseall();
 	m_HighlightInfo.m_Last.X = m_HighlightInfo.m_Last.Y = -1;
 
 	// During any popup menus (system, tab, etc.) don't highlight row/col
@@ -2003,7 +1836,7 @@ void CVirtualConsole::UpdateHighlightsRowCol()
 
 	if ((pos.X >= 0) && ConCharX)
 	{
-		int CurChar = klMax(0, klMin((int)pos.Y, (int)m_Sizes.TextHeight-1)) * m_Sizes.TextWidth + pos.X;
+		int CurChar = std::max(0, std::min((int)pos.Y, (int)m_Sizes.TextHeight-1)) * m_Sizes.TextWidth + pos.X;
 		if ((CurChar >= 0) && (CurChar < (int)(m_Sizes.TextWidth * m_Sizes.TextHeight)))
 		{
 			if (ConCharX[CurChar-1])
@@ -2012,26 +1845,30 @@ void CVirtualConsole::UpdateHighlightsRowCol()
 	}
 
 	HDC hPaintDC = (HDC)m_DC;
-	HBRUSH hBr = CreateSolidBrush(HILIGHT_PAT_COLOR);
+	HighlightRect hrPaint = {};
+	hrPaint.crPatColor = HILIGHT_PAT_COLOR;
+	HBRUSH hBr = CreateSolidBrush(hrPaint.crPatColor);
 	HBRUSH hOld = (HBRUSH)SelectObject(hPaintDC, hBr);
+
+	_ASSERTE(m_HighlightInfo.LastRect.empty());
 
 	if (isHighlightMouseRow())
 	{
-		RECT rect = {0, pix.Y, (LONG)m_Sizes.Width, pix.Y + m_Sizes.nFontHeight};
+		hrPaint.rcPaint = MakeRect(0, pix.Y, (LONG)m_Sizes.Width, pix.Y + m_Sizes.nFontHeight);
 		if (pos.Y >= 0)
-			PatInvertRect(hPaintDC, rect, hPaintDC, false);
+			PatInvertRect(hPaintDC, hrPaint.rcPaint, hPaintDC, false);
 		m_HighlightInfo.m_Last.Y = pos.Y;
-		m_HighlightInfo.mrc_LastRow = rect;
+		m_HighlightInfo.LastRect.push_back(hrPaint);
 	}
 
 	if (isHighlightMouseCol())
 	{
 		// This will be not "precise" on other rows if using proportional font...
-		RECT rect = {pix.X, 0, pix.X + m_Sizes.nFontWidth, (LONG)m_Sizes.Height};
+		hrPaint.rcPaint = MakeRect(pix.X, 0, pix.X + m_Sizes.nFontWidth, (LONG)m_Sizes.Height);
 		if (pos.X >= 0)
-			PatInvertRect(hPaintDC, rect, hPaintDC, false);
+			PatInvertRect(hPaintDC, hrPaint.rcPaint, hPaintDC, false);
 		m_HighlightInfo.m_Last.X = pos.X;
-		m_HighlightInfo.mrc_LastCol = rect;
+		m_HighlightInfo.LastRect.push_back(hrPaint);
 	}
 
 	SelectObject(hPaintDC, hOld);
@@ -2043,64 +1880,55 @@ void CVirtualConsole::UpdateHighlightsHyperlink()
 	_ASSERTE(this && isHighlightHyperlink());
 
 	HDC hPaintDC = (HDC)m_DC;
-	HBRUSH hBr = (HBRUSH)GetStockObject(WHITE_BRUSH);
+	HighlightRect hrPaint = {};
+	hrPaint.StockBrush = WHITE_BRUSH;
+	HBRUSH hBr = (HBRUSH)GetStockObject(hrPaint.StockBrush);
 	HBRUSH hOld = (HBRUSH)SelectObject(hPaintDC, hBr);
 
-	POINT ptStart = ConsoleToClient(m_etr.mcr_FileLineStart.X, m_etr.mcr_FileLineStart.Y);
-	_ASSERTE(m_etr.mcr_FileLineStart.Y == m_etr.mcr_FileLineEnd.Y); // May it extends to next line?
-	POINT ptEnd = ConsoleToClient(m_etr.mcr_FileLineEnd.X+1, m_etr.mcr_FileLineStart.Y);
+	// Support multi-line hyperlinks
+	int nWidth = GetTextWidth();
 	// Height of "underline"?
 	int nHeight = m_Sizes.nFontHeight / 10;
 	if (nHeight < 1) nHeight = 1;
-	// Just fill it (with color of the text?)
-	RECT rc = {ptStart.x, ptStart.y + m_Sizes.nFontHeight-nHeight, ptEnd.x, ptEnd.y + m_Sizes.nFontHeight};
 
-	PatInvertRect(hPaintDC, rc, hPaintDC, true);
-	//FillRect((HDC)m_DC, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+	for (SHORT Y = m_etr.mcr_FileLineStart.Y; Y <= m_etr.mcr_FileLineEnd.Y; ++Y)
+	{
+		POINT ptStart = ConsoleToClient((Y > m_etr.mcr_FileLineStart.Y) ? 0 : m_etr.mcr_FileLineStart.X, Y);
+		POINT ptEnd = ConsoleToClient((Y < m_etr.mcr_FileLineEnd.Y) ? nWidth : m_etr.mcr_FileLineEnd.X+1, Y);
+		// Just fill it (with color of the text?)
+		hrPaint.rcPaint = MakeRect(ptStart.x, ptStart.y + m_Sizes.nFontHeight-nHeight, ptEnd.x, ptEnd.y + m_Sizes.nFontHeight);
 
-	m_HighlightInfo.mrc_LastHyperlink = rc;
+		PatInvertRect(hPaintDC, hrPaint.rcPaint, hPaintDC, true);
+		//FillRect((HDC)m_DC, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+
+		m_HighlightInfo.LastRect.push_back(hrPaint);
+	}
 
 	SelectObject(hPaintDC, hOld);
 }
 
 void CVirtualConsole::UndoHighlights()
 {
-	if (!IsRectEmpty(&m_HighlightInfo.mrc_LastRow) || !IsRectEmpty(&m_HighlightInfo.mrc_LastCol))
+	if (m_HighlightInfo.LastRect.empty())
+		return;
+
+	HDC hPaintDC = (HDC)m_DC;
+
+	for (INT_PTR i = 0; i < m_HighlightInfo.LastRect.size(); ++i)
 	{
-		HDC hPaintDC = (HDC)m_DC;
-		HBRUSH hBr = CreateSolidBrush(HILIGHT_PAT_COLOR);
+		const HighlightRect& cur = m_HighlightInfo.LastRect[i];
+		bool UseFill = (cur.crPatColor == 0);
+		HBRUSH hBr = UseFill ? (HBRUSH)GetStockObject(cur.StockBrush) : CreateSolidBrush(cur.crPatColor);
 		HBRUSH hOld = (HBRUSH)SelectObject(hPaintDC, hBr);
 
-		if (!IsRectEmpty(&m_HighlightInfo.mrc_LastRow))
-		{
-			RECT rect = m_HighlightInfo.mrc_LastRow;
-			PatInvertRect(hPaintDC, rect, hPaintDC, false);
-			ZeroStruct(m_HighlightInfo.mrc_LastRow);
-		}
-
-		if (!IsRectEmpty(&m_HighlightInfo.mrc_LastCol))
-		{
-			RECT rect = m_HighlightInfo.mrc_LastCol;
-			PatInvertRect(hPaintDC, rect, hPaintDC, false);
-			ZeroStruct(m_HighlightInfo.mrc_LastCol);
-		}
+		PatInvertRect(hPaintDC, cur.rcPaint, hPaintDC, UseFill);
 
 		SelectObject(hPaintDC, hOld);
-		DeleteObject(hBr);
+		if (!UseFill)
+			DeleteObject(hBr);
 	}
 
-	if (!IsRectEmpty(&m_HighlightInfo.mrc_LastHyperlink))
-	{
-		HDC hPaintDC = (HDC)m_DC;
-		HBRUSH hBr = (HBRUSH)GetStockObject(WHITE_BRUSH);
-		HBRUSH hOld = (HBRUSH)SelectObject(hPaintDC, hBr);
-
-		RECT rect = m_HighlightInfo.mrc_LastHyperlink;
-		PatInvertRect(hPaintDC, rect, hPaintDC, true);
-		ZeroStruct(m_HighlightInfo.mrc_LastHyperlink);
-
-		SelectObject(hPaintDC, hOld);
-	}
+	m_HighlightInfo.LastRect.eraseall();
 }
 
 bool CVirtualConsole::CheckTransparent()
@@ -2189,9 +2017,9 @@ bool CVirtualConsole::CheckTransparentRgn(bool abHasChildWindows)
 
 				if (!abHasChildWindows)
 				{
-					for(uint nY = 0; nY < m_Sizes.TextHeight; nY++)
+					for(unsigned nY = 0; nY < m_Sizes.TextHeight; nY++)
 					{
-						uint nX = 0;
+						unsigned nX = 0;
 						//int nYPix1 = nY * nFontHeight;
 
 						while (nX < m_Sizes.TextWidth)
@@ -2211,7 +2039,7 @@ bool CVirtualConsole::CheckTransparentRgn(bool abHasChildWindows)
 								break;
 
 							// Найти конец прозрачного блока
-							uint nTranStart = nX;
+							unsigned nTranStart = nX;
 
 							#if 0
 							while (++nX < TextWidth && pnAttr[nX].bTransparent)
@@ -2228,7 +2056,7 @@ bool CVirtualConsole::CheckTransparentRgn(bool abHasChildWindows)
 
 							if (nRectCount>=nMaxRects)
 							{
-								int nNewMaxRects = nMaxRects + max((int)m_Sizes.TextHeight,(int)(nRectCount-nMaxRects+1));
+								int nNewMaxRects = nMaxRects + std::max((int)m_Sizes.TextHeight,(int)(nRectCount-nMaxRects+1));
 								_ASSERTE(nNewMaxRects > nRectCount);
 
 								HEAPVAL;
@@ -2491,7 +2319,7 @@ void CVirtualConsole::SetSelfPalette(WORD wAttributes, WORD wPopupAttributes, co
 			}
 			else
 			{
-				_wsprintf(szSuffix, SKIPCOUNT(szSuffix) L":%02i", i);
+				swprintf_c(szSuffix, L":%02i", i);
 				szAutoName = lstrmerge(lsPrefix.IsEmpty() ? L"#Attached" : lsPrefix.ms_Val, szSuffix);
 			}
 
@@ -2502,7 +2330,7 @@ void CVirtualConsole::SetSelfPalette(WORD wAttributes, WORD wPopupAttributes, co
 		}
 
 		// Save new (temporary) palette
-		gpSet->PaletteSaveAs(szAutoName, false, CEDEF_ExtendColorIdx,
+		gpSet->PaletteSaveAs(szAutoName,
 			m_SelfPalette.nTextColorIdx, m_SelfPalette.nBackColorIdx,
 			m_SelfPalette.nPopTextColorIdx, m_SelfPalette.nPopBackColorIdx,
 			m_SelfPalette.Colors, false);
@@ -2592,11 +2420,22 @@ int CVirtualConsole::GetPaletteIndex()
 
 bool CVirtualConsole::ChangePalette(int aNewPaletteIdx)
 {
+	const ColorPalette* pPal = gpSet->PaletteGet(aNewPaletteIdx);
+	return ChangePalette(pPal);
+}
+
+bool CVirtualConsole::ChangePalette(LPCWSTR asNewPalette)
+{
+	const ColorPalette* pPal = gpSet->PaletteGetByName(asNewPalette);
+	return ChangePalette(pPal);
+}
+
+bool CVirtualConsole::ChangePalette(const ColorPalette* pPal)
+{
 	if (!this || !mp_RCon)
 		return false;
 
 	const ColorPalette* pOldPal = gpSet->PaletteGet(GetPaletteIndex());
-	const ColorPalette* pPal = gpSet->PaletteGet(aNewPaletteIdx);
 	if (!pPal)
 		return false;
 
@@ -2625,7 +2464,7 @@ void CVirtualConsole::OnAppSettingsChanged(int iAppId /*= -1*/)
 {
 	wchar_t szInfo[80];
 	LONG lNew = InterlockedIncrement(&mn_AppSettingsChangCount);
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"VCon::OnAppSettingsChanged AppId=%i, Counter=%i", iAppId, lNew);
+	swprintf_c(szInfo, L"VCon::OnAppSettingsChanged AppId=%i, Counter=%i", iAppId, lNew);
 
 	if (lNew == 1)
 	{
@@ -2688,7 +2527,7 @@ bool CVirtualConsole::UpdatePrepare(HDC *ahDc, MSectionLock *pSDC, MSectionLock 
 	}
 
 	// Первая инициализация, или смена размера
-	BOOL lbSizeChanged = ((HDC)m_DC == NULL) || (m_Sizes.TextWidth != (uint)winSize.X || m_Sizes.TextHeight != (uint)winSize.Y)
+	BOOL lbSizeChanged = ((HDC)m_DC == NULL) || (m_Sizes.TextWidth != (unsigned)winSize.X || m_Sizes.TextHeight != (unsigned)winSize.Y)
 		|| (m_Sizes.LastPadSize != gpSet->nCenterConsolePad)
 		|| isFontSizeChanged; // или смена шрифта ('Auto' на 'Main')
 
@@ -2760,6 +2599,14 @@ bool CVirtualConsole::UpdatePrepare(HDC *ahDc, MSectionLock *pSDC, MSectionLock 
 		//if (lbSizeChanged) -- попробуем вверх перенести
 		//	mp_ConEmu->OnConsole Resize();
 	}
+
+	RECT rcBack = {}, rcDC = {};
+	GetWindowRect(GetBack(), &rcBack);
+	GetWindowRect(GetView(), &rcDC);
+	m_Sizes.BackWidth = RectWidth(rcBack);
+	m_Sizes.BackHeight = RectHeight(rcBack);
+	m_Sizes.OffsetX = rcDC.left - rcBack.left;
+	m_Sizes.OffsetY = rcDC.top - rcBack.top;
 
 	// Требуется полная перерисовка!
 	if (mb_IsForceUpdate)
@@ -2874,7 +2721,7 @@ void CVirtualConsole::UpdateText()
 	bool bFontProportional = !gpFontMgr->FontMonospaced();
 	//CEFONT hFont = gpFontMgr->mh_Font[0];
 	//CEFONT hFont2 = gpFontMgr->mh_Font2;
-	uint partIndex;
+	unsigned partIndex;
 	VConTextPart *part, *nextPart;
 
 	CVConLine lp(mp_RCon); // Line parser
@@ -2941,7 +2788,7 @@ void CVirtualConsole::UpdateText()
 					pszDrawLine = tmpOemWide;
 					for (int i = 0; i < iWide; i++)
 					{
-						if ((uint)(tmpOemWide[i]) <= 31)
+						if ((unsigned)(tmpOemWide[i]) <= 31)
 						{
 							tmpOemWide[i] = gszAnalogues[tmpOemWide[i]];
 						}
@@ -2963,14 +2810,14 @@ void CVirtualConsole::UpdateText()
 		{
 			partIndex = 0;
 			_ASSERTE(m_Sizes.nFontWidth > 0);
-			uint nChWidth = static_cast<uint>(m_Sizes.nFontWidth);
-			uint nChWidthAndHalf = nChWidth * 8 / 6;
+			unsigned nChWidth = static_cast<unsigned>(m_Sizes.nFontWidth);
+			unsigned nChWidthAndHalf = nChWidth * 8 / 6;
 			while (lp.GetNextPart(partIndex, part, nextPart))
 			{
 				TextCharType *pcf = part->CharFlags;
-				uint cw, *pcw = part->CharWidth;
+				unsigned cw, *pcw = part->CharWidth;
 				bool bDoubled;
-				for (uint i = 0; i < part->Length; i++, pcf++, pcw++)
+				for (unsigned i = 0; i < part->Length; i++, pcf++, pcw++)
 				{
 					if (*pcf >= TCF_WidthFree)
 					{
@@ -3038,7 +2885,7 @@ void CVirtualConsole::UpdateText()
 			// Fill the space with background (erase previously printed text)
 			if (drawImage && ISBGIMGCOLOR(attr.nBackIdx))
 			{
-				PaintBackgroundImage(rect, attr.crBackColor);
+				PaintBackgroundImage(m_DC, rect, attr.crBackColor, false);
 			}
 			else
 			{
@@ -3072,14 +2919,14 @@ void CVirtualConsole::UpdateText()
 				charSet = nFontCharSet;
 			}
 
-			const uint nRightEx = klMax((uint)1, (uint)m_Sizes.nFontWidth / 4);
+			const unsigned nRightEx = std::max((unsigned)1, (unsigned)m_Sizes.nFontWidth / 4);
 			rect.left = part->PositionX;
 			rect.top = pos;
 			// For Bold and Italic we slightly extend drawing rect to avoid clipping
 			// Old note: if nextPart is VertBorder, then increase rect.right by ((FontWidth>>1)-1)
 			// Old note: to ensure, that our possible *italic* text will not be clipped
 			if (attr.nFontIndex & 3)
-				rect.right = klMin((uint)part->PositionX + part->TotalWidth + nRightEx, m_Sizes.Width);
+				rect.right = std::min((unsigned)part->PositionX + part->TotalWidth + nRightEx, m_Sizes.Width);
 			else
 				rect.right = part->PositionX + part->TotalWidth;
 			rect.bottom = rect.top + m_Sizes.nFontHeight;
@@ -3094,11 +2941,11 @@ void CVirtualConsole::UpdateText()
 				// It may be done on first step, but if we do not do that here,
 				// some text may overlap scrollbars and progressbars...
 				wchar_t wc = part->Chars[0];
-				uint nFrom = 0;
+				unsigned nFrom = 0;
 				while (nFrom < part->Length)
 				{
 					wc = part->Chars[nFrom];
-					uint nTo = nFrom + 1;
+					unsigned nTo = nFrom + 1;
 					while (((nTo + 1) < part->Length) && (part->Chars[nTo] == wc))
 						nTo++;
 					HBRUSH hbr = PartBrush(wc, attr.crBackColor, attr.crForeColor);
@@ -3177,9 +3024,7 @@ void CVirtualConsole::UpdateText()
 
 	// Screen updated, reset until next "UpdateHighlights()" call
 	m_HighlightInfo.m_Last.X = m_HighlightInfo.m_Last.Y = -1;
-	ZeroStruct(m_HighlightInfo.mrc_LastRow);
-	ZeroStruct(m_HighlightInfo.mrc_LastCol);
-	ZeroStruct(m_HighlightInfo.mrc_LastHyperlink);
+	m_HighlightInfo.LastRect.eraseall();
 
 	return;
 }
@@ -3344,11 +3189,11 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 	if (((pos.X+1) < (int)m_Sizes.TextWidth) && ((CurChar+1) < (int)(m_Sizes.TextWidth * m_Sizes.TextHeight)) && ConCharX[CurChar])
 		pix2.x = ConCharX[CurChar];
 	else if (pix2.x > rcClient.right)
-		pix2.x = max(rcClient.right,pix2.x);
+		pix2.x = std::max(rcClient.right,pix2.x);
 
 	RECT rect;
 	bool bForeground = mp_ConEmu->isMeForeground();
-	bool bActive = bForeground && isActive(false);
+	bool bActive = bForeground && isActive(false) && cinf.bVisible;
 	bool bGroupActive = bForeground && isGroupedInput() && isActive(true);
 
 	// указатель на настройки разделяемые по приложениям
@@ -3382,7 +3227,7 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 
 		if (dwSize)
 		{
-			nHeight = klMin((int)m_Sizes.nFontHeight, klMax(MulDiv(m_Sizes.nFontHeight, dwSize, 100), MinSize));
+			nHeight = std::min((int)m_Sizes.nFontHeight, std::max(MulDiv(m_Sizes.nFontHeight, dwSize, 100), MinSize));
 		}
 
 		if (!nHeight)
@@ -3391,7 +3236,7 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 			return;
 		}
 
-		rect.top = max(rect.top, (rect.bottom-nHeight));
+		rect.top = std::max(rect.top, (rect.bottom-nHeight));
 	}
 	else // Vertical
 	{
@@ -3407,7 +3252,7 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 		{
 			int nMaxWidth = (nR - rect.left);
 
-			nWidth = klMin(nMaxWidth, klMax(MulDiv(nMaxWidth, dwSize, 100), MinSize));
+			nWidth = std::min(nMaxWidth, std::max(MulDiv(nMaxWidth, dwSize, 100), MinSize));
 		}
 
 		if (!nWidth)
@@ -3416,7 +3261,7 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 			return;
 		}
 
-		rect.right = min(nR, (rect.left+nWidth));
+		rect.right = std::min<int>(nR, (rect.left + nWidth));
 		rect.bottom = pix2.y;
 	}
 
@@ -3424,6 +3269,12 @@ void CVirtualConsole::UpdateCursorDraw(HDC hPaintDC, RECT rcClient, COORD pos, U
 	rect.right += rcClient.left;
 	rect.top += rcClient.top;
 	rect.bottom += rcClient.top;
+
+	if (bActive)
+	{
+		mp_ConEmu->UpdateCaretPos(*this, rect);
+	}
+
 	// Если курсор занимает более 40% площади - принудительно включим
 	// XOR режим, иначе (тем более при немигающем) курсор закрывает
 	// весь символ и его не видно
@@ -3556,8 +3407,10 @@ void CVirtualConsole::UpdateCursor(bool& lRes)
 	bool bIsAlive = mp_RCon ? (mp_RCon->isAlive() || !mp_RCon->isFar(TRUE)) : false; // не мигать, если фар "думает"
 
 	// Если курсор (в консоли) видим, и находится в видимой области (при прокрутке)
-	if (cinf.bVisible && isCursorValid)
+	if ((cinf.bVisible || GetCursor(false).Invisible) && isCursorValid)
 	{
+		if (!cinf.bVisible)
+			bForeground = false;
 		if (!GetCursor(bGroupActive && bForeground).isBlinking)
 		{
 			Cursor.isVisible = true; // Видим всегда (даже в неактивной консоли), не мигает
@@ -3631,7 +3484,7 @@ void CVirtualConsole::UpdateCursor(bool& lRes)
 		Cursor.nLastBlink = GetTickCount();
 	}
 
-	// Из активной консоли - дернем курсоры остальных видимых сплитов
+	// From the active console - trigger cursor redraw in other VISIBLE panes
 	if (bConActive && isGroupedInput())
 	{
 		CVConGroup::EnumVCon(evf_Visible, UpdateCursorGroup, (LPARAM)(CVirtualConsole*)this);
@@ -3674,12 +3527,12 @@ bool CVirtualConsole::Blit(HDC hPaintDC, int anX, int anY, int anShowWidth, int 
 	}
 	//else
 	//{
-	//	int nPartHeight = min((450000 / anShowWidth),200);
+	//	int nPartHeight = std::min((450000 / anShowWidth),200);
 	//	for (int Y = anY, Ysrc = 0;
 	//			Y < anShowHeight;
 	//			Y += nPartHeight, Ysrc += nPartHeight)
 	//	{
-	//		int nHeight = min(nPartHeight, (anShowHeight - Y));
+	//		int nHeight = std::min(nPartHeight, (anShowHeight - Y));
 	//		lbRc = (::BitBlt(hPaintDC, anX, Y, anShowWidth, nHeight, (HDC)m_DC, 0, Ysrc, SRCCOPY) != FALSE);
 	//	}
 	//}
@@ -3850,7 +3703,7 @@ void CVirtualConsole::PaintVCon(HDC hPaintDc)
 
 	if (gpSet->isLogging(4))
 	{
-		wchar_t szLog[80]; _wsprintf(szLog, SKIPCOUNT(szLog) L"VCon[%i]: PaintVCon started");
+		wchar_t szLog[80]; swprintf_c(szLog, L"VCon[%i]: PaintVCon started");
 		LogString(szLog);
 	}
 
@@ -3885,7 +3738,7 @@ void CVirtualConsole::PaintVCon(HDC hPaintDc)
 
 	if (gpSet->isLogging(4))
 	{
-		wchar_t szLog[80]; _wsprintf(szLog, SKIPCOUNT(szLog) L"VCon[%i]: PaintVCon finished");
+		wchar_t szLog[80]; swprintf_c(szLog, L"VCon[%i]: PaintVCon finished");
 		LogString(szLog);
 	}
 }
@@ -4151,7 +4004,8 @@ void CVirtualConsole::PaintVConNormal(HDC hPaintDc, RECT rcClient)
 
 	if (gbNoDblBuffer) GdiSetBatchLimit(0);  // вернуть стандартный режим
 
-	if (Cursor.isVisible && cinf.bVisible && isCursorValid)
+	if (Cursor.isVisible && isCursorValid
+		&& (cinf.bVisible || GetCursor(false).Invisible))
 	{
 		if (mpsz_ConChar && mpn_ConAttrEx)
 		{
@@ -4259,7 +4113,7 @@ void CVirtualConsole::PaintVConDebug(HDC hPaintDc, RECT rcClient)
 				pt[1] = ConsoleToClient(pDlg->Rects[i].Right+1, pDlg->Rects[i].Bottom+1);
 				//MapWindowPoints(GetView(), ghWnd, pt, 2);
 				Rectangle(hPaintDc, pt[0].x+n, pt[0].y+n, pt[1].x-n, pt[1].y-n);
-				wchar_t szCoord[32]; _wsprintf(szCoord, SKIPLEN(countof(szCoord)) L"%ix%i", pDlg->Rects[i].Left, pDlg->Rects[i].Top);
+				wchar_t szCoord[32]; swprintf_c(szCoord, L"%ix%i", pDlg->Rects[i].Left, pDlg->Rects[i].Top);
 				TextOut(hPaintDc, pt[0].x+1, pt[0].y+1, szCoord, _tcslen(szCoord));
 			}
 
@@ -4323,15 +4177,15 @@ void CVirtualConsole::UpdateInfo()
 	}
 	else
 	{
-		_wsprintf(szSize, SKIPLEN(countof(szSize)) _T("%ix%i"), mp_RCon->TextWidth(), mp_RCon->TextHeight());
+		swprintf_c(szSize, _T("%ix%i"), mp_RCon->TextWidth(), mp_RCon->TextHeight());
 		SetDlgItemText(gpSetCls->GetPage(thi_Info), tConSizeChr, szSize);
-		_wsprintf(szSize, SKIPLEN(countof(szSize)) _T("%ix%i"), m_Sizes.Width, m_Sizes.Height);
+		swprintf_c(szSize, _T("%ix%i"), m_Sizes.Width, m_Sizes.Height);
 		SetDlgItemText(gpSetCls->GetPage(thi_Info), tConSizePix, szSize);
 		RECT rcPanel;
 		RCon()->GetPanelRect(FALSE, &rcPanel);
 
 		if (rcPanel.right>rcPanel.left)
-			_wsprintf(szSize, SKIPLEN(countof(szSize)) L"(%i, %i)-(%i, %i), %ix%i", rcPanel.left+1, rcPanel.top+1, rcPanel.right+1, rcPanel.bottom+1, rcPanel.right-rcPanel.left+1, rcPanel.bottom-rcPanel.top+1);
+			swprintf_c(szSize, L"(%i, %i)-(%i, %i), %ix%i", rcPanel.left+1, rcPanel.top+1, rcPanel.right+1, rcPanel.bottom+1, rcPanel.right-rcPanel.left+1, rcPanel.bottom-rcPanel.top+1);
 		else
 			wcscpy_c(szSize, L"<Absent>");
 
@@ -4339,7 +4193,7 @@ void CVirtualConsole::UpdateInfo()
 		RCon()->GetPanelRect(TRUE, &rcPanel);
 
 		if (rcPanel.right>rcPanel.left)
-			_wsprintf(szSize, SKIPLEN(countof(szSize)) L"(%i, %i)-(%i, %i), %ix%i", rcPanel.left+1, rcPanel.top+1, rcPanel.right+1, rcPanel.bottom+1, rcPanel.right-rcPanel.left+1, rcPanel.bottom-rcPanel.top+1);
+			swprintf_c(szSize, L"(%i, %i)-(%i, %i), %ix%i", rcPanel.left+1, rcPanel.top+1, rcPanel.right+1, rcPanel.bottom+1, rcPanel.right-rcPanel.left+1, rcPanel.bottom-rcPanel.top+1);
 		else
 			wcscpy_c(szSize, L"<Absent>");
 
@@ -4359,6 +4213,16 @@ LONG CVirtualConsole::GetVConHeight()
 	return (LONG)m_Sizes.Height;
 }
 
+POINT CVirtualConsole::GetVConOffset()
+{
+	return POINT{LONG(m_Sizes.OffsetX), LONG(m_Sizes.OffsetY)};
+}
+
+SIZE CVirtualConsole::GetBackSize()
+{
+	return SIZE{LONG(m_Sizes.BackWidth), LONG(m_Sizes.BackHeight)};
+}
+
 LONG CVirtualConsole::GetTextWidth()
 {
 	_ASSERTE(this && m_Sizes.TextWidth);
@@ -4369,6 +4233,12 @@ LONG CVirtualConsole::GetTextHeight()
 {
 	_ASSERTE(this && m_Sizes.TextHeight);
 	return (LONG)m_Sizes.TextHeight;
+}
+
+SIZE CVirtualConsole::GetCellSize()
+{
+	SIZE sz = {m_Sizes.nFontWidth, m_Sizes.nFontHeight};
+	return sz;
 }
 
 RECT CVirtualConsole::GetRect()
@@ -4519,14 +4389,14 @@ COORD CVirtualConsole::ClientToConsole(LONG x, LONG y, bool StrictMonospace/*=fa
 			{
 				DWORD* ConCharXLine = ConCharX + cr.Y * m_Sizes.TextWidth;
 
-				for(uint i = 0; i < m_Sizes.TextWidth; i++, ConCharXLine++)
+				for(unsigned i = 0; i < m_Sizes.TextWidth; i++, ConCharXLine++)
 				{
 					if (((int)*ConCharXLine) >= x)
 					{
 						if (cr.X != (int)i)
 						{
 							#ifdef _DEBUG
-							wchar_t szDbg[120]; _wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"Coord corrected from {%i-%i} to {%i-%i}",
+							wchar_t szDbg[120]; swprintf_c(szDbg, L"Coord corrected from {%i-%i} to {%i-%i}",
 														  cr.X, cr.Y, i, cr.Y);
 							DEBUGSTRCOORD(szDbg);
 							#endif
@@ -4561,19 +4431,13 @@ bool CVirtualConsole::FindChanges(int row, const wchar_t* ConCharLine, const Cha
 	return TRUE;
 }
 
-HRGN CVirtualConsole::GetExclusionRgn(bool abTestOnly/*=false*/)
+HRGN CVirtualConsole::GetExclusionRgn()
 {
 	if (!gpSet->isUserScreenTransparent)
 		return NULL;
 
 	if (mp_RCon->GetFarPID(TRUE) == 0)
 		return NULL;
-
-	// Возвращает mh_TransparentRgn
-	// Сам mh_TransparentRgn формируется в CheckTransparentRgn,
-	// который должен вызываться в CVirtualConsole::PaintVCon
-	if (abTestOnly && mh_TransparentRgn)
-		return (HRGN)1;
 
 	return mh_TransparentRgn;
 }
@@ -4593,9 +4457,9 @@ COORD CVirtualConsole::FindOpaqueCell()
 			CharAttr* pnAttr = mpn_ConAttrEx;
 
 			// Поиск первого непрозрачного
-			for (uint y = 0; y < m_Sizes.TextHeight; y++)
+			for (unsigned y = 0; y < m_Sizes.TextHeight; y++)
 			{
-				for (uint x = 0; x < m_Sizes.TextWidth; x++, pnAttr++)
+				for (unsigned x = 0; x < m_Sizes.TextWidth; x++, pnAttr++)
 				{
 					#if 0
 					if (!pnAttr[x].bTransparent)
@@ -5143,7 +5007,7 @@ void CVirtualConsole::PolishPanelViews()
 				        || ((pszLine[x] == ucBoxSinglVert || pszLine[x] == ucBoxDblVert) && pAttrs[x].nForeIdx == nFore && pAttrs[x].nBackIdx == nBack)
 				  ) pszLine[x] = L' ';
 
-			int nX4 = min(rc.right,(nX3+nNameLen));
+			int nX4 = std::min<int>(rc.right, (nX3 + nNameLen));
 
 			for(x = nX3; x < nX4; x++, pszNameTitle++)
 				if ((pAttrs[x].nForeIdx == nNFore && pAttrs[x].nBackIdx == nNBack)
@@ -5186,6 +5050,7 @@ void CVirtualConsole::CharAttrFromConAttr(WORD conAttr, CharAttr* pAttr)
 	pAttr->nBackIdx = CONBACKCOLOR(conAttr);
 	pAttr->crForeColor = pAttr->crOrigForeColor = mp_Colors[pAttr->nForeIdx];
 	pAttr->crBackColor = pAttr->crOrigBackColor = mp_Colors[pAttr->nBackIdx];
+	pAttr->ConAttr = conAttr;
 }
 
 // вызывается при получении нового Background (CECMD_SETBACKGROUND) из плагина

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DEBUGSTRWIN(s) //DEBUGSTR(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "header.h"
 #include "WinObjBase.h"
 #include "../common/MMap.h"

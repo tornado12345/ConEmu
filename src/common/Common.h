@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _COMMON_HEADER_HPP_
 
 // Interface version
-#define CESERVER_REQ_VER    162
+#define CESERVER_REQ_VER    166
 
 // Max tabs/panes count
 #define MAX_CONSOLE_COUNT 30
@@ -96,13 +96,13 @@ typedef struct _CONSOLE_SELECTION_INFO
 #define CTRL(x) ((x)&0x1F)
 
 
-#define CECOPYRIGHTSTRING_A "(c) 2009-2016, ConEmu.Maximus5@gmail.com"
-#define CECOPYRIGHTSTRING_W L"© 2009-2016 ConEmu.Maximus5@gmail.com"
+#define CECOPYRIGHTSTRING_A "(c) 2009-2017, ConEmu.Maximus5@gmail.com"
+#define CECOPYRIGHTSTRING_W L"© 2009-2017 ConEmu.Maximus5@gmail.com"
 
 
 #define CEHOMEPAGE_A    "https://conemu.github.io/"
 #define CEHOMEPAGE     _CRT_WIDE(CEHOMEPAGE_A)
-#define CEDOWNLPAGE    L"http://www.fosshub.com/ConEmu.html"
+#define CEDOWNLPAGE    L"https://www.fosshub.com/ConEmu.html"
 #define CEFLATTRPAGE   L"http://flattr.com/thing/2002773/Maximus5ConEmu-on-GitHub"
 #define CEDONATEPAGE   L"https://conemu.github.io/donate.html"
 #define CEWIKIBASE     L"https://conemu.github.io/en/"
@@ -133,6 +133,8 @@ typedef struct _CONSOLE_SELECTION_INFO
 #define ENV_CONEMUDIR_VAR_W              _CRT_WIDE(ENV_CONEMUDIR_VAR_A)
 #define ENV_CONEMUBASEDIR_VAR_A        "ConEmuBaseDir"
 #define ENV_CONEMUBASEDIR_VAR_W          _CRT_WIDE(ENV_CONEMUBASEDIR_VAR_A)
+#define ENV_CONEMUBASEDIRSHORT_VAR_A   "ConEmuBaseDirShort"
+#define ENV_CONEMUBASEDIRSHORT_VAR_W     _CRT_WIDE(ENV_CONEMUBASEDIRSHORT_VAR_A)
 #define ENV_CONEMUWORKDIR_VAR_A        "ConEmuWorkDir"
 #define ENV_CONEMUWORKDIR_VAR_W          _CRT_WIDE(ENV_CONEMUWORKDIR_VAR_A)
 #define ENV_CONEMUDRIVE_VAR_A          "ConEmuDrive"
@@ -159,6 +161,12 @@ typedef struct _CONSOLE_SELECTION_INFO
 #define ENV_CONEMU_BUILD_W               _CRT_WIDE(ENV_CONEMU_BUILD_A)
 #define ENV_CONEMU_CONFIG_A            "ConEmuConfig"
 #define ENV_CONEMU_CONFIG_W              _CRT_WIDE(ENV_CONEMU_CONFIG_A)
+#define ENV_CONEMUCFGDIR_VAR_A         "ConEmuCfgDir"
+#define ENV_CONEMUCFGDIR_VAR_W           _CRT_WIDE(ENV_CONEMUCFGDIR_VAR_A)
+#define ENV_CONEMU_EXEARGS_A           "ConEmuArgs"
+#define ENV_CONEMU_EXEARGS_W              _CRT_WIDE(ENV_CONEMU_EXEARGS_A)
+#define ENV_CONEMU_EXEARGS2_A          "ConEmuArgs2"
+#define ENV_CONEMU_EXEARGS2_W             _CRT_WIDE(ENV_CONEMU_EXEARGS2_A)
 #define ENV_CONEMU_TASKNAME_A          "ConEmuTask"
 #define ENV_CONEMU_TASKNAME_W            _CRT_WIDE(ENV_CONEMU_TASKNAME_A)
 #define ENV_CONEMU_PALETTENAME_A       "ConEmuPalette"
@@ -247,6 +255,8 @@ typedef struct _CONSOLE_SELECTION_INFO
 #define CEDEFAULTTERMHOOKWAIT 0 // Don't need timeout, because we wait for remote thread - WaitForSingleObject(hThread, INFINITE);
 //#define CEDEFAULTTERMMUTEX  L"IsConEmuDefaultTerm.%u" // Если Mutex есть - значит какая-то версия длл-ки уже была загружена в обрабатываемый процесс
 
+// Default folder for AnsiLog files
+#define CEANSILOGFOLDER     L"%UserProfile%\\Desktop\\ConEmuLogs\\"
 // File name format for AnsiLog
 #define CEANSILOGNAMEFMT    L"ConEmu-%u-%02u-%02u-p%u.log"
 
@@ -355,15 +365,22 @@ enum RealBufferScroll
 };
 
 // CECMD_STARTXTERM: what we want to change
+// lifetime:
+//   `process` - mode would be reset on called process termination
+//   `console` - survive on process termination
 enum TermModeCommand
 {
-	tmc_Keyboard = 0,
-	tmc_BracketedPaste = 1,
-	tmc_AppCursorKeys = 2,
-	tmc_CursorShape = 3,
+	tmc_TerminalType   = 0, // TermEmulationType    - process life-time
+	tmc_BracketedPaste = 1, // true/false           - process life-time
+	tmc_AppCursorKeys  = 2, // true/false           - process life-time
+	tmc_CursorShape    = 3, // TermCursorShapes     - ***console*** life-time
+	tmc_MouseMode      = 4, // set of TermMouseMode - process life-time
+	tmc_ConInMode      = 5, // server detected ENABLE_VIRTUAL_TERMINAL_INPUT change -- root process life-time
+	// for array purposes
+	tmc_Last
 };
 
-// tmc_Keyboard: used for control keys (arrows e.g.) translation
+// tmc_TerminalType: used for control keys (arrows e.g.) translation
 enum TermEmulationType
 {
 	te_win32 = 0,
@@ -380,6 +397,22 @@ enum TermCursorShapes
 	tcs_VBarBlink = 5,
 	tcs_VBarSteady = 6,
 	tcs_Last
+};
+
+enum TermMouseMode
+{
+	tmm_None    = 0,
+	tmm_X10     = 0x0001,
+	tmm_VT200   = 0x0002,
+	tmm_BTN     = 0x0004, /* BTN_EVENT_MOUSE */
+	tmm_ANY     = 0x0008, /* ANY_EVENT_MOUSE */
+	tmm_FOCUS   = 0x0010, /* FOCUS_EVENT_MOUSE */
+	tmm_UTF8    = 0x0020, /* Xterm's UTF8 encoding for mouse positions */
+	tmm_XTERM   = 0x0040, /* Xterm's CSI-style mouse encoding */
+	tmm_URXVT   = 0x0080, /* Urxvt's CSI-style mouse encoding */
+	/* **** ConEmu internals *** */
+	tmm_VIM     = 0x1000, /* DEPRECATED: Used to emulate wheel via \033[62~ ... \033[65~ */
+	tmm_SCROLL  = 0x2000, /* Send Up/Down/PgUp/PgDn instead of wheel events */
 };
 
 //#define CONEMUMAPPING    L"ConEmuPluginData%u"
@@ -466,8 +499,6 @@ const CECMD
 	CECMD_ACTIVATETAB    = 58, // dwData[0]=0-based console, dwData[1]=0-based tab number
 	CECMD_FREEZEALTSRV   = 59, // dwData[0]=1-Freeze, 0-Thaw; dwData[1]=New Alt server PID
 	CECMD_SETFULLSCREEN  = 60, // SetConsoleDisplayMode(CONSOLE_FULLSCREEN_MODE) -> CESERVER_REQ_FULLSCREEN
-	CECMD_MOUSECLICK     = 61, // CESERVER_REQ_PROMPTACTION - обработка клика, если консоль в ReadConsoleW
-	CECMD_PROMPTCMD      = 62, // wData - это LPCWSTR (GUI -> ConEmuHk)
 	CECMD_SETTABTITLE    = 63, // wData - это LPCWSTR, посылается в GUI
 	CECMD_SETPROGRESS    = 64, // wData[0]: 0 - remove, 1 - set, 2 - error. Для "1": wData[1] - 0..100%.
 	CECMD_SETCONCOLORS   = 65, // CESERVER_REQ_SETCONSOLORS
@@ -475,11 +506,10 @@ const CECMD
 	CECMD_EXPORTVARS     = 67, // wData - same as GetEnvironmentStringsW returns, but may be less (selected vars only)
 	CECMD_EXPORTVARSALL  = 68, // same as CECMD_EXPORTVARS, but apply environment to all tabs
 	CECMD_DUPLICATE      = 69, // CESERVER_REQ_DUPLICATE. sent to root console process (cmd, far, powershell), processed with ConEmuHk - Create new tab reproducing current state.
-	CECMD_BSDELETEWORD   = 70, // CESERVER_REQ_PROMPTACTION - default action for Ctrl+BS (prompt) - delete word to the left of the cursor
 	CECMD_GUICLIENTSHIFT = 71, // GuiStylesAndShifts
 	CECMD_ALTBUFFER      = 72, // CESERVER_REQ_ALTBUFFER: CmdOutputStore/Restore
 	CECMD_ALTBUFFERSTATE = 73, // Проверить, разрешен ли Alt.Buffer?
-	CECMD_STARTXTERM     = 74, // dwData[0]=TermModeCommand, dwData[1]=value (TermEmulationType for tmc_Keyboard, and so on), dwData[2]=the PID (may differs from hdr's one).
+	CECMD_STARTXTERM     = 74, // dwData[0]=TermModeCommand, dwData[1]=value (TermEmulationType for tmc_TerminalType, and so on), dwData[2]=the PID (may differ from hdr's one).
 	//CECMD_DEFTERMSTARTED = 75, // Уведомить GUI, что инициализация хуков для Default Terminal была завершена -- не требуется, ConEmuC ждет успеха
 	CECMD_UPDCONMAPHDR   = 76, // AltServer не может менять CESERVER_CONSOLE_MAPPING_HDR во избежание конфликтов. Это делает только RM_MAINSERVER (req.ConInfo)
 	CECMD_SETCONSCRBUF   = 77, // CESERVER_REQ_SETCONSCRBUF - temporarily block active server reading thread to change console buffer size
@@ -500,6 +530,8 @@ const CECMD
 	CECMD_GETTASKCMD     = 92, // CESERVER_REQ_TASK
 	CECMD_ALLOWANSIEXEC  = 93, // IN: wData[] - GuiMacro or CmdLine; OUT: TRUE/FALSE
 	CECMD_SSHAGENTSTART  = 94, // dwData[0] - PID of ssh-agent.exe started from one of the ConEmu console processes
+	CECMD_FINDNEXTROWID  = 95, // IN: dwData[0] - from row, dwData[1] - search upward (TRUE/FALSE); OUT: dwData[0] - found row or DWORD(-1), dwData[1] - rowid
+	CECMD_STARTCONNECTOR = 96, // IN: Data[0] - ASCIIZ string for mount prefix, e.g. "/cygdrive" or just empty "".
 /** Команды FAR плагина **/
 	CMD_FIRST_FAR_CMD    = 200,
 	CMD_DRAGFROM         = 200,
@@ -612,8 +644,6 @@ const ConEmuModifiers
 //#pragma pack(push, 1)
 #include <pshpack1.h>
 
-typedef unsigned __int64 u64;
-
 struct HWND2
 {
 	DWORD u;
@@ -655,7 +685,7 @@ struct HKEY2
 
 struct HANDLE2
 {
-	u64 u;
+	uint64_t u;
 	operator HANDLE() const
 	{
 		return (HANDLE)(DWORD_PTR)u;
@@ -685,7 +715,7 @@ struct STRPTR2
 		wchar_t* psz;
 		// Must be 64bit to maintain struct size
 		// During call this is an offset in BYTES from STRPTR
-		u64      offset;
+		uint64_t offset;
 	};
 
 	void   Set(wchar_t* RVAL_REF ptrSrc, int cch = -1);
@@ -698,11 +728,12 @@ struct MSG64
 {
 	DWORD cbSize;
 	DWORD nCount;
-	struct MsgStr {
-		UINT  message;
-		HWND2 hwnd;
-		u64   wParam;
-		u64   lParam;
+	struct MsgStr
+	{
+		UINT     message;
+		HWND2    hwnd;
+		uint64_t wParam;
+		uint64_t lParam;
 	} msg[1];
 };
 
@@ -839,13 +870,13 @@ struct PanelViewSetMapping
 typedef BOOL (WINAPI* PanelViewInputCallback)(HANDLE hInput, PINPUT_RECORD lpBuffer, DWORD nBufSize, LPDWORD lpNumberOfEventsRead, BOOL* pbResult);
 typedef union uPanelViewInputCallback
 {
-	u64 Reserved; // необходимо для выравнивания структур при x64 <--> x86
+	uint64_t Reserved; // необходимо для выравнивания структур при x64 <--> x86
 	PanelViewInputCallback f; //-V117
 } PanelViewInputCallback_t;
 typedef BOOL (WINAPI* PanelViewOutputCallback)(HANDLE hOutput,const CHAR_INFO *lpBuffer,COORD dwBufferSize,COORD dwBufferCoord,PSMALL_RECT lpWriteRegion);
 typedef union uPanelViewOutputCallback
 {
-	u64 Reserved; // необходимо для выравнивания структур при x64 <--> x86
+	uint64_t Reserved; // необходимо для выравнивания структур при x64 <--> x86
 	PanelViewOutputCallback f; //-V117
 } PanelViewOutputCallback_t;
 struct PanelViewText
@@ -1329,12 +1360,12 @@ struct ForwardedPanelInfo
 	union //x64 ready
 	{
 		WCHAR* pszActivePath/*[MAX_PATH+1]*/; //-V117
-		u64 Reserved1;
+		uint64_t Reserved1;
 	};
 	union //x64 ready
 	{
 		WCHAR* pszPassivePath/*[MAX_PATH+1]*/; //-V117
-		u64 Reserved2;
+		uint64_t Reserved2;
 	};
 };
 
@@ -1346,17 +1377,17 @@ struct ForwardedFileInfo
 
 struct CESERVER_REQ_HDR
 {
-	DWORD   cbSize;     // Не size_t(!), а именно DWORD, т.к. пакетами обмениваются и 32<->64 бит между собой.
-	DWORD   nVersion;   // CESERVER_REQ_VER
-	BOOL    bAsync;     // не посылать "ответ", сразу закрыть пайп
-	CECMD   nCmd;       // DWORD
-	DWORD   nSrcThreadId;
-	DWORD   nSrcPID;
-	DWORD   nCreateTick;
-	DWORD   nBits;      // битность вызывающего процесса
-	DWORD   nLastError; // последний GetLastError() при отправке пакета
-	DWORD   IsDebugging;
-	u64     hModule;
+	uint32_t cbSize;     // Не size_t(!), а именно DWORD, т.к. пакетами обмениваются и 32<->64 бит между собой.
+	uint32_t nVersion;   // CESERVER_REQ_VER
+	BOOL     bAsync;     // не посылать "ответ", сразу закрыть пайп
+	CECMD    nCmd;       // DWORD
+	uint32_t nSrcThreadId;
+	uint32_t nSrcPID;
+	uint32_t nCreateTick;
+	uint32_t nBits;      // битность вызывающего процесса
+	uint32_t nLastError; // последний GetLastError() при отправке пакета
+	uint32_t IsDebugging;
+	HANDLE2  hModule;
 };
 
 #define CHECK_CMD_SIZE(pCmd,data_size) ((pCmd)->hdr.cbSize >= (sizeof(CESERVER_REQ_HDR) + data_size))
@@ -1548,6 +1579,9 @@ struct CESERVER_CONSOLE_MAPPING_HDR
 	// И какая прокрутка допустима
 	RealBufferScroll rbsAllowed; // пока любая - rbs_Any
 
+	// Specified Tab Icon (full path)
+	wchar_t sIcon[MAX_PATH+1];
+
 	ConEmuComspec ComSpec;
 };
 
@@ -1588,6 +1622,10 @@ struct CESERVER_CONSOLE_APP_MAPPING
 	// Active application flags (shell or other current interactive process)
 	CEActiveAppFlags nActiveAppFlags;
 
+	// Let know GUI how many rows were processed by console applications
+	// This is actually the maximum row number where any write operation was executed
+	LONG nLastConsoleRow;
+
 	// CECONEMUROOTTHREAD often fails on cygwin/msys fork
 	// This will be more proper way to detect if ConEmuHk
 	// is loaded in main thread and snapshotting in the
@@ -1608,6 +1646,7 @@ struct TOPLEFTCOORD
 struct CESERVER_REQ_CONINFO
 {
 	TOPLEFTCOORD TopLeft;
+	BOOL VirtualOnly; // if true - don't call SetConsoleWindowInfo
 };
 
 enum CEPauseCmd
@@ -1722,7 +1761,7 @@ enum SingleInstanceShowHideType
 struct CESERVER_REQ_NEWCMD // CECMD_NEWCMD
 {
 	HWND2   hFromConWnd;
-	HWND2   hFromDcWnd;  // ConWnd may differs from parent process, but ENV_CONEMUDRAW_VAR_W would be inherited
+	HWND2   hFromDcWnd;  // ConWnd may differ from parent process, but ENV_CONEMUDRAW_VAR_W would be inherited
 	SingleInstanceShowHideType ShowHide;
 	BYTE isAdvLogging;
 	BYTE Reserved;
@@ -1838,7 +1877,7 @@ struct CESERVER_REQ_STARTSTOP
 	BOOL  bForceBufferHeight;
 	DWORD nForceBufferHeight;
 	// Только при аттаче. Может быть NULL-ом
-	u64   hServerProcessHandle;
+	HANDLE2 hServerProcessHandle;
 	// При завершении
 	DWORD nOtherPID; // Для RM_COMSPEC - PID завершенного процесса (при sst_ComspecStop)
 	// Для информации и удобства (GetModuleFileName(0))
@@ -1855,6 +1894,8 @@ struct CESERVER_REQ_STARTSTOP
 	BOOL bWasSucceededInRead;
 	// Self console palette? Useful after Win+G
 	CESERVER_CONSOLE_PALETTE Palette;
+	// Specified Tab Icon (full path)
+	wchar_t sIcon[MAX_PATH+1];
 	// CmdLine
 	wchar_t sCmdLine[1]; // variable length
 };
@@ -1896,17 +1937,17 @@ struct CESERVER_REQ_ONCREATEPROCESSRET
 // _ASSERTE(sizeof(CESERVER_REQ_STARTSTOPRET) <= sizeof(CESERVER_REQ_STARTSTOP));
 struct CESERVER_REQ_STARTSTOPRET
 {
-	BOOL  bWasBufferHeight;
-	HWND2 hWnd; // при возврате в консоль - GUI (главное окно)
-	HWND2 hWndDc;
-	HWND2 hWndBack;
-	DWORD dwPID; // при возврате в консоль - PID ConEmu.exe
-	DWORD nBufferHeight, nWidth, nHeight;
-	DWORD dwMainSrvPID;
-	DWORD dwAltSrvPID;
-	DWORD dwPrevAltServerPID;
-	BOOL  bNeedLangChange;
-	u64   NewConsoleLang;
+	BOOL     bWasBufferHeight;
+	HWND2    hWnd; // при возврате в консоль - GUI (главное окно)
+	HWND2    hWndDc;
+	HWND2    hWndBack;
+	uint32_t dwPID; // при возврате в консоль - PID ConEmu.exe
+	uint32_t nBufferHeight, nWidth, nHeight;
+	uint32_t dwMainSrvPID;
+	uint32_t dwAltSrvPID;
+	uint32_t dwPrevAltServerPID;
+	BOOL     bNeedLangChange;
+	uint64_t NewConsoleLang;
 };
 
 // Result of CESERVER_REQ_SRVSTARTSTOP
@@ -1941,11 +1982,10 @@ struct CESERVER_REQ_SRVSTARTSTOPRET
 
 struct CESERVER_REQ_POSTMSG
 {
-	BOOL    bPost;
-	HWND2   hWnd;
-	UINT    nMsg;
-	// Заложимся на унификацию x86 & x64
-	u64     wParam, lParam;
+	BOOL     bPost;
+	HWND2    hWnd;
+	uint32_t nMsg;
+	uint64_t wParam, lParam;
 };
 
 enum CEFlashType
@@ -1958,13 +1998,13 @@ enum CEFlashType
 struct CESERVER_REQ_FLASHWINFO
 {
 	CEFlashType fType;
-	HWND2 hWnd;
+	HWND2       hWnd;
 	// for (fType == eFlashSimple)
-	BOOL  bInvert;
+	BOOL        bInvert;
 	// this and further for (fType != eFlashSimple)
-	DWORD dwFlags;
-	UINT  uCount;
-	DWORD dwTimeout;
+	uint32_t    dwFlags;
+	uint32_t    uCount;
+	uint32_t    dwTimeout;
 };
 
 // CMD_FARCHANGED - FAR plugin
@@ -1987,13 +2027,13 @@ struct CESERVER_REQ_SETCONCP
 // CECMD_SETWINDOWPOS
 struct CESERVER_REQ_SETWINDOWPOS
 {
-	HWND2 hWnd;
-	HWND2 hWndInsertAfter;
-	int X;
-	int Y;
-	int cx;
-	int cy;
-	UINT uFlags;
+	HWND2    hWnd;
+	HWND2    hWndInsertAfter;
+	int32_t  X;
+	int32_t  Y;
+	int32_t  cx;
+	int32_t  cy;
+	uint32_t uFlags;
 };
 
 // CECMD_SETWINDOWRGN
@@ -2031,7 +2071,7 @@ typedef int SetBackgroundResult;
 const SetBackgroundResult
 	esbr_OK = 0,               // All OK
 	esbr_InvalidArg = 1,       // Invalid *RegisterBackgroundArg
-	esbr_PluginForbidden = 2,  // "Allow plugins" unchecked in ConEmu settings ("Main" page)
+	esbr_PluginForbidden = 2,  // "Allow plugins" unchecked in ConEmu settings ("Background" page)
 	esbr_ConEmuInShutdown = 3, // Console is closing. This is not an error, just information
 	esbr_Unexpected = 4,       // Unexpected error in ConEmu //-V112
 	esbr_InvalidArgSize = 5,   // Invalid RegisterBackgroundArg.cbSize
@@ -2062,9 +2102,9 @@ struct CESERVER_REQ_GUIMACRO
 // CECMD_PEEKREADINFO: посылается в GUI на вкладку Debug
 struct CESERVER_REQ_PEEKREADINFO
 {
-	WORD         nCount;
-	BYTE         bMainThread;
-	BYTE         bReserved;
+	uint16_t     nCount;
+	uint8_t      bMainThread;
+	uint8_t      bReserved;
 	wchar_t      cPeekRead/*'P'/'R' или 'W' в GUI*/;
 	wchar_t      cUnicode/*'A'/'W'*/;
 	HANDLE2      h;
@@ -2151,6 +2191,7 @@ struct CESERVER_REQ_START
 	HWND2 hGuiWnd; // In-ghWnd
 	HWND2 hAppWnd; // Hooked application window (для GUI режима)
 	DWORD nValue;  // Error codes
+	BOOL  bLeave;  // Leave tab opened after process exit
 };
 
 // CECMD_LOCKDC
@@ -2183,23 +2224,17 @@ struct CESERVER_REQ_SETCONSOLORS
 	BOOL  ReFillConsole;
 };
 
-struct CESERVER_REQ_PROMPTACTION
-{
-	BOOL  Force;
-	BOOL  BashMargin;
-	SHORT xPos, yPos; // Only for CECMD_MOUSECLICK
-};
-
 struct CESERVER_REQ_DUPLICATE
 {
-	HWND2 hGuiWnd;
-	DWORD nGuiPID;
-	DWORD nAID; // внутренний ID в ConEmu
-	BOOL  bRunAs;
-	DWORD nWidth, nHeight;
-	DWORD nBufferHeight;
-	DWORD nColors;
-	WCHAR sCommand[1]; // variable length, NULL usually
+	HWND2   hGuiWnd;
+	DWORD   nGuiPID;
+	DWORD   nAID; // Internal ConEmu ID
+	BOOL    bRunAs;
+	DWORD   nWidth, nHeight;
+	DWORD   nBufferHeight;
+	DWORD   nColors;
+	STRPTR2 sDirectory;
+	STRPTR2 sCommand;
 };
 
 enum ALTBUFFER_FLAGS
@@ -2273,10 +2308,10 @@ struct CESERVER_REQ
 	CESERVER_REQ_HDR hdr;
 	union
 	{
-		BYTE    Data[1]; // variable(!) length
-		WORD    wData[1];
-		DWORD   dwData[1];
-		u64     qwData[1];
+		uint8_t  Data[1]; // variable(!) length
+		uint16_t wData[1];
+		uint32_t dwData[1];
+		uint64_t qwData[1];
 		ConEmuGuiMapping GuiInfo;
 		CESERVER_REQ_CONINFO ReqConInfo;
 		CESERVER_CONSOLE_MAPPING_HDR ConInfo;
@@ -2319,7 +2354,6 @@ struct CESERVER_REQ
 		CESERVER_REQ_GETALLTABS GetAllTabs;
 		CESERVER_REQ_FULLSCREEN FullScreenRet;
 		CESERVER_REQ_SETCONSOLORS SetConColor;
-		CESERVER_REQ_PROMPTACTION Prompt;
 		CESERVER_REQ_DUPLICATE Duplicate;
 		CESERVER_REQ_ALTBUFFER AltBuf;
 		CESERVER_REQ_SETCONSCRBUF SetConScrBuf;

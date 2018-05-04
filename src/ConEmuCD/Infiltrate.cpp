@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,9 +32,8 @@ These codes was produced by cl.exe with special compiler switches
 Look at InfiltrateProc for source
 */
 
-#include <windows.h>
-#include "Infiltrate.h"
 #include "../common/defines.h"
+#include "Infiltrate.h"
 
 #define USE_STATIC_CODES
 

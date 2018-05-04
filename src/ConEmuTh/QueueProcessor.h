@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2010-2015 Maximus5
+Copyright (c) 2010-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -498,7 +498,7 @@ class CQueueProcessor
 						        && mpp_Queue[i]->Status != eItemPassed
 						        && mpp_Queue[i]->Status != eItemFailed)
 						{
-							int nNew = min(ePriorityLowest, (mpp_Queue[i]->Priority+nSteps));
+							int nNew = std::min(ePriorityLowest, (mpp_Queue[i]->Priority+nSteps));
 							mpp_Queue[i]->Priority = nNew;
 						}
 					}
@@ -530,7 +530,7 @@ class CQueueProcessor
 					if (mpp_Queue[i])
 					{
 						if (mpp_Queue[i]->Status != eItemEmpty
-						        mpp_Queue[i]->Status != eItemPassed
+						        && mpp_Queue[i]->Status != eItemPassed
 						        && mpp_Queue[i]->Status != eItemProcessing
 						        && mpp_Queue[i]->Priority >= priority
 						  )

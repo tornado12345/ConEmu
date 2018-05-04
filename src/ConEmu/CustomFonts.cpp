@@ -1,7 +1,7 @@
 ﻿
 /*
 Copyright (c) 2012 thecybershadow
-Copyright (c) 2012-2016 Maximus5
+Copyright (c) 2012-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -631,7 +631,7 @@ bool CEDC::Create(UINT Width, UINT Height)
 		BITMAPINFO bmi;
 		bmi.bmiHeader.biSize        = sizeof(bmi.bmiHeader);
 		bmi.bmiHeader.biWidth       = Width;
-		bmi.bmiHeader.biHeight      = -(i32)Height;
+		bmi.bmiHeader.biHeight      = -(int32_t)Height;
 		bmi.bmiHeader.biPlanes      = 1;
 		bmi.bmiHeader.biBitCount    = 32;
 		bmi.bmiHeader.biCompression = BI_RGB;
@@ -639,13 +639,13 @@ bool CEDC::Create(UINT Width, UINT Height)
 		hBitmap = CreateDIBSection(hDC, &bmi, DIB_RGB_COLORS, &pvBits, NULL, 0);
 		pPixels = (COLORREF*)pvBits;
 
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"Surface created DIB(%i,%i,%i)=x%08X", (int)bmi.bmiHeader.biWidth, (int)bmi.bmiHeader.biHeight, (int)bmi.bmiHeader.biBitCount, (DWORD)(DWORD_PTR)hBitmap);
+		swprintf_c(szInfo, L"Surface created DIB(%i,%i,%i)=x%08X", (int)bmi.bmiHeader.biWidth, (int)bmi.bmiHeader.biHeight, (int)bmi.bmiHeader.biBitCount, (DWORD)(DWORD_PTR)hBitmap);
 		::LogString(szInfo);
 	}
 	else
 	{
 		DWORD nErr = GetLastError();
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"Warning! Color depth of your display is low (%i), 32bit recommended! ErrCode=%u", nPixels, nErr);
+		swprintf_c(szInfo, L"Warning! Color depth of your display is low (%i), 32bit recommended! ErrCode=%u", nPixels, nErr);
 		::LogString(szInfo);
 
 		hBitmap = CreateCompatibleBitmap(hScreenDC, Width, Height);
@@ -655,7 +655,7 @@ bool CEDC::Create(UINT Width, UINT Height)
 		// Remote desktop to Win2k8 gets here and (nPixels==16)
 		_ASSERTE((pPixels || (iRemote==1)) && "Remote desktop? Caps(BitsPerPixel)!=32");
 
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"Surface created BMP(%i,%i,Compatible)=x%08X, Remote=%i", (int)Width, (int)Height, (DWORD)(DWORD_PTR)hBitmap, iRemote);
+		swprintf_c(szInfo, L"Surface created BMP(%i,%i,Compatible)=x%08X, Remote=%i", (int)Width, (int)Height, (DWORD)(DWORD_PTR)hBitmap, iRemote);
 		::LogString(szInfo);
 	}
 

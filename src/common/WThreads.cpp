@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -166,7 +166,7 @@ HANDLE apiCreateThread(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter
 			char* pszNewName = new char[cchMax];
 			if (pszNewName)
 			{
-				_wsprintfA(pszNewName, SKIPLEN(cchMax) asThreadNameFormat, anFormatArg);
+				sprintf_c(pszNewName, cchMax/*#SECURELEN*/, asThreadNameFormat, anFormatArg);
 				_ASSERTE(strlen(pszNewName) < THREAD_MAX_NAME_LEN);
 				lstrcpynA(args->sName, pszNewName, countof(args->sName));
 				delete[] pszNewName;
@@ -236,7 +236,7 @@ BOOL apiTerminateThreadEx(HANDLE hThread, DWORD dwExitCode, LPCSTR asFile, int a
 		LPCSTR pszName = strrchr(asFile, L'\\'); if (pszName) pszName++; else pszName = asFile;
 		char szKiller[30]; lstrcpynA(szKiller, pszName, countof(szKiller));
 		_ASSERTE((countof(szKiller)+8) < countof(pThread->sKiller));
-		_wsprintfA(pThread->sKiller, SKIPCOUNT(pThread->sKiller) "%s:%i", szKiller, anLine);
+		sprintf_c(pThread->sKiller, "%s:%i", szKiller, anLine);
 		pThread->bActive = FALSE;
 	}
 	return bRc;

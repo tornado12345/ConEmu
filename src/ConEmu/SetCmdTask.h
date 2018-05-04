@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -63,7 +63,7 @@ struct CommandTasks
 
 	void SetCommands(LPCWSTR asCommands);
 
-	void ParseGuiArgs(RConStartArgs* pArgs) const;
+	void ParseGuiArgs(RConStartArgsEx* pArgs) const;
 
 	bool LoadCmdTask(SettingsBase* reg, int iIndex);
 	bool SaveCmdTask(SettingsBase* reg, bool isStartup);

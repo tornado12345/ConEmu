@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -238,7 +238,7 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 		{
 			// To be correctly parsed something like this:
 			// reg.exe add "HKCU\MyCo" /ve /t REG_EXPAND_SZ /d "\"C:\ConEmu\ConEmuPortable.exe\" /Dir \"%V\" /cmd \"cmd.exe\" \"-new_console:nC:cmd.exe\" \"-cur_console:d:%V\"" /f
-			// But must not fails with ‘simple’ command like (no escapes in "C:\"):
+			// But must not fail with ‘simple’ command like (no escapes in "C:\"):
 			// /dir "C:\" /icon "cmd.exe" /single
 
 			// Prev version fails while getting strings for -GuiMacro, example:
@@ -496,7 +496,7 @@ LPCWSTR GetDrive(LPCWSTR pszPath, wchar_t* szDrive, int/*countof(szDrive)*/ cchD
 		// UNC format? "\\?\UNC\Server\Share"
 		LPCWSTR pszSlash = wcschr(pszPath+8, L'\\'); // point to end of server name
 		pszSlash = pszSlash ? wcschr(pszSlash+1, L'\\') : NULL; // point to end of share name
-		lstrcpyn(szDrive, pszPath, pszSlash ? (int)min((INT_PTR)cchDriveMax,pszSlash-pszPath+1) : cchDriveMax);
+		lstrcpyn(szDrive, pszPath, pszSlash ? (int)std::min((INT_PTR)cchDriveMax,pszSlash-pszPath+1) : cchDriveMax);
 	}
 	else if (lstrcmpni(pszPath, L"\\\\?\\", 4) == 0 && pszPath[4] && pszPath[5] == L':')
 	{
@@ -507,7 +507,7 @@ LPCWSTR GetDrive(LPCWSTR pszPath, wchar_t* szDrive, int/*countof(szDrive)*/ cchD
 		// "\\Server\Share"
 		LPCWSTR pszSlash = wcschr(pszPath+2, L'\\'); // point to end of server name
 		pszSlash = pszSlash ? wcschr(pszSlash+1, L'\\') : NULL; // point to end of share name
-		lstrcpyn(szDrive, pszPath, pszSlash ? (int)min((INT_PTR)cchDriveMax,pszSlash-pszPath+1) : cchDriveMax);
+		lstrcpyn(szDrive, pszPath, pszSlash ? (int)std::min((INT_PTR)cchDriveMax,pszSlash-pszPath+1) : cchDriveMax);
 	}
 	else
 	{
@@ -704,10 +704,22 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 			szTemp.Set(pwszCopy, (pchEnd - pwszCopy));
 			_ASSERTE(szTemp[(pchEnd - pwszCopy)] == 0);
 
+			// Argument was quoted?
+			if (!szTemp.IsEmpty())
+			{
+				INT_PTR len = szTemp.GetLen();
+				if ((len > 2) && (szTemp[0] == L'"') && (szTemp[len-1] == L'"'))
+				{
+					memmove(szTemp.ms_Val, szTemp.ms_Val+1, (len-2)*sizeof(*szTemp.ms_Val));
+					szTemp.ms_Val[len-2] = 0;
+				}
+			}
+
 			// If this is a full path without environment variables
-			if (((IsFilePath(szTemp, true) && !wcschr(szTemp, L'%'))
-				// or file/dir may be found via env.var. substitution or searching in %PATH%
-				|| FileExistsSearch((LPCWSTR)szTemp, szTemp))
+			if (!szTemp.IsEmpty()
+				&& ((IsFilePath(szTemp, true) && !wcschr(szTemp, L'%'))
+					// or file/dir may be found via env.var. substitution or searching in %PATH%
+					|| FileExistsSearch((LPCWSTR)szTemp, szTemp))
 				// Than check if it is a FILE (not a directory)
 				&& FileExists(szTemp, &nTempSize) && nTempSize)
 			{
@@ -1171,6 +1183,26 @@ wchar_t* JoinPath(LPCWSTR asPath, LPCWSTR asPart1, LPCWSTR asPart2 /*= NULL*/)
 	}
 
 	return lstrmerge(psz1, psz2, psz3, psz4, psz5);
+}
+
+wchar_t* GetParentPath(LPCWSTR asPath)
+{
+	if (!asPath || !*asPath)
+		return NULL;
+	LPCWSTR pszName = PointToName(asPath);
+	if (!pszName)
+		return NULL;
+	while ((pszName > asPath) && (*(pszName-1) == L'\\' || *(pszName-1) == L'/'))
+		--pszName;
+	if (pszName <= asPath)
+		return NULL;
+
+	wchar_t* parent = lstrdup(asPath);
+	if (!parent)
+		return NULL;
+	_ASSERTE(wcslen(parent) > size_t(pszName - asPath));
+	parent[(pszName - asPath) - 1] = 0;
+	return parent;
 }
 
 // Первичная проверка, может ли asFilePath быть путем

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -166,7 +166,7 @@ CDragDrop::~CDragDrop()
 DWORD CDragDrop::DragStart(IDropSource *pDropSource, const DWORD dwAllowedEffects, DWORD& dwEffect)
 {
 	DWORD dwResult = E_UNEXPECTED;
-	wchar_t szStep[255]; _wsprintf(szStep, SKIPLEN(countof(szStep)) L"DoDragDrop(Eff=0x%X, DataObject=0x%08X, DropSource=0x%08X)", dwAllowedEffects, LODWORD(mp_DataObject), LODWORD(pDropSource));
+	wchar_t szStep[255]; swprintf_c(szStep, L"DoDragDrop(Eff=0x%X, DataObject=0x%08X, DropSource=0x%08X)", dwAllowedEffects, LODWORD(mp_DataObject), LODWORD(pDropSource));
 	DebugLog(szStep);
 	SAFETRY
 	{
@@ -177,7 +177,7 @@ DWORD CDragDrop::DragStart(IDropSource *pDropSource, const DWORD dwAllowedEffect
 		dwResult = DRAGDROP_S_CANCEL;
 		MBoxA(L"Exception in DoDragDrop\nConEmu restart is recommended");
 	}
-	_wsprintf(szStep, SKIPLEN(countof(szStep)) L"DoDragDrop finished, Code=0x%08X", dwResult);
+	swprintf_c(szStep, L"DoDragDrop finished, Code=0x%08X", dwResult);
 
 	switch(dwResult)
 	{
@@ -302,7 +302,7 @@ wchar_t* CDragDrop::FileCreateName(BOOL abActive, BOOL abFolder, LPCWSTR asSubFo
 	nSize += _tcslen(pszNameW)+1;
 
 	MCHKHEAP;
-	pszFullName = (wchar_t*)calloc(nSize, 2);
+	pszFullName = (wchar_t*)calloc(nSize, sizeof(*pszFullName));
 
 	if (!pszFullName)
 	{
@@ -321,26 +321,26 @@ wchar_t* CDragDrop::FileCreateName(BOOL abActive, BOOL abFolder, LPCWSTR asSubFo
 
 	if (lbNeedUnc)
 	{
-		wcscpy(pszFullName, L"\\\\?\\");
+		wcscpy_s(pszFullName, nSize, L"\\\\?\\");
 
 		if (pszPanelPath[0] == L'\\' && pszPanelPath[1] == L'\\')
 		{
-			wcscpy(pszFullName+4, L"UNC"); //-V112
-			wcscpy(pszFullName+7, pszPanelPath+1);
+			wcscpy_s(pszFullName+4, nSize-4, L"UNC"); //-V112
+			wcscpy_s(pszFullName+7, nSize-7, pszPanelPath+1);
 		}
 		else
 		{
-			wcscpy(pszFullName+4, pszPanelPath); //-V112
+			wcscpy_s(pszFullName+4, nSize+4, pszPanelPath); //-V112
 		}
 
 		nPathLen = _tcslen(pszFullName) + 1;
 	}
 	else
 	{
-		wcscpy(pszFullName, pszPanelPath);
+		wcscpy_s(pszFullName, nSize, pszPanelPath);
 	}
 
-	wcscat(pszFullName, L"\\");
+	wcscat_s(pszFullName, nSize, L"\\");
 	MCHKHEAP;
 
 	// Должен содержать заключительный "\\"
@@ -352,13 +352,13 @@ wchar_t* CDragDrop::FileCreateName(BOOL abActive, BOOL abFolder, LPCWSTR asSubFo
 		}
 		else
 		{
-			wcscpy(pszFullName+nPathLen, asSubFolder);
+			wcscpy_s(pszFullName+nPathLen, nSize-nPathLen, asSubFolder);
 			nPathLen += nSubFolderLen;
 		}
 	}
 
 
-	wcscpy(pszFullName+nPathLen, pszNameW);
+	wcscpy_s(pszFullName+nPathLen, nSize-nPathLen, pszNameW);
 
 	// Отрезать хвостовые пробелы. Гррр....
 	INT_PTR nTotal = _tcslen(pszFullName);
@@ -384,45 +384,42 @@ wchar_t* CDragDrop::FileCreateName(BOOL abActive, BOOL abFolder, LPCWSTR asSubFo
 	if (hFind != INVALID_HANDLE_VALUE)
 	{
 		FindClose(hFind);
-		wchar_t* pszMsg = NULL;
 
 		if (abFolder)
 		{
 			if (!(fnd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 			{
-				pszMsg = (wchar_t*)calloc(nSize + 100, 2);
-				wcscpy(pszMsg, L"Can't create directory! Same name file exists!\n");
-				wcscat(pszMsg, pszFullName);
-				MsgBox(pszMsg, MB_ICONSTOP, gpConEmu->GetDefaultTitle(), ghWnd, false);
-				free(pszMsg);
+				CEStr szMsg(L"Can't create directory! Same name file exists!\n", pszFullName);
+				MsgBox(szMsg, MB_ICONSTOP, gpConEmu->GetDefaultTitle(), ghWnd, false);
 				free(pszFullName);
 				return NULL;
 			}
 		}
 		else if (fnd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 		{
-			pszMsg = (wchar_t*)calloc(nSize + 100, 2);
-			wcscpy(pszMsg, L"Can't create file! Same name folder exists!\n");
-			wcscat(pszMsg, pszFullName);
-			MsgBox(pszMsg, MB_ICONSTOP, gpConEmu->GetDefaultTitle(), ghWnd, false);
-			free(pszMsg);
+			CEStr szMsg(L"Can't create file! Same name folder exists!\n", pszFullName);
+			MsgBox(szMsg, MB_ICONSTOP, gpConEmu->GetDefaultTitle(), ghWnd, false);
 			free(pszFullName);
 			return NULL;
 		}
 		else
 		{
+			int nRc = IDCANCEL;
 			int nCchSize = nSize + 255;
-			pszMsg = (wchar_t*)calloc(nCchSize, 2);
-			LARGE_INTEGER liSize;
-			liSize.LowPart = fnd.nFileSizeLow; liSize.HighPart = fnd.nFileSizeHigh;
-			FILETIME ftl;
-			FileTimeToLocalFileTime(&fnd.ftLastWriteTime, &ftl);
-			SYSTEMTIME st; FileTimeToSystemTime(&ftl, &st);
-			_wsprintf(pszMsg, SKIPLEN(nCchSize)
-				L"File already exists!\n\n%s\nSize: %I64i\nDate: %02i.%02i.%i %02i:%02i:%02i\n\nOverwrite?",
-				pszFullName, liSize.QuadPart, st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
-			int nRc = MsgBox(pszMsg, MB_ICONEXCLAMATION|MB_YESNO, gpConEmu->GetDefaultTitle(), ghWnd, false);
-			free(pszMsg);
+			wchar_t* pszMsg = (wchar_t*)calloc(nCchSize, 2);
+			if (pszMsg)
+			{
+				LARGE_INTEGER liSize;
+				liSize.LowPart = fnd.nFileSizeLow; liSize.HighPart = fnd.nFileSizeHigh;
+				FILETIME ftl;
+				FileTimeToLocalFileTime(&fnd.ftLastWriteTime, &ftl);
+				SYSTEMTIME st; FileTimeToSystemTime(&ftl, &st);
+				swprintf_s(pszMsg, nCchSize,
+					L"File already exists!\n\n%s\nSize: %I64i\nDate: %02i.%02i.%i %02i:%02i:%02i\n\nOverwrite?",
+					pszFullName, liSize.QuadPart, st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
+				nRc = MsgBox(pszMsg, MB_ICONEXCLAMATION|MB_YESNO, gpConEmu->GetDefaultTitle(), ghWnd, false);
+				free(pszMsg);
+			}
 
 			if (nRc != IDYES)
 			{
@@ -454,28 +451,24 @@ wchar_t* CDragDrop::FileCreateName(BOOL abActive, BOOL abFolder, LPCWSTR asSubFo
 
 HANDLE CDragDrop::FileStart(LPCWSTR pszFullName)
 {
-	_ASSERTE(pszFullName && *pszFullName);
-
 	if (!pszFullName || !*pszFullName)
+	{
+		_ASSERTE(pszFullName && *pszFullName);
 		return INVALID_HANDLE_VALUE;
+	}
 
-	// Создаем файл
+	// Create the file
 	HANDLE hFile = CreateFile(pszFullName, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
 		DWORD dwErr = GetLastError();
 		INT_PTR nSize = _tcslen(pszFullName);
-		wchar_t* pszMsg = (wchar_t*)calloc(nSize + 100, 2);
-		wcscpy(pszMsg, L"Can't create file!\n");
-		wcscat(pszMsg, pszFullName);
-		DisplayLastError(pszMsg, dwErr);
-		free(pszMsg);
-		//free(pszFullName);
+		CEStr szMsg(L"Can't create file!\n", pszFullName);
+		DisplayLastError(szMsg, dwErr);
 		return INVALID_HANDLE_VALUE;
 	}
 
-	//free(pszFullName);
 	mn_CurWritten = 0;
 	return hFile;
 }
@@ -508,7 +501,7 @@ HRESULT CDragDrop::FileWrite(HANDLE ahFile, DWORD anSize, LPVOID apData)
 	}
 
 	wchar_t temp[64];
-	_wsprintf(temp, SKIPLEN(countof(temp)) L"Copying %i of %i (%u%c)", (mn_CurFile+1), mn_AllFiles, (DWORD)nPrepared, KM);
+	swprintf_c(temp, L"Copying %i of %i (%u%c)", (mn_CurFile+1), mn_AllFiles, (DWORD)nPrepared, KM);
 	gpConEmu->SetTitle(ghWnd, temp);
 	return S_OK;
 }
@@ -632,7 +625,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 
 							if ((nFolderLen + 1) >= cchSubFolder)
 							{
-								_wsprintf(sUnknownError, SKIPLEN(countof(sUnknownError)) L"Drag item #%i contains too long path!", mn_CurFile+1);
+								swprintf_c(sUnknownError, L"Drag item #%i contains too long path!", mn_CurFile+1);
 								DebugLog(sUnknownError, TRUE);
 								SafeFree(pszWideBuf);
 								continue;
@@ -670,7 +663,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 						Assert(pszNewFolder!=NULL);
 
 						if (sUnknownError[0] == 0)
-							_wsprintf(sUnknownError, SKIPLEN(countof(sUnknownError)) L"Drag item #%i has invalid file name!", mn_CurFile+1);
+							swprintf_c(sUnknownError, L"Drag item #%i has invalid file name!", mn_CurFile+1);
 
 						SafeFree(pszWideBuf);
 						continue;
@@ -684,7 +677,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 
 						if ((nFolderLen + 1) >= cchSubFolder)
 						{
-							_wsprintf(sUnknownError, SKIPLEN(countof(sUnknownError)) L"Drag item #%i contains too long path!", mn_CurFile+1);
+							swprintf_c(sUnknownError, L"Drag item #%i contains too long path!", mn_CurFile+1);
 							DebugLog(sUnknownError, TRUE);
 							SafeFree(pszNewFolder);
 							SafeFree(pszWideBuf);
@@ -709,7 +702,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 						{
 							INT_PTR nLen = _tcslen(pszNewFolder) + 128;
 							wchar_t* pszErr = (wchar_t*)malloc(nLen*sizeof(*pszErr));
-							_wsprintf(pszErr, SKIPLEN(nLen) L"Can't create directory for drag item #%i!\n%s\nError code=0x%08X", mn_CurFile+1, pszNewFolder, nErr);
+							swprintf_c(pszErr, nLen/*#SECURELEN*/, L"Can't create directory for drag item #%i!\n%s\nError code=0x%08X", mn_CurFile+1, pszNewFolder, nErr);
 
 							AssertMsg(pszErr);
 
@@ -740,7 +733,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 				if (!pszNewFileName)
 				{
 					if (sUnknownError[0] == 0)
-						_wsprintf(sUnknownError, SKIPLEN(countof(sUnknownError)) L"Drag item #%i has invalid file name!", mn_CurFile+1);
+						swprintf_c(sUnknownError, L"Drag item #%i has invalid file name!", mn_CurFile+1);
 
 					continue;
 				}
@@ -827,9 +820,9 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 							{
 								LPBYTE ptrCur = ptrFileData;
 
-								while(nFileSize > 0)
+								while (nFileSize > 0)
 								{
-									dwRead = min(nFileSize, 65536); //-V103
+									dwRead = std::min<DWORD>(nFileSize, 65536); //-V103
 									TODO("Сюда прогресс с градусником прицепить можно");
 
 									if (FileWrite(hFile, dwRead, ptrCur) != S_OK)
@@ -868,7 +861,7 @@ HRESULT CDragDrop::DropFromStream(IDataObject* pDataObject, BOOL abActive)
 				// Ошибку показать один раз на дроп (чтобы не ругаться на КАЖДЫЙ бросаемый файл)
 				//MBoxA(_T("Drag object does not contains known medium!"));
 				if (!lbKnownMedium && (sUnknownError[0] == 0))
-					_wsprintf(sUnknownError, SKIPLEN(countof(sUnknownError)) L"Drag item #%i does not contains known medium!", mn_CurFile+1);
+					swprintf_c(sUnknownError, L"Drag item #%i does not contains known medium!", mn_CurFile+1);
 			}
 
 			// CFSTR_FILEDESCRIPTORx
@@ -1022,7 +1015,7 @@ HRESULT CDragDrop::DropNames(HDROP hDrop, int iQuantity, BOOL abActive)
 	}
 	else
 	{
-		bCygwinPaths = pRCon->isCygwinMsys();
+		bCygwinPaths = pRCon->isUnixFS();
 	}
 
 	size_t cchMacro = MAX_DROP_PATH*2+80;
@@ -1059,6 +1052,7 @@ HRESULT CDragDrop::DropNames(HDROP hDrop, int iQuantity, BOOL abActive)
 		//}
 		INT_PTR nLen = _tcslen(psz);
 
+		bool AutoQuote = true;
 		if (!bNoFarConsole)
 		{
 
@@ -1081,26 +1075,27 @@ HRESULT CDragDrop::DropNames(HDROP hDrop, int iQuantity, BOOL abActive)
 		}
 		else if (bCygwinPaths)
 		{
-			wchar_t* pszCygwin = DupCygwinPath(pszText, false);
+			wchar_t* pszCygwin = DupCygwinPath(pszText, false, pRCon->GetMntPrefix());
 			if (pszCygwin)
 			{
 				_wcscpy_c(pszText, MAX_DROP_PATH, pszCygwin);
+				AutoQuote = false;
 			}
 		}
 
-		if ((psz = wcschr(pszText, L' ')) != NULL)
+		if (AutoQuote && (psz = wcschr(pszText, L' ')) != NULL)
 		{
-			// Имя нужно окавычить
+			// Double quote the name
 			if (!bNoFarConsole)
 			{
 				*(--pszText) = L'\"';
 				*(--pszText) = L'\\';
-				wcscat(pszText, L"\\\"");
+				wcscat_s(pszText, cchData-(pszText-szData), L"\\\"");
 			}
 			else
 			{
 				*(--pszText) = L'\"';
-				wcscat(pszText, L"\"");
+				wcscat_s(pszText, cchData-(pszText-szData), L"\"");
 			}
 		}
 
@@ -1129,10 +1124,10 @@ HRESULT CDragDrop::DropNames(HDROP hDrop, int iQuantity, BOOL abActive)
 		}
 		else
 		{
-			pRCon->Paste(pm_Standard, pszText, true, false);
+			pRCon->Paste(pm_Standard, pszText, true, pxm_Auto);
 
 			if (!bDontAddSpace)
-				pRCon->Paste(pm_Standard, L" ", true, false);
+				pRCon->Paste(pm_Standard, L" ", true, pxm_Auto);
 		}
 
 		if (((i + 1) < iQuantity)
@@ -1372,7 +1367,7 @@ HRESULT CDragDrop::DropShellOp(IDataObject* pDataObject, DWORD* pdwEffect, STGME
 	{
 		int nCchLen = lstrlenW(pszDropPath)+3;
 		sfop->fop.pTo = new WCHAR[nCchLen];
-		_wsprintf((LPWSTR)sfop->fop.pTo, SKIPLEN(nCchLen) _T("%s\\\0\0"), pszDropPath);
+		swprintf_c((LPWSTR)sfop->fop.pTo, nCchLen/*#SECURELEN*/, _T("%s\\\0\0"), pszDropPath);
 	}
 	else
 	{
@@ -1532,6 +1527,8 @@ DWORD CDragDrop::ShellOpThreadProc(LPVOID lpParameter)
 		}
 		else
 		{
+			// TODO# gh-946 use MBoxA instead of DisplayLastError, hr is not LastError codes
+			// TODO# gh-946 show contents of sfop->fop for troubleshooting
 			DisplayLastError(_T("Shell operation failed"), hr);
 		}
 	}
@@ -1719,7 +1716,7 @@ HRESULT CDragDrop::DragOverInt(DWORD grfKeyState, POINTL pt, DWORD* pdwEffect)
 
 #ifdef _DEBUG
 	wchar_t szDbgInfo[128];
-	_wsprintf(szDbgInfo, SKIPLEN(countof(szDbgInfo)) L"CDragDrop::DragOverInt(%i,%i) -> %s\n",
+	swprintf_c(szDbgInfo, L"CDragDrop::DragOverInt(%i,%i) -> %s\n",
 		pt.x, pt.y,
 		(*pdwEffect == DROPEFFECT_NONE) ? L"DROPEFFECT_NONE" :
 		(*pdwEffect == DROPEFFECT_COPY) ? L"DROPEFFECT_COPY" :
@@ -1763,6 +1760,7 @@ HRESULT STDMETHODCALLTYPE CDragDrop::DragEnter(IDataObject* pDataObject, DWORD g
 	mb_selfdrag = (pDataObject == mp_DataObject);
 	mb_DragWithinNow = TRUE;
 
+	// TODO# gh-946 take into account LogFiles too. Acquire LogFile handle object to dump contents directly: MFileLogHandle
 	if (gbDebugLogStarted
 		#ifdef DUMP_DRAGGED_ITEMS_INFO
 		|| IsDebuggerPresent()

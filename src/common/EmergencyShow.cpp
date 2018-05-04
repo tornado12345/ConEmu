@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 #include "Common.h"
 #include "WConsole.h"
+#include "WObjects.h"
 #include "WUser.h"
 
 // Evaluate default width for the font
@@ -69,7 +70,7 @@ void SetUserFriendlyFont(HWND hConWnd, int newFontY = 0, int newFontX = 0)
 	_ASSERTE(_WIN32_WINNT_VISTA==0x600);
 	OSVERSIONINFOEXW osvi = {sizeof(osvi), HIBYTE(_WIN32_WINNT_VISTA), LOBYTE(_WIN32_WINNT_VISTA)};
 	DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL);
-	if (!VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask))
+	if (!_VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask))
 		return;
 
 	HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -180,12 +181,12 @@ void CorrectConsolePos(HWND hConWnd)
 			if (newX < mi.rcWork.left)
 				newX = mi.rcWork.left;
 			else if (rcNew.right > mi.rcWork.right)
-				newX = max(mi.rcWork.left,(mi.rcWork.right-newW));
+				newX = std::max(mi.rcWork.left,(mi.rcWork.right-newW));
 
 			if (newY < mi.rcWork.top)
 				newY = mi.rcWork.top;
 			else if (rcNew.bottom > mi.rcWork.bottom)
-				newY = max(mi.rcWork.top,(mi.rcWork.bottom-newH));
+				newY = std::max(mi.rcWork.top,(mi.rcWork.bottom-newH));
 
 			if ((newX != rcNew.left) || (newY != rcNew.top))
 				SetWindowPos(hConWnd, HWND_TOP, newX, newY,0,0, SWP_NOSIZE);
@@ -205,7 +206,7 @@ void EmergencyShow(HWND hConWnd, int newFontY /*= 0*/, int newFontX /*= 0*/)
 		return; // Invalid HWND
 
 	wchar_t szMutex[80];
-	_wsprintf(szMutex, SKIPCOUNT(szMutex) L"ConEmuEmergencyShow:%08X", (DWORD)(DWORD_PTR)hConWnd);
+	swprintf_c(szMutex, L"ConEmuEmergencyShow:%08X", (DWORD)(DWORD_PTR)hConWnd);
 	HANDLE hMutex = CreateMutex(NULL, FALSE, szMutex);
 
 	//_ASSERTE(FALSE && "EmergencyShow was called, Continue?");

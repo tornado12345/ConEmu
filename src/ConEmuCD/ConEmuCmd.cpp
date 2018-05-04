@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "../common/WFiles.h"
 
 bool GetAliases(wchar_t* asExeName, wchar_t** rsAliases, LPDWORD rnAliasesSize);
@@ -359,7 +359,7 @@ void ComspecDone(int aiRc)
 			#ifdef _DEBUG
 			if (sbi2.dwSize.Y > 200)
 			{
-				wchar_t szTitle[128]; _wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmuC (PID=%i)", GetCurrentProcessId());
+				wchar_t szTitle[128]; swprintf_c(szTitle, L"ConEmuC (PID=%i)", GetCurrentProcessId());
 				MessageBox(NULL, L"BufferHeight was not turned OFF", szTitle, MB_SETFOREGROUND|MB_SYSTEMMODAL);
 			}
 			#endif
@@ -455,7 +455,7 @@ bool GetAliases(wchar_t* asExeName, wchar_t** rsAliases, LPDWORD rnAliasesSize)
 			{
 				if ((*rnAliasesSize) < 255) { free(*rsAliases); *rsAliases = (wchar_t*)calloc(128,2); }
 
-				_wsprintf(*rsAliases, SKIPLEN(127) L"\nConEmuC: GetConsoleAliases failed, ErrCode=0x%08X(0x%08X), AliasesLength=%i(%i)\n\n", nAliasErr, nAliasAErr, *rnAliasesSize, nSizeA);
+				swprintf_c(*rsAliases, 127/*#SECURELEN*/, L"\nConEmuC: GetConsoleAliases failed, ErrCode=0x%08X(0x%08X), AliasesLength=%i(%i)\n\n", nAliasErr, nAliasAErr, *rnAliasesSize, nSizeA);
 			}
 		}
 	}

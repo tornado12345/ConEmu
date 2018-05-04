@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "StartupEnvDef.h"
 #include "ConEmuCheck.h"
+#include "WObjects.h"
 
 class LoadStartupEnv
 {
@@ -74,7 +75,7 @@ protected:
 
 			if (pszEnvPathStore)
 			{
-				pszEnvPathStore[min(cbPathSize,cbPathMax-1)] = 0;
+				pszEnvPathStore[std::min<DWORD>(cbPathSize, cbPathMax-1)] = 0;
 			}
 		}
 
@@ -122,7 +123,7 @@ protected:
 			// Информационно. К физической консоли потом могут и через RDP подключиться...
 			pEnv->bIsRemote = GetSystemMetrics(0x1000/*SM_REMOTESESSION*/);
 
-			pEnv->bIsDbcs = IsDbcs();
+			pEnv->bIsDbcs = IsWinDBCS();
 
 			// Don't use them in ConEmuHk
 			pEnv->bIsWine = 2;

@@ -238,7 +238,7 @@ protected:
 
 			if (pProcessName)
 			{
-				SIZE_T sz = sizeof(szProcessName);//min(sizeof(szProcessName), Data.BaseDllName.MaximumLength*2);
+				SIZE_T sz = sizeof(szProcessName);//std::min(sizeof(szProcessName), Data.BaseDllName.MaximumLength*2);
 
 				if (Data.BaseDllName.Buffer && ReadProcessMemory(hProcess, Data.BaseDllName.Buffer, szProcessName, sz,0))
 					lstrcpyn(pProcessName, szProcessName, cbProcessName);
@@ -248,7 +248,7 @@ protected:
 
 			if (pFullPath)
 			{
-				SIZE_T sz = sizeof(szProcessName);//min(sizeof(szProcessName), Data.FullDllName.MaximumLength*2);
+				SIZE_T sz = sizeof(szProcessName);//std::min(sizeof(szProcessName), Data.FullDllName.MaximumLength*2);
 
 				if (Data.FullDllName.Buffer && ReadProcessMemory(hProcess, Data.FullDllName.Buffer, szProcessName, sz,0))
 					lstrcpyn(pFullPath, szProcessName, cbFullPath);
@@ -264,7 +264,7 @@ protected:
 
 				if (ReadProcessMemory(hProcess, &pProcessParams->CommandLine, &pCmd, sizeof(pCmd), 0))
 				{
-					SIZE_T sz = min(cbCommandLine, (ULONG)pCmd.Length/sizeof(WCHAR) + 1);
+					SIZE_T sz = std::min<SIZE_T>(cbCommandLine, (ULONG)pCmd.Length/sizeof(WCHAR) + 1);
 					WCHAR* sCommandLine = (WCHAR*)malloc(sz*sizeof(WCHAR));
 					if (sCommandLine)
 					{
@@ -313,7 +313,7 @@ protected:
 
 		LONG rc;
 		LANGID lid = MAKELANGID(LANG_ENGLISH, SUBLANG_NEUTRAL);
-		_wsprintf(szSubKey, SKIPLEN(countof(szSubKey)) L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Perflib\\%03X", lid);
+		swprintf_c(szSubKey, L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Perflib\\%03X", lid);
 		HKEY hKeyNames = NULL;
 		if (0 != (rc = RegOpenKeyEx(HKEY_LOCAL_MACHINE, szSubKey, 0, KEY_READ, &hKeyNames)))
 			return false;
@@ -321,9 +321,9 @@ protected:
 		szSubKey[0] = 0;
 
 		// Get the buffer size for the counter names
-		DWORD dwType, dwSize;
+		DWORD dwType = 0, dwSize = 0;
 
-		if (0 == (rc = RegQueryValueEx(hKeyNames, L"Counters", 0, &dwType, NULL, &dwSize)))
+		if (0 == (rc = RegQueryValueEx(hKeyNames, L"Counters", 0, &dwType, NULL, &dwSize)) && dwSize)
 		{
 			// Allocate the counter names buffer
 			wchar_t* buf = (wchar_t*)malloc(dwSize*sizeof(wchar_t));
@@ -338,11 +338,11 @@ protected:
 					// the buffer contains multiple null terminated strings and then
 					// finally null terminated at the end.  the strings are in pairs of
 					// counter number and counter name.
-
-					for (wchar_t* p = buf; *p; p += lstrlen(p)+1)
+					wchar_t* buf_end = (wchar_t*)(((char*)buf)+dwSize);
+					for (wchar_t* p = buf; p < buf_end && *p; p += lstrlen(p)+1)
 					{
 						if (lstrcmpi(p, L"Process")==0)
-							_wsprintf(szSubKey, SKIPLEN(countof(szSubKey)) L"%i", getcounter(p));
+							swprintf_c(szSubKey, L"%i", getcounter(p));
 						else if (!dwProcessIdTitle && lstrcmpi(p, L"ID Process")==0)
 							dwProcessIdTitle = getcounter(p);
 					}
@@ -564,7 +564,8 @@ public:
 		if (h == NULL)
 		{
 			// Most usually this will be "Access denied", check others?
-			_ASSERTE(nErr == ERROR_ACCESS_DENIED);
+			// ERROR_INVALID_PARAMETER seems like means "there is no such process"
+			_ASSERTE(nErr == ERROR_ACCESS_DENIED || nErr == ERROR_INVALID_PARAMETER);
 		}
 		#endif
 
@@ -608,7 +609,7 @@ public:
 
 			if (pProcessPath || (pProcessName && !*pProcessName))
 			{
-				DWORD cchMax = max(MAX_PATH*2,cbProcessPath);
+				DWORD cchMax = std::max<DWORD>(MAX_PATH*2, cbProcessPath);
 				wchar_t* pszPath = (wchar_t*)malloc(cchMax*sizeof(wchar_t));
 
 				if (pszPath)

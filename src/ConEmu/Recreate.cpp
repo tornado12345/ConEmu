@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConEmu.h"
 #include "DpiAware.h"
 #include "DynDialog.h"
+#include "LngRc.h"
 #include "OptionsClass.h"
 #include "RealConsole.h"
 #include "Recreate.h"
@@ -75,7 +76,7 @@ HWND CRecreateDlg::GetHWND()
 }
 
 // Открыть диалог с подтверждением параметров создания/закрытия/пересоздания консоли
-int CRecreateDlg::RecreateDlg(RConStartArgs* apArgs, bool abDontAutoSelCmd /*= false*/)
+int CRecreateDlg::RecreateDlg(RConStartArgsEx* apArgs, bool abDontAutoSelCmd /*= false*/)
 {
 	if (!this)
 	{
@@ -116,8 +117,7 @@ int CRecreateDlg::RecreateDlg(RConStartArgs* apArgs, bool abDontAutoSelCmd /*= f
 	InitVars();
 
 	bool bPrev = gpConEmu->SetSkipOnFocus(true);
-	if (!mp_DpiAware)
-		mp_DpiAware = new CDpiForDialog();
+	CDpiForDialog::Create(mp_DpiAware);
 	// Modal dialog (CreateDialog)
 	int nRc = CDynDialog::ExecuteDialog(IDD_RESTART, mh_Parent, RecreateDlgProc, (LPARAM)this);
 	UNREFERENCED_PARAMETER(nRc);
@@ -178,7 +178,7 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 	//SetWindowPos(ghOpWnd, HWND_NOTOPMOST, 0,0,0,0, SWP_NOSIZE|SWP_NOMOVE);
 	//#endif
 
-	RConStartArgs* pArgs = mp_Args;
+	RConStartArgsEx* pArgs = mp_Args;
 	_ASSERTE(pArgs);
 
 	// Fill command and task drop down
@@ -190,11 +190,11 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 	CEStr lsTempCmd, lsAppend;
 	if (!mpsz_DefCmd && pArgs)
 	{
-		RConStartArgs tempArgs;
+		RConStartArgsEx tempArgs;
 		tempArgs.AssignFrom(pArgs);
 		tempArgs.CleanSecure();
 		tempArgs.RunAsSystem = pArgs->RunAsSystem;
-		tempArgs.eSplit = RConStartArgs::eSplitNone;
+		tempArgs.eSplit = RConStartArgsEx::eSplitNone;
 		SafeFree(tempArgs.pszSpecialCmd);
 		SafeFree(tempArgs.pszStartupDir);
 		tempArgs.NewConsole = pArgs->NewConsole;
@@ -206,6 +206,7 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 		}
 	}
 	SetDlgItemText(hDlg, IDC_RESTART_CMD, pszSetCmd);
+	// TODO: gh-959: enable autocorrection of cbRunAsAdmin by IDC_RESTART_CMD task contents (first line)
 	}
 
 	// "%CD%" was specified as startup dir? In Task parameters for example...
@@ -262,6 +263,7 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 	const wchar_t *pszDomain = pArgs->pszDomain;
 	bool bResticted = (pArgs->RunAsRestricted == crb_On);
 	int nChecked = rbCurrentUser;
+	int nNetOnly = cbRunAsNetOnly;
 	DWORD nUserNameLen = countof(ms_CurUser);
 
 	if (!GetUserName(ms_CurUser, &nUserNameLen))
@@ -275,12 +277,12 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 
 	CVConGuard VCon;
 	CVirtualConsole* pVCon = (gpConEmu->GetActiveVCon(&VCon) >= 0) ? VCon.VCon() : NULL;
-
+	EnableWindow(GetDlgItem(hDlg, cbRunAsNetOnly), FALSE);
 	if ((pArgs->pszUserName && *pArgs->pszUserName)
 		|| ((pArgs->aRecreate == cra_RecreateTab) && pVCon && pVCon->RCon()->GetUserPwd(&pszUser, &pszDomain, &bResticted)))
 	{
 		nChecked = rbAnotherUser;
-
+		CheckDlgButton(hDlg, cbRunAsNetOnly, (pArgs->RunAsNetOnly == crb_On) ? BST_CHECKED : BST_UNCHECKED);
 		if (bResticted)
 		{
 			CheckDlgButton(hDlg, cbRunAsRestricted, BST_CHECKED);
@@ -317,6 +319,7 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 			}
 
 			SetDlgItemText(hDlg, tRunAsPassword, pArgs->szUserPassword);
+			EnableWindow(GetDlgItem(hDlg, cbRunAsNetOnly), TRUE);
 		}
 	}
 
@@ -351,20 +354,15 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 	//}
 	SetClassLongPtr(hDlg, GCLP_HICON, (LONG_PTR)hClassIcon);
 
-	RECT rcBtnBox = {0};
 	if (pArgs->aRecreate == cra_RecreateTab)
 	{
-		//GCC hack. иначе не собирается
-		SetDlgItemTextA(hDlg, IDC_RESTART_MSG, "About to restart console");
+		SetWindowText(hDlg, CLngRc::getRsrc(lng_DlgRestartConsole/*"Restart console"*/));
 		SendDlgItemMessage(hDlg, IDC_RESTART_ICON, STM_SETICON, (WPARAM)LoadIcon(NULL,IDI_EXCLAMATION), 0);
-		// Выровнять флажок по кнопке
-		GetWindowRect(GetDlgItem(hDlg, IDC_START), &rcBtnBox);
 		lbRc = TRUE;
 	}
 	else
 	{
-		//GCC hack. иначе не собирается
-		SetDlgItemTextA(hDlg, IDC_RESTART_MSG,  "Create new console");
+		SetWindowText(hDlg, CLngRc::getRsrc(lng_DlgCreateNewConsole/*"Create new console"*/));
 
 		// If we disallowed to create "Multiple consoles in one window"
 		// - Check & Disable "New window" checkbox
@@ -380,29 +378,33 @@ INT_PTR CRecreateDlg::OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM 
 		SetWindowPos(GetDlgItem(hDlg, IDC_START), NULL, pt.x, pt.y, 0,0, SWP_NOSIZE|SWP_NOZORDER);
 		SetDlgItemText(hDlg, IDC_START, (pArgs->aRecreate == cra_EditTab) ? L"&Save" : L"&Start");
 		DestroyWindow(GetDlgItem(hDlg, IDC_WARNING));
-		// Выровнять флажок по кнопке
-		GetWindowRect(GetDlgItem(hDlg, IDC_START), &rcBtnBox);
 	}
 
-	if (rcBtnBox.left)
+	// Align "New window" and "Run as administrator" checkboxes
 	{
-		// Выровнять флажок по кнопке
-		MapWindowPoints(NULL, hDlg, (LPPOINT)&rcBtnBox, 2);
-		RECT rcBox; GetWindowRect(GetDlgItem(hDlg, cbRunAsAdmin), &rcBox);
-		POINT pt;
-		pt.x = rcBtnBox.left - (rcBox.right - rcBox.left) - 5;
-		pt.y = rcBtnBox.top + ((rcBtnBox.bottom-rcBtnBox.top) - (rcBox.bottom-rcBox.top))/2;
+		RECT rcBox = {}; GetWindowRect(GetDlgItem(hDlg, cbRunAsAdmin), &rcBox);
+		MapWindowPoints(NULL, hDlg, (LPPOINT)&rcBox, 2);
+		const int chk_height = (rcBox.bottom - rcBox.top);
+
+		POINT pt = {rcBox.left};
+		if (!bRunInNewWindow_Hidden)
+		{
+			RECT rcIcoBox = {}; GetWindowRect(GetDlgItem(hDlg, IDC_RESTART_ICON), &rcIcoBox);
+			MapWindowPoints(NULL, hDlg, (LPPOINT)&rcIcoBox, 2);
+			const int ico_height = (rcIcoBox.bottom - rcIcoBox.top);
+			const int h2 = (chk_height * 5) / 2;
+			pt.y = rcIcoBox.top + (ico_height - h2)/2;
+			SetWindowPos(GetDlgItem(hDlg, cbRunInNewWindow), NULL, pt.x, pt.y, 0,0, SWP_NOSIZE|SWP_NOZORDER);
+			pt.y += (h2 - chk_height);
+		}
+		else
+		{
+			RECT rcBtnBox = {}; GetWindowRect(GetDlgItem(hDlg, IDC_START), &rcBtnBox);
+			MapWindowPoints(NULL, hDlg, (LPPOINT)&rcBtnBox, 2);
+			const int btn_height = (rcBtnBox.bottom - rcBtnBox.top);
+			pt.y = rcBtnBox.top + (btn_height - chk_height)/2;
+		}
 		SetWindowPos(GetDlgItem(hDlg, cbRunAsAdmin), NULL, pt.x, pt.y, 0,0, SWP_NOSIZE|SWP_NOZORDER);
-	}
-
-	// Correct cbRunInNewWindow position
-	if (!bRunInNewWindow_Hidden)
-	{
-		POINT pt = {};
-		MapWindowPoints(GetDlgItem(hDlg, cbRunAsAdmin), hDlg, &pt, 1);
-		RECT rcBox2; GetWindowRect(GetDlgItem(hDlg, cbRunInNewWindow), &rcBox2);
-		SetWindowPos(GetDlgItem(hDlg, cbRunInNewWindow), NULL,
-			pt.x-(rcBox2.right-rcBox2.left), pt.y, 0,0, SWP_NOSIZE);
 	}
 
 	// Dpi aware processing at the end of sequence
@@ -449,7 +451,7 @@ INT_PTR CRecreateDlg::OnCtlColorStatic(HWND hDlg, UINT messg, WPARAM wParam, LPA
 
 INT_PTR CRecreateDlg::OnFillCmdList(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
-	RConStartArgs* pArgs = mp_Args;
+	RConStartArgsEx* pArgs = mp_Args;
 	_ASSERTE(pArgs);
 
 	AddCommandList(pArgs->pszSpecialCmd);
@@ -487,9 +489,11 @@ INT_PTR CRecreateDlg::OnUserControls(HWND hDlg, UINT messg, WPARAM wParam, LPARA
 		//BOOL lbText = SendDlgItemMessage(hDlg, cbRunAsRestricted, BM_GETCHECK, 0, 0) == 0;
 		EnableWindow(GetDlgItem(hDlg, tRunAsUser), FALSE);
 		EnableWindow(GetDlgItem(hDlg, tRunAsPassword), FALSE);
+		EnableWindow(GetDlgItem(hDlg, cbRunAsNetOnly), FALSE);
 	}
 	else
 	{
+		EnableWindow(GetDlgItem(hDlg, cbRunAsNetOnly), TRUE);
 		if (SendDlgItemMessage(hDlg, tRunAsUser, CB_GETCOUNT, 0, 0) == 0)
 		{
 			DWORD dwLevel = 3, dwEntriesRead = 0, dwTotalEntries = 0, dwResumeHandle = 0;
@@ -637,6 +641,7 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 
 	case rbCurrentUser:
 	case rbAnotherUser:
+	case cbRunAsNetOnly:
 	case cbRunAsRestricted:
 	{
 		RecreateDlgProc(hDlg, UM_USER_CONTROLS, LOWORD(wParam), 0);
@@ -647,15 +652,15 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 	case rbRecreateSplit2Right:
 	case rbRecreateSplit2Bottom:
 	{
-		RConStartArgs* pArgs = mp_Args;
+		RConStartArgsEx* pArgs = mp_Args;
 		switch (LOWORD(wParam))
 		{
 		case rbRecreateSplitNone:
-			pArgs->eSplit = RConStartArgs::eSplitNone; break;
+			pArgs->eSplit = RConStartArgsEx::eSplitNone; break;
 		case rbRecreateSplit2Right:
-			pArgs->eSplit = RConStartArgs::eSplitHorz; break;
+			pArgs->eSplit = RConStartArgsEx::eSplitHorz; break;
 		case rbRecreateSplit2Bottom:
-			pArgs->eSplit = RConStartArgs::eSplitVert; break;
+			pArgs->eSplit = RConStartArgsEx::eSplitVert; break;
 		}
 		EnableWindow(GetDlgItem(hDlg, tRecreateSplit), (pArgs->eSplit != pArgs->eSplitNone));
 		EnableWindow(GetDlgItem(hDlg, stRecreateSplit), (pArgs->eSplit != pArgs->eSplitNone));
@@ -666,7 +671,7 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 
 	case IDC_START:
 	{
-		RConStartArgs* pArgs = mp_Args;
+		RConStartArgsEx* pArgs = mp_Args;
 		_ASSERTE(pArgs);
 		SafeFree(pArgs->pszUserName);
 		SafeFree(pArgs->pszDomain);
@@ -676,6 +681,7 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 		{
 			pArgs->RunAsRestricted = crb_Off;
 			pArgs->pszUserName = GetDlgItemTextPtr(hDlg, tRunAsUser);
+			pArgs->RunAsNetOnly = SendDlgItemMessage(hDlg, cbRunAsNetOnly, BM_GETCHECK, 0, 0) ? crb_On : crb_Off;
 
 			if (pArgs->pszUserName)
 			{
@@ -693,6 +699,7 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 		else
 		{
 			pArgs->RunAsRestricted = SendDlgItemMessage(hDlg, cbRunAsRestricted, BM_GETCHECK, 0, 0) ? crb_On : crb_Off;
+			pArgs->RunAsNetOnly = crb_Off;
 		}
 
 		// Vista+ (As Admin...)
@@ -747,7 +754,7 @@ INT_PTR CRecreateDlg::OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 				pArgs->aRecreate = cra_CreateTab;
 		}
 		if (((pArgs->aRecreate == cra_CreateTab) || (pArgs->aRecreate == cra_EditTab))
-			&& (pArgs->eSplit != RConStartArgs::eSplitNone))
+			&& (pArgs->eSplit != RConStartArgsEx::eSplitNone))
 		{
 			BOOL bOk = FALSE;
 			int nPercent = GetDlgItemInt(hDlg, tRecreateSplit, &bOk, FALSE);
@@ -863,6 +870,8 @@ INT_PTR CRecreateDlg::RecreateDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPAR
 					return pDlg->OnComboSetFocus(hDlg, messg, wParam, lParam);
 				break;
 
+			// TODO: gh-959: enable autocorrection of cbRunAsAdmin by IDC_RESTART_CMD task contents (first line)
+
 			} // switch (HIWORD(wParam))
 			break;
 
@@ -913,7 +922,7 @@ void CRecreateDlg::InitVars()
 	if (pRCon)
 	{
 		ms_RConStartDir.Set(pRCon->GetStartupDir());
-		pRCon->GetConsoleCurDir(ms_RConCurDir);
+		pRCon->GetConsoleCurDir(ms_RConCurDir, true);
 	}
 
 	// Если уже передана команда через параметры - из текущей консоли не извлекать

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DEBUGSTRHOOK(s) //OutputDebugString(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 
 #ifndef TESTLINK
 #include "../common/Common.h"
@@ -36,7 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/execute.h"
 #endif
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "GuiHooks.h"
 
 
@@ -132,7 +132,7 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 #ifdef _DEBUG
 		wchar_t szKH[128];
 		DWORD dwTick = GetTickCount();
-		_wsprintf(szKH, SKIPLEN(countof(szKH)) L"[hook] %s(vk=%i, flags=0x%08X, time=%i, tick=%i, delta=%i)\n",
+		swprintf_c(szKH, L"[hook] %s(vk=%i, flags=0x%08X, time=%i, tick=%i, delta=%i)\n",
 		          (wParam==WM_KEYDOWN) ? L"WM_KEYDOWN" :
 		          (wParam==WM_KEYUP) ? L"WM_KEYUP" :
 		          (wParam==WM_SYSKEYDOWN) ? L"WM_SYSKEYDOWN" :
@@ -199,7 +199,7 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 					if (ConsoleKeys[h].vk)
 					{
 						#ifdef _DEBUG
-						_wsprintf(szKH, SKIPLEN(countof(szKH)) L"%i ", ConsoleKeys[h].vk);
+						swprintf_c(szKH, L"%i ", ConsoleKeys[h].vk);
 						DEBUGSTRHOOK(szKH);
 						#endif
 						if ((ConsoleKeys[h].vk == pKB->vkCode)
@@ -227,7 +227,7 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 				if (pKB->vkCode == VK_TAB && IsWindow(ghActiveGhost))
 				{
 					wchar_t szEvtName[64];
-					_wsprintf(szEvtName, SKIPLEN(countof(szEvtName)) CEGHOSTSKIPACTIVATE, LODWORD(ghActiveGhost));
+					swprintf_c(szEvtName, CEGHOSTSKIPACTIVATE, LODWORD(ghActiveGhost));
 					HANDLE hSkipActivateEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, szEvtName);
 					if (hSkipActivateEvent)
 					{
@@ -258,7 +258,7 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 						gnSkipVkKeyCode = pKB->vkCode;
 						gnSkipVkMessage = wParam;
 						#ifdef _DEBUG
-						_wsprintf(szKH, SKIPLEN(countof(szKH)) L"[hook] vk=%i (press) blocked\n", pKB->vkCode);
+						swprintf_c(szKH, L"[hook] vk=%i (press) blocked\n", pKB->vkCode);
 						DEBUGSTRHOOK(szKH);
 						#endif
 						return 1; // Нужно возвращать 1, чтобы нажатие не ушло в Win7 Taskbar
@@ -283,7 +283,7 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 						gnSkipVkKeyCode = pKB->vkCode;
 						// запрет обработки системой
 						#ifdef _DEBUG
-						_wsprintf(szKH, SKIPLEN(countof(szKH)) L"[hook] vk=%i (press) blocked\n", pKB->vkCode);
+						swprintf_c(szKH, L"[hook] vk=%i (press) blocked\n", pKB->vkCode);
 						DEBUGSTRHOOK(szKH);
 						#endif
 						return 1; // Нужно возвращать 1, чтобы нажатие не ушло в Win7 Taskbar
@@ -361,13 +361,13 @@ LRESULT CALLBACK LLKeybHook(int nCode,WPARAM wParam,LPARAM lParam)
 				{
 					gnSkipVkMessage = 0;
 					#ifdef _DEBUG
-					_wsprintf(szKH, SKIPLEN(countof(szKH)) L"[hook] vk=%i (release) blocked\n", pKB->vkCode);
+					swprintf_c(szKH, L"[hook] vk=%i (release) blocked\n", pKB->vkCode);
 					DEBUGSTRHOOK(szKH);
 					#endif
 					return 1;
 				}
 				#ifdef _DEBUG
-				_wsprintf(szKH, SKIPLEN(countof(szKH)) L"[hook] vk=%i processed\n", pKB->vkCode);
+				swprintf_c(szKH, L"[hook] vk=%i processed\n", pKB->vkCode);
 				DEBUGSTRHOOK(szKH);
 				#endif
 				return 0; // разрешить обработку системой, но не передавать в другие хуки

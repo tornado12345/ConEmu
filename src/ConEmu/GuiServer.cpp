@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -80,14 +80,14 @@ bool CGuiServer::Start()
 {
 	// Запустить серверную нить
 	// 120122 - теперь через PipeServer
-	_wsprintf(ms_ServerPipe, SKIPLEN(countof(ms_ServerPipe)) CEGUIPIPENAME, L".", LODWORD(ghWnd)); //-V205
+	swprintf_c(ms_ServerPipe, CEGUIPIPENAME, L".", LODWORD(ghWnd)); //-V205
 
 	mp_GuiServer->SetOverlapped(true);
 	mp_GuiServer->SetLoopCommands(false);
 	mp_GuiServer->SetDummyAnswerSize(sizeof(CESERVER_REQ_HDR));
 
-	// Issue 1828: FindWindowEx may fails in some cases, only PID will be working...
-	_wsprintf(ms_ServerPipePID, SKIPLEN(countof(ms_ServerPipePID)) CESERVERPIPENAME, L".", GetCurrentProcessId());
+	// Issue 1828: FindWindowEx may fail in some cases, only PID will be working...
+	swprintf_c(ms_ServerPipePID, CESERVERPIPENAME, L".", GetCurrentProcessId());
 
 	mp_GuiServerPID->SetOverlapped(true);
 	mp_GuiServerPID->SetLoopCommands(false);
@@ -244,7 +244,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 			if (pIn->NewCmd.isAdvLogging > gpSet->isLogging())
 			{
 				wchar_t szLogLevel[80];
-				_wsprintf(szLogLevel, SKIPLEN(countof(szLogLevel))
+				swprintf_c(szLogLevel,
 					L"Changing log level! Old=%u, New=%u",
 					(UINT)gpSet->isLogging(), (UINT)pIn->NewCmd.isAdvLogging);
 				gpConEmu->LogString(szLogLevel);
@@ -257,7 +257,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 				wchar_t* pszInfo = (wchar_t*)malloc(cchAll*sizeof(*pszInfo));
 				if (pszInfo)
 				{
-					_wsprintf(pszInfo, SKIPLEN(cchAll) L"CECMD_NEWCMD: Wnd=x%08X, Act=%u, ConEmu=%s, Dir=%s, Cmd=%s",
+					swprintf_c(pszInfo, cchAll/*#SECURELEN*/, L"CECMD_NEWCMD: Wnd=x%08X, Act=%u, ConEmu=%s, Dir=%s, Cmd=%s",
 						(DWORD)(DWORD_PTR)pIn->NewCmd.hFromConWnd, pIn->NewCmd.ShowHide,
 						pIn->NewCmd.szConEmu, pIn->NewCmd.szCurDir, pszCommand);
 					gpConEmu->LogString(pszInfo);
@@ -279,10 +279,12 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 			if (bAccepted)
 			{
 				bool bCreateTab = (pIn->NewCmd.ShowHide == sih_None || pIn->NewCmd.ShowHide == sih_StartDetached)
+					// gh-1245: User may run "ConEmu.exe -reuse -min -run cmd"
+					|| (pIn->NewCmd.ShowHide == sih_Minimize && pszCommand[0])
 					// Issue 1275: When minimized into TSA (on all VCon are closed) we need to restore and run new tab
 					|| (pszCommand[0] && !CVConGroup::isVConExists(0));
 
-				RConStartArgs rTest;
+				RConStartArgsEx rTest;
 				if (pszCommand[0])
 				{
 					rTest.pszSpecialCmd = lstrdup(pszCommand);
@@ -294,7 +296,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 				// Может быть пусто
 				if (bCreateTab && pszCommand[0])
 				{
-					RConStartArgs *pArgs = new RConStartArgs;
+					RConStartArgsEx *pArgs = new RConStartArgsEx;
 
 					// New tab must be started with same credentials that calling tab if others was not specified
 					{
@@ -304,7 +306,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 							if ((pIn->NewCmd.hFromConWnd || pIn->NewCmd.hFromDcWnd)
 								&& CVConGroup::GetVConByHWND(pIn->NewCmd.hFromConWnd, pIn->NewCmd.hFromDcWnd, &VCon))
 							{
-								const RConStartArgs& r = VCon->RCon()->GetArgs();
+								const RConStartArgsEx& r = VCon->RCon()->GetArgs();
 								if (r.HasInheritedArgs())
 								{
 									pArgs->AssignInheritedArgs(&r);
@@ -357,7 +359,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 				// gh#151: Do animation after starting tab creation
 				if (!bSkipActivation && (rTest.BackgroundTab != crb_On))
 				{
-					gpConEmu->DoMinimizeRestore(bCreateTab ? sih_SetForeground : pIn->NewCmd.ShowHide);
+					gpConEmu->DoMinimizeRestore((bCreateTab && pIn->NewCmd.ShowHide != sih_Minimize) ? sih_SetForeground : pIn->NewCmd.ShowHide);
 				}
 			}
 
@@ -590,7 +592,7 @@ BOOL CGuiServer::GuiServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ*
 			if (pIn->AttachGuiApp.hWindow == NULL)
 			{
 				wchar_t szDbg[1024];
-				_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"AttachGuiApp requested from:\n%s\nPID=%u", pIn->AttachGuiApp.sAppFilePathName, pIn->AttachGuiApp.nPID);
+				swprintf_c(szDbg, L"AttachGuiApp requested from:\n%s\nPID=%u", pIn->AttachGuiApp.sAppFilePathName, pIn->AttachGuiApp.nPID);
 				//MBoxA(szDbg);
 				MsgBox(szDbg, MB_SYSTEMMODAL, L"ConEmu", NULL, false);
 			}

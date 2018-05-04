@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -257,7 +257,7 @@ HWND CeFullPanelInfo::CreateView()
 
 	this->cbSize = sizeof(*this);
 	wchar_t szTitle[128];
-	_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmu.%sPanelView.%i", (this->bLeftPanel) ? L"Left" : L"Right", gnSelfPID);
+	swprintf_c(szTitle, L"ConEmu.%sPanelView.%i", (this->bLeftPanel) ? L"Left" : L"Right", gnSelfPID);
 	lhView = CreateWindow(gsDisplayClassName, szTitle, WS_CHILD|WS_CLIPSIBLINGS, 0,0,0,0,
 	                      ghConEmuWnd, NULL, (HINSTANCE)ghPluginModule, (LPVOID)this);
 #ifdef _DEBUG
@@ -776,7 +776,7 @@ BOOL CeFullPanelInfo::PaintItem(
 		}
 		else
 		{
-			nY = max(y,(rcFrame.top-1));
+			nY = std::max<int>(y, (rcFrame.top-1));
 			nW = rcFrame.right - nX; // + 1;
 			nH = rcFrame.bottom - nY;
 		}
@@ -909,7 +909,7 @@ int CeFullPanelInfo::DrawItemText(HDC hdc, LPRECT prcText, LPRECT prcMaxText, Ce
 			}
 
 			SYSTEMTIME st; FileTimeToSystemTime(&pItem->FindData.ftLastWriteTime, &st);
-			_wsprintf(psz, SKIPLEN(countof(szFullInfo)-(psz-szFullInfo)) L"%02i.%02i.%02i %i:%02i", st.wDay, st.wMonth, st.wYear % 100, st.wHour, st.wMinute);
+			swprintf_c(psz, countof(szFullInfo)-(psz-szFullInfo)/*#SECURELEN*/, L"%02i.%02i.%02i %i:%02i", st.wDay, st.wMonth, st.wYear % 100, st.wHour, st.wMinute);
 			psz += lstrlen(psz);
 
 			if (pItem->FindData.nFileSize
@@ -933,11 +933,11 @@ int CeFullPanelInfo::DrawItemText(HDC hdc, LPRECT prcText, LPRECT prcMaxText, Ce
 					int nAll = (int)nSize;
 					int nL = nAll % 1000;
 					int nH = nAll / 1000;
-					_wsprintf(psz, SKIPLEN(countof(szFullInfo)-(psz-szFullInfo)) L"%i,%03i %c", nH, nL, cType);
+					swprintf_c(psz, countof(szFullInfo)-(psz-szFullInfo)/*#SECURELEN*/, L"%i,%03i %c", nH, nL, cType);
 				}
 				else
 				{
-					_wsprintf(psz, SKIPLEN(countof(szFullInfo)-(psz-szFullInfo)) L"%i %c", (int)nSize, cType);
+					swprintf_c(psz, countof(szFullInfo)-(psz-szFullInfo)/*#SECURELEN*/, L"%i %c", (int)nSize, cType);
 				}
 
 				psz += lstrlen(psz);
@@ -1242,21 +1242,21 @@ INT_PTR CeFullPanelInfo::CalcTopPanelItem(INT_PTR anCurrentItem, INT_PTR anTopIt
 		{
 			INT_PTR n = (nTopItem + (nXCount-1)) / nXCount;
 			INT_PTR nNewTop = n * nXCount;
-			nTopItem = min(nNewTop, (nItemCount-1));
+			nTopItem = std::min(nNewTop, (nItemCount-1));
 			//int nMod = nTopItem % nXCount;
 			//if (nMod) {
-			//	nTopItem = max(0,nTopItem-nMod);
+			//	nTopItem = std::max(0,nTopItem-nMod);
 			//	//if (nTopItem > nCurrentItem)
-			//	//	nTopItem = max(nCurrentItem,(nTopItem-nXCount));
+			//	//	nTopItem = std::max(nCurrentItem,(nTopItem-nXCount));
 			//}
 		}
 		else
 		{
 			INT_PTR n = (nTopItem + (nYCountFull-1)) / nYCountFull;
 			INT_PTR nNewTop = n * nYCountFull;
-			nTopItem = min(nNewTop, (nItemCount-1));
+			nTopItem = std::min(nNewTop, (nItemCount-1));
 			//if (nTopItem > nCurrentItem)
-			//	nTopItem = max(0,min((nTopItem-nYCountFull),nCurrentItem
+			//	nTopItem = std::max(0,std::min((nTopItem-nYCountFull),nCurrentItem
 		}
 	}
 	else
@@ -1271,7 +1271,7 @@ INT_PTR CeFullPanelInfo::CalcTopPanelItem(INT_PTR anCurrentItem, INT_PTR anTopIt
 
 			if (nMod)
 			{
-				nTopItem = max(0,nTopItem-nMod);
+				nTopItem = std::max<int>(0, (nTopItem - nMod));
 			}
 
 			while((nTopItem + nXCountFull*(nYCountFull)) <= nCurrentItem)
@@ -1285,7 +1285,7 @@ INT_PTR CeFullPanelInfo::CalcTopPanelItem(INT_PTR anCurrentItem, INT_PTR anTopIt
 
 			if (nMod)
 			{
-				nTopItem = max(0,nTopItem-nMod);
+				nTopItem = std::max<int>(0, (nTopItem-nMod));
 			}
 
 			while((nTopItem + nXCountFull*(nYCountFull)) <= nCurrentItem)
@@ -1443,7 +1443,7 @@ void CeFullPanelInfo::Paint(HWND hwnd, PAINTSTRUCT& ps, RECT& rc)
 
 #ifdef _DEBUG
 	wchar_t szDbg[512];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CeFullPanelInfo::Paint(%s, Items=%i, Top=%i, Current=%i)\n",
+	swprintf_c(szDbg, L"CeFullPanelInfo::Paint(%s, Items=%i, Top=%i, Current=%i)\n",
 	          this->bLeftPanel ? L"Left" : L"Right", (int)ItemsNumber, (int)OurTopPanelItem, (int)CurrentItem);
 	DEBUGSTRCTRL(szDbg);
 #ifdef DEBUG_PAINT
@@ -1846,7 +1846,7 @@ int CeFullPanelInfo::RegisterPanelView()
 		//	nRc = -1000;
 		//} else {
 		//_ASSERTE(pvi.ThSet.cbSize == sizeof(gThSet));
-		//memmove(&gThSet, &pvi.ThSet, min(pvi.ThSet.cbSize,sizeof(gThSet)));
+		//memmove(&gThSet, &pvi.ThSet, std::min(pvi.ThSet.cbSize,sizeof(gThSet)));
 		//// Цвета "консоли"
 		//for (int i=0; i<16; i++) {
 		//	gcrActiveColors[i] = pvi.crPalette[i];

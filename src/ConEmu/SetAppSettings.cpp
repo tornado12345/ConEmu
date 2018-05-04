@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,18 +34,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Options.h"
 #include "SetAppSettings.h"
-
-bool AppSettings::ExtendColors() const
-{
-	return (OverridePalette || !AppNames) ? isExtendColors : gpSet->AppStd.isExtendColors;
-}
-
-//reg->Load(L"ExtendColorIdx", nExtendColorIdx);
-//BYTE nExtendColorIdx; // 0..15
-BYTE AppSettings::ExtendColorIdx() const
-{
-	return (OverridePalette || !AppNames) ? nExtendColorIdx : gpSet->AppStd.nExtendColorIdx;
-}
 
 //BYTE nTextColorIdx; // 0..15,16
 BYTE AppSettings::TextColorIdx() const
@@ -204,11 +192,21 @@ PasteLinesMode AppSettings::PasteAllLines() const
 	return (OverrideClipboard || !AppNames) ? isPasteAllLines : gpSet->AppStd.isPasteAllLines;
 }
 
+PosixPasteMode AppSettings::PosixAllLines() const
+{
+	return (OverrideClipboard || !AppNames) ? isPosixAllLines : gpSet->AppStd.isPosixAllLines;
+}
+
 //reg->Load(L"ClipboardFirstLine", isPasteFirstLine);
 //bool isPasteFirstLine;
 PasteLinesMode AppSettings::PasteFirstLine() const
 {
 	return (OverrideClipboard || !AppNames) ? isPasteFirstLine : gpSet->AppStd.isPasteFirstLine;
+}
+
+PosixPasteMode AppSettings::PosixFirstLine() const
+{
+	return (OverrideClipboard || !AppNames) ? isPosixFirstLine : gpSet->AppStd.isPosixFirstLine;
 }
 
 // *** Prompt

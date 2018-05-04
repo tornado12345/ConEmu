@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,14 +26,10 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#ifdef _DEBUG
-//#define USE_LOCK_SECTION
-//#endif
-
 #define SHOWDEBUGSTR
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "defines.h"
 #include "MAssert.h"
 #include "MEvent.h"
@@ -82,7 +78,7 @@ void MEvent::InitName(const wchar_t *aszTemplate, DWORD Parm1)
 
 	mb_NameIsNull = (aszTemplate == NULL);
 	if (!mb_NameIsNull)
-		_wsprintf(ms_EventName, SKIPLEN(countof(ms_EventName)) aszTemplate, Parm1);
+		swprintf_c(ms_EventName, aszTemplate, Parm1);
 	mn_LastError = 0;
 }
 
@@ -250,7 +246,7 @@ void MEvent::OnDebugNotify(MEventNotification Action)
 	}
 	wcscat_c(szInfo, L": ");
 	if (mb_NameIsNull)
-		_wsprintf(szInfo + _tcslen(szInfo), SKIPLEN(countof(szInfo) - _tcslen(szInfo)) L"Handle=0x%p", mh_Event);
+		swprintf_c(szInfo + _tcslen(szInfo), countof(szInfo) - _tcslen(szInfo)/*#SECURELEN*/, L"Handle=0x%p", mh_Event);
 	else
 		wcscat_c(szInfo, ms_EventName);
 	DEBUGSTREVT(szInfo);

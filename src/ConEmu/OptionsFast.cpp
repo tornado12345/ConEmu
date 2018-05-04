@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConEmu.h"
 #include "DynDialog.h"
 #include "HotkeyDlg.h"
+#include "LngRc.h"
 #include "Options.h"
 #include "OptionsClass.h"
 #include "OptionsFast.h"
@@ -54,16 +55,19 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/WRegistry.h"
 #include "../common/WUser.h"
 
+namespace FastConfig
+{
+
 #define FOUND_APP_PATH_CHR L'\1'
 #define FOUND_APP_PATH_STR L"\1"
 
+HWND ghFastCfg = NULL;
 static bool bCheckHooks, bCheckUpdate, bCheckIme;
 // Если файл конфигурации пуст, то после вызова CheckOptionsFast
 // все равно будет SaveSettings(TRUE/*abSilent*/);
 // Поэтому выбранные настройки здесь можно не сохранять (кроме StopWarningConIme)
 static bool bVanilla;
 static CDpiForDialog* gp_DpiAware = NULL;
-static CEHelpPopup* gp_FastHelp = NULL;
 static int gn_FirstFarTask = -1;
 static ConEmuHotKey ghk_MinMaxKey = {};
 static int iCreatIdx = 0;
@@ -79,11 +83,11 @@ static SettingsLoadedFlags sAppendMode = slf_None;
 int FastMsgBox(LPCTSTR lpText, UINT uType, LPCTSTR lpCaption = NULL, HWND ahParent = (HWND)-1, bool abModal = true)
 {
 	MSetter lSet(&gbMessagingStarted);
-	int iBtn = MsgBox(lpText, uType, lpCaption, ahParent, abModal);
+	int iBtn = ::MsgBox(lpText, uType, lpCaption, ahParent, abModal);
 	return iBtn;
 }
 
-void Fast_FindStartupTask(SettingsLoadedFlags slfFlags)
+void FindStartupTask(SettingsLoadedFlags slfFlags)
 {
 	const CommandTasks* pTask = NULL;
 
@@ -139,27 +143,42 @@ void Fast_FindStartupTask(SettingsLoadedFlags slfFlags)
 	}
 }
 
-LPCWSTR Fast_GetStartupCommand(const CommandTasks*& pTask)
+LPCWSTR GetStartupCommand(CEStr& command)
 {
-	pTask = NULL;
+	command.Clear();
+
 	// Show startup task or shell command line
-	LPCWSTR pszStartup = (gpSet->nStartType == 2) ? gpSet->psStartTasksName : (gpSet->nStartType == 0) ? gpSet->psStartSingleApp : NULL;
-	// Check if that task exists
-	if ((gpSet->nStartType == 2) && pszStartup)
+	switch (gpSet->nStartType)
 	{
-		pTask = gpSet->CmdTaskGetByName(gpSet->psStartTasksName);
-		if (pTask && pTask->pszName && (lstrcmp(pTask->pszName, pszStartup) != 0))
+	case 0:
+		command.Set(gpSet->psStartSingleApp);
+		break;
+	case 1:
+		if (gpSet->psStartTasksFile)
 		{
-			// Return pTask name because it may not match exactly with gpSet->psStartTasksName
-			// because CmdTaskGetByName uses some fuzzy logic to find tasks
-			pszStartup = pTask->pszName;
+			wchar_t prefix[2] = {CmdFilePrefix};
+			command = lstrmerge(prefix, gpSet->psStartTasksFile);
 		}
-		else if (!pTask)
+		break;
+	case 2:
+		// Check if that task exists
+		if (gpSet->psStartTasksName)
 		{
-			pszStartup = NULL;
+			const CommandTasks* pTask = gpSet->CmdTaskGetByName(gpSet->psStartTasksName);
+			if (pTask && pTask->pszName /*&& (lstrcmp(pTask->pszName, pszStartup) != 0)*/)
+			{
+				// Return pTask name because it may not match exactly with gpSet->psStartTasksName
+				// because CmdTaskGetByName uses some fuzzy logic to find tasks
+				command.Set(pTask->pszName);
+			}
 		}
+		break;
+	case 3:
+		command.Set(AutoStartTaskName);
+		break;
 	}
-	return pszStartup;
+
+	return command.ms_Val;
 }
 
 
@@ -169,9 +188,31 @@ LPCWSTR Fast_GetStartupCommand(const CommandTasks*& pTask)
 /*        Fast Configuration Dialog         */
 /* **************************************** */
 
+void DoPaintColorBox(HWND hCtrl, const ColorPalette& pal)
+{
+	RECT rcClient = {};
+	PAINTSTRUCT ps = {};
+	if (BeginPaint(hCtrl, &ps))
+	{
+		GetClientRect(hCtrl, &rcClient);
+		for (int i = 0; i < 16; i++)
+		{
+			int x = (i % 8);
+			int y = (i == x) ? 0 : 1;
+			RECT rc = {(x) * rcClient.right / 8, (y) * rcClient.bottom / 2,
+				(x+1) * rcClient.right / 8, (y+1) * rcClient.bottom / 2};
+			HBRUSH hbr = CreateSolidBrush(pal.Colors[i]);
+			FillRect(ps.hdc, &rc, hbr);
+			DeleteObject(hbr);
+		}
+		EndPaint(hCtrl, &ps);
+	}
+}
+
 static const ColorPalette* gp_DefaultPalette = NULL;
 static WNDPROC gpfn_DefaultColorBoxProc = NULL;
-static LRESULT CALLBACK Fast_ColorBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+
+static LRESULT CALLBACK ColorBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	LRESULT lRc = 0;
 
@@ -184,30 +225,14 @@ static LRESULT CALLBACK Fast_ColorBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 				_ASSERTE(gp_DefaultPalette!=NULL);
 				break;
 			}
-			RECT rcClient = {};
-			PAINTSTRUCT ps = {};
-			if (BeginPaint(hwnd, &ps))
-			{
-				GetClientRect(hwnd, &rcClient);
-				for (int i = 0; i < 16; i++)
-				{
-					int x = (i % 8);
-					int y = (i == x) ? 0 : 1;
-					RECT rc = {(x) * rcClient.right / 8, (y) * rcClient.bottom / 2,
-						(x+1) * rcClient.right / 8, (y+1) * rcClient.bottom / 2};
-					HBRUSH hbr = CreateSolidBrush(gp_DefaultPalette->Colors[i]);
-					FillRect(ps.hdc, &rc, hbr);
-					DeleteObject(hbr);
-				}
-				EndPaint(hwnd, &ps);
-			}
+			DoPaintColorBox(hwnd, *gp_DefaultPalette);
 			goto wrap;
 		} // WM_PAINT
 
 		case UM_PALETTE_FAST_CHG:
 		{
 			CEStr lsValue;
-			if (CSetDlgLists::GetSelectedString(GetParent(hwnd), lbColorSchemeFast, &lsValue.ms_Val) > 0)
+			if (CSetDlgLists::GetSelectedString(GetParent(hwnd), lbColorSchemeFast, lsValue) > 0)
 			{
 				const ColorPalette* pPal = gpSet->PaletteGetByName(lsValue.ms_Val);
 				if (pPal)
@@ -230,8 +255,10 @@ wrap:
 
 
 
-static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
+static INT_PTR OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
+	ghFastCfg = hDlg;
+
 	SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hClassIcon);
 	SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hClassIconSm);
 
@@ -258,48 +285,63 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 	}
 
 
+	// Languages
+	if (gpLng)
+	{
+		MArray<const wchar_t*> languages;
+		if (gpLng->getLanguages(languages))
+		{
+			SendDlgItemMessage(hDlg, lbInterfaceLanguage, CB_RESETCONTENT, 0, 0);
+			for (INT_PTR nLang = 0; nLang < languages.size(); nLang++)
+			{
+				SendDlgItemMessage(hDlg, lbInterfaceLanguage, CB_ADDSTRING, 0, (LPARAM)languages[nLang]);
+			}
+			INT_PTR nIdx = SendDlgItemMessage(hDlg, lbInterfaceLanguage, CB_FINDSTRING, -1, (LPARAM)CLngRc::getLanguage());
+			if (nIdx >= 0)
+				SendDlgItemMessage(hDlg, lbInterfaceLanguage, CB_SETCURSEL, nIdx, 0);
+		}
+	}
+
 	// lbStorageLocation
-	SettingsStorage Storage = {}; bool ReadOnly = false;
-	gpSet->GetSettingsType(Storage, ReadOnly);
+	SettingsStorage Storage = gpSet->GetSettingsType();
 
 	// Same priority as in CConEmuMain::ConEmuXml (reverse order)
 	wchar_t* pszSettingsPlaces[] = {
 		lstrdup(L"HKEY_CURRENT_USER\\Software\\ConEmu"),
 		ExpandEnvStr(L"%APPDATA%\\ConEmu.xml"),
-		ExpandEnvStr(L"%ConEmuBaseDir%\\ConEmu.xml"),
-		ExpandEnvStr(L"%ConEmuDir%\\ConEmu.xml"),
+		GetFullPathNameEx(L"%ConEmuBaseDir%\\ConEmu.xml"), // compact "C:\ConEmu\src\..\Debug\ConEmu.xml" to "C:\ConEmu\Debug\ConEmu.xml"
+		GetFullPathNameEx(L"%ConEmuDir%\\ConEmu.xml"),
 		NULL
 	};
 	// Lets find first allowed item
 	int iAllowed = 0;
-	if (lstrcmp(Storage.szType, CONEMU_CONFIGTYPE_XML) == 0)
+	if (Storage.Type == StorageType::XML)
 	{
 		iAllowed = 1; // XML is used, registry is not allowed
-		if (Storage.pszFile)
+		if (Storage.File)
 		{
-			if (lstrcmpi(Storage.pszFile, pszSettingsPlaces[1]) == 0) // %APPDATA%
+			if (lstrcmpi(Storage.File, pszSettingsPlaces[1]) == 0) // %APPDATA%
 				iAllowed = 1; // Any other xml has greater priority
-			else if (lstrcmpi(Storage.pszFile, pszSettingsPlaces[2]) == 0) // %ConEmuBaseDir%
+			else if (lstrcmpi(Storage.File, pszSettingsPlaces[2]) == 0) // %ConEmuBaseDir%
 				iAllowed = 2; // Only %ConEmuDir% has greater priority
-			else if (lstrcmpi(Storage.pszFile, pszSettingsPlaces[3]) == 0) // %ConEmuDir%
+			else if (lstrcmpi(Storage.File, pszSettingsPlaces[3]) == 0) // %ConEmuDir%
 				iAllowed = 3; // Most prioritized
 			else
 			{
 				// Directly specified with "/LoadCfgFile ..."
 				SafeFree(pszSettingsPlaces[3]);
-				pszSettingsPlaces[3] = lstrdup(Storage.pszFile);
+				pszSettingsPlaces[3] = lstrdup(Storage.File);
 				iAllowed = 3; // Most prioritized
 			}
 		}
 	}
 	// Index of the default location (relative to listbox, but not a pszSettingsPlaces)
 	// By default - suggest %APPDATA% or, if possible, %ConEmuDir%
-	// Win2k does not have 'msxml3.dll'/'msxml3r.dll' libraries
 	int iDefault = -1;
 	// If registry was detected?
 	if (iAllowed == 0)
 	{
-		if (lstrcmp(Storage.szType, CONEMU_CONFIGTYPE_REG) == 0)
+		if (Storage.Type == StorageType::REG)
 		{
 			SettingsBase* reg = gpSet->CreateSettings(&Storage);
 			if (reg)
@@ -314,13 +356,13 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 		}
 		else
 		{
-			_ASSERTE(lstrcmp(Storage.szType, CONEMU_CONFIGTYPE_REG) == 0);
+			_ASSERTE(Storage.Type == StorageType::REG);
 		}
 	}
 	// If still not decided - use xml if possible
 	if (iDefault == -1)
 	{
-		iDefault = ((iAllowed == 0) && !IsWin2kEql()) ? (CConEmuUpdate::NeedRunElevation() ? 1 : 3) : 0;
+		iDefault = (iAllowed == 0) ? (CConEmuUpdate::NeedRunElevation() ? 1 : 3) : 0;
 	}
 
 	// Populate lbStorageLocation
@@ -346,8 +388,8 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 	}
 
 	// Show startup task or shell command line
-	const CommandTasks* pTask = NULL;
-	LPCWSTR pszStartup = Fast_GetStartupCommand(pTask);
+	CEStr command;
+	LPCWSTR pszStartup = GetStartupCommand(command);
 	// Show startup command or task
 	if (pszStartup && *pszStartup)
 	{
@@ -374,7 +416,7 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 	// Show its colors in box
 	HWND hChild = GetDlgItem(hDlg, stPalettePreviewFast);
 	if (hChild)
-		gpfn_DefaultColorBoxProc = (WNDPROC)SetWindowLongPtr(hChild, GWLP_WNDPROC, (LONG_PTR)Fast_ColorBoxProc);
+		gpfn_DefaultColorBoxProc = (WNDPROC)SetWindowLongPtr(hChild, GWLP_WNDPROC, (LONG_PTR)ColorBoxProc);
 
 
 	// Single instance
@@ -416,11 +458,12 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 	}
 	else
 	{
-		if (gpSet->UpdSet.isUpdateUseBuilds != 0)
+		if (gpSet->UpdSet.isUpdateUseBuilds != ConEmuUpdateSettings::Builds::Undefined)
 			CheckDlgButton(hDlg, cbEnableAutoUpdateFast, gpSet->UpdSet.isUpdateCheckOnStartup|gpSet->UpdSet.isUpdateCheckHourly);
 		CheckRadioButton(hDlg, rbAutoUpdateStableFast, rbAutoUpdateDeveloperFast,
-			(gpSet->UpdSet.isUpdateUseBuilds == 1) ? rbAutoUpdateStableFast :
-			(gpSet->UpdSet.isUpdateUseBuilds == 3) ? rbAutoUpdatePreviewFast : rbAutoUpdateDeveloperFast);
+			(gpSet->UpdSet.isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? rbAutoUpdateStableFast
+			: (gpSet->UpdSet.isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? rbAutoUpdatePreviewFast
+			: rbAutoUpdateDeveloperFast);
 	}
 
 	// Vista - ConIme bugs
@@ -459,7 +502,7 @@ static INT_PTR Fast_OnInitDialog(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 	return FALSE; // Set focus to OK
 }
 
-static INT_PTR Fast_OnCtlColorStatic(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
+static INT_PTR OnCtlColorStatic(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
 	if (GetDlgItem(hDlg, stDisableConImeFast1) == (HWND)lParam)
 	{
@@ -486,7 +529,7 @@ static INT_PTR Fast_OnCtlColorStatic(HWND hDlg, UINT messg, WPARAM wParam, LPARA
 	return 0;
 }
 
-static INT_PTR Fast_OnSetCursor(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
+static INT_PTR OnSetCursor(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
 	if (((HWND)wParam) == GetDlgItem(hDlg, stHomePage))
 	{
@@ -498,7 +541,45 @@ static INT_PTR Fast_OnSetCursor(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPa
 	return FALSE;
 }
 
-static INT_PTR Fast_OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
+void DoStartupCommand(HWND hDlg, WORD nCtrlId)
+{
+	CEStr lsValue(GetDlgItemTextPtr(hDlg, nCtrlId));
+	if (lsValue)
+	{
+		if (*lsValue.ms_Val == TaskBracketLeft)
+		{
+			if (lsValue.ms_Val[lstrlen(lsValue.ms_Val)-1] != TaskBracketRight)
+			{
+				_ASSERTE(FALSE && "Doesn't match '{...}'");
+			}
+			else
+			{
+				gpSet->nStartType = 2;
+				SafeFree(gpSet->psStartTasksName);
+				gpSet->psStartTasksName = lsValue.Detach();
+			}
+		}
+		else if (lstrcmp(lsValue.ms_Val, AutoStartTaskName) == 0)
+		{
+			// Not shown yet in list
+			gpSet->nStartType = 3;
+		}
+		else if (*lsValue.ms_Val == CmdFilePrefix)
+		{
+			gpSet->nStartType = 1;
+			SafeFree(gpSet->psStartTasksFile);
+			gpSet->psStartTasksFile = lsValue.Detach();
+		}
+		else
+		{
+			gpSet->nStartType = 0;
+			SafeFree(gpSet->psStartSingleApp);
+			gpSet->psStartSingleApp = lsValue.Detach();
+		}
+	}
+}
+
+static INT_PTR OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
 	switch (LOWORD(wParam))
 	{
@@ -506,8 +587,8 @@ static INT_PTR Fast_OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM
 		{
 			CEStr lsValue;
 
-			SettingsStorage CurStorage = {}; bool ReadOnly = false;
-			gpSet->GetSettingsType(CurStorage, ReadOnly);
+			SettingsStorage CurStorage = gpSet->GetSettingsType();
+
 			LRESULT lSelStorage = SendDlgItemMessage(hDlg, lbStorageLocation, CB_GETCURSEL, 0, 0);
 			if (lSelStorage > 0)
 			{
@@ -523,43 +604,10 @@ static INT_PTR Fast_OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM
 			}
 
 			/* Startup task */
-			lsValue.Attach(GetDlgItemTextPtr(hDlg, lbStartupShellFast));
-			if (!lsValue.IsEmpty())
-			{
-				if (*lsValue.ms_Val == TaskBracketLeft)
-				{
-					if (lsValue.ms_Val[lstrlen(lsValue.ms_Val)-1] != TaskBracketRight)
-					{
-						_ASSERTE(FALSE && "Doesn't match '{...}'");
-					}
-					else
-					{
-						gpSet->nStartType = 2;
-						SafeFree(gpSet->psStartTasksName);
-						gpSet->psStartTasksName = lstrdup(lsValue.ms_Val);
-					}
-				}
-				else if (lstrcmp(lsValue.ms_Val, AutoStartTaskName) == 0)
-				{
-					// Not shown yet in list
-					gpSet->nStartType = 3;
-				}
-				else if (*lsValue.ms_Val == CmdFilePrefix)
-				{
-					gpSet->nStartType = 1;
-					SafeFree(gpSet->psStartTasksFile);
-					gpSet->psStartTasksFile = lstrdup(lsValue.ms_Val);
-				}
-				else
-				{
-					gpSet->nStartType = 0;
-					SafeFree(gpSet->psStartSingleApp);
-					gpSet->psStartSingleApp = lstrdup(lsValue.ms_Val);
-				}
-			}
+			DoStartupCommand(hDlg, lbStartupShellFast);
 
 			/* Default pallette changed? */
-			if (CSetDlgLists::GetSelectedString(hDlg, lbColorSchemeFast, &lsValue.ms_Val) > 0)
+			if (CSetDlgLists::GetSelectedString(hDlg, lbColorSchemeFast, lsValue) > 0)
 			{
 				const ColorPalette* pPal = gpSet->PaletteGetByName(lsValue.ms_Val);
 				if (pPal)
@@ -587,10 +635,12 @@ static INT_PTR Fast_OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM
 			gpSet->UpdSet.isUpdateCheckOnStartup = (IsDlgButtonChecked(hDlg, cbEnableAutoUpdateFast) == BST_CHECKED);
 			if (bCheckUpdate)
 			{	// При первом запуске - умолчания параметров
-				gpSet->UpdSet.isUpdateCheckHourly = false;
+				gpSet->UpdSet.isUpdateCheckHourly = true;
 				gpSet->UpdSet.isUpdateConfirmDownload = true; // true-Show MessageBox, false-notify via TSA only
 			}
-			gpSet->UpdSet.isUpdateUseBuilds = IsDlgButtonChecked(hDlg, rbAutoUpdateStableFast) ? 1 : IsDlgButtonChecked(hDlg, rbAutoUpdateDeveloperFast) ? 2 : 3;
+			gpSet->UpdSet.isUpdateUseBuilds = IsDlgButtonChecked(hDlg, rbAutoUpdateStableFast) ? ConEmuUpdateSettings::Builds::Stable
+				: IsDlgButtonChecked(hDlg, rbAutoUpdateDeveloperFast) ? ConEmuUpdateSettings::Builds::Alpha
+				: ConEmuUpdateSettings::Builds::Preview;
 
 
 			/* Save settings */
@@ -671,6 +721,24 @@ static INT_PTR Fast_OnButtonClicked(HWND hDlg, UINT messg, WPARAM wParam, LPARAM
 	}
 
 	return FALSE;
+}	
+
+static INT_PTR OnLanguageChanged(HWND hDlg)
+{
+	CEStr lsValue;
+	if (gpLng && CSetDlgLists::GetSelectedString(hDlg, lbInterfaceLanguage, lsValue) > 0)
+	{
+		wchar_t* colon = wcschr(lsValue.ms_Val, L':');
+		if (colon)
+		{
+			*colon = 0;
+			gpConEmu->opt.Language.SetStr(lsValue);
+			gpLng->Reload(true);
+
+			CDynDialog::LocalizeDialog(hDlg);
+		}
+	}
+	return 0;
 }
 
 static INT_PTR CALLBACK CheckOptionsFastProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
@@ -682,21 +750,22 @@ static INT_PTR CALLBACK CheckOptionsFastProc(HWND hDlg, UINT messg, WPARAM wPara
 		break;
 
 	case WM_INITDIALOG:
-		return Fast_OnInitDialog(hDlg, messg, wParam, lParam);
+		return OnInitDialog(hDlg, messg, wParam, lParam);
 
 	case WM_CTLCOLORSTATIC:
-		return Fast_OnCtlColorStatic(hDlg, messg, wParam, lParam);
+		return OnCtlColorStatic(hDlg, messg, wParam, lParam);
 
 	case WM_SETCURSOR:
-		return Fast_OnSetCursor(hDlg, messg, wParam, lParam);
+		return OnSetCursor(hDlg, messg, wParam, lParam);
 
 	case HELP_WM_HELP:
 		break;
 	case WM_HELP:
-		if (gp_FastHelp && (wParam == 0) && (lParam != 0))
+		if ((wParam == 0) && (lParam != 0))
 		{
 			HELPINFO* hi = (HELPINFO*)lParam;
-			gp_FastHelp->ShowItemHelp(hi);
+			if (hi->cbSize >= sizeof(HELPINFO))
+				CEHelpPopup::OpenSettingsWiki(hDlg, hi->iCtrlId);
 		}
 		return TRUE;
 
@@ -704,13 +773,15 @@ static INT_PTR CALLBACK CheckOptionsFastProc(HWND hDlg, UINT messg, WPARAM wPara
 		switch (HIWORD(wParam))
 		{
 		case BN_CLICKED:
-			return Fast_OnButtonClicked(hDlg, messg, wParam, lParam);
+			return OnButtonClicked(hDlg, messg, wParam, lParam);
 		case CBN_SELCHANGE:
 			switch (LOWORD(wParam))
 			{
 			case lbColorSchemeFast:
-				SendDlgItemMessage(hDlg, stPalettePreviewFast, UM_PALETTE_FAST_CHG, wParam, lParam);
+				SendDlgItemMessage(hDlg, stPalettePreviewFast, UM_PALETTE_FAST_CHG, 0, 0);
 				break;
+			case lbInterfaceLanguage:
+				return OnLanguageChanged(hDlg);
 			}
 			break;
 		}
@@ -758,7 +829,7 @@ void CheckOptionsFast(LPCWSTR asTitle, SettingsLoadedFlags slfFlags)
 
 		bCheckHooks = (gpSet->m_isKeyboardHooks == 0);
 
-		bCheckUpdate = (gpSet->UpdSet.isUpdateUseBuilds == 0);
+		bCheckUpdate = (gpSet->UpdSet.isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Undefined);
 
 		bCheckIme = false;
 		if (gOSVer.dwMajorVersion == 6 && gOSVer.dwMinorVersion == 0)
@@ -829,7 +900,7 @@ void CheckOptionsFast(LPCWSTR asTitle, SettingsLoadedFlags slfFlags)
 		// First ShowWindow forced to use nCmdShow. This may be weird...
 		SkipOneShowWindow();
 
-		if (gpSet->IsConfigNew && gpConEmu->opt.ExitAfterActionPrm.Exists)
+		if (gpSetCls->IsConfigNew && gpConEmu->opt.ExitAfterActionPrm.Exists)
 		{
 			CEStr lsMsg(
 				L"Something is going wrong...\n\n"
@@ -847,15 +918,14 @@ void CheckOptionsFast(LPCWSTR asTitle, SettingsLoadedFlags slfFlags)
 				TerminateProcess(GetCurrentProcess(), CERR_FASTCONFIG_QUIT);
 		}
 
-		gp_DpiAware = new CDpiForDialog();
-		gp_FastHelp = new CEHelpPopup;
+		CDpiForDialog::Create(gp_DpiAware);
 
 		// Modal dialog (CreateDialog)
 
 		CDynDialog::ExecuteDialog(IDD_FAST_CONFIG, NULL, CheckOptionsFastProc, (LPARAM)asTitle);
 
-		SafeDelete(gp_FastHelp);
 		SafeDelete(gp_DpiAware);
+		ghFastCfg = NULL;
 	}
 }
 
@@ -891,19 +961,63 @@ static void CreateDefaultTask(LPCWSTR asName, LPCWSTR asGuiArg, LPCWSTR asComman
 	gpSet->CmdTaskSet(iCreatIdx++, lsName, asGuiArg, asCommands, aFlags);
 }
 
+struct FoundFile
+{
+	wchar_t* rsFound;
+	wchar_t* rsOptionalFull;
+	bool bNeedQuot;
+};
+
+class FoundFiles : public MArray<FoundFile>
+{
+public:
+	FoundFiles()
+	{
+	}
+
+	~FoundFiles()
+	{
+		for (INT_PTR i = 0; i < size(); ++i)
+		{
+			FoundFile& f = (*this)[i];
+			SafeFree(f.rsFound);
+			SafeFree(f.rsOptionalFull);
+		}
+		this->eraseall();
+	}
+
+	void Add(const wchar_t* asFound, const wchar_t* asOptionalFull)
+	{
+		if (!asFound || !*asFound)
+		{
+			_ASSERTE(asFound && *asFound);
+			return;
+		}
+		for (INT_PTR i = 0; i < size(); ++i)
+		{
+			FoundFile& f = (*this)[i];
+			if ((lstrcmpi(f.rsFound, asFound) == 0)
+				|| (f.rsOptionalFull && asOptionalFull && (lstrcmpi(f.rsOptionalFull, asOptionalFull) == 0)))
+				return;
+		}
+		FoundFile ff = {lstrdup(asFound), (asOptionalFull && *asOptionalFull) ? lstrdup(asOptionalFull) : NULL};
+		ff.bNeedQuot = IsQuotationNeeded(ff.rsOptionalFull ? ff.rsOptionalFull : ff.rsFound);
+		this->push_back(ff);
+	}
+};
+
 // Search on asFirstDrive and all (other) fixed drive letters
 // asFirstDrive may be letter ("C:") or network (\\server\share)
 // asSearchPath is path to executable (\cygwin\bin\bash.exe)
-static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFound, bool& bNeedQuot, CEStr& rsOptionalFull)
+static size_t FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, FoundFiles& foundFiles)
 {
+	_ASSERTE(foundFiles.size() == 0);
 	bool bFound = false;
 	wchar_t* pszExpanded = NULL;
 	wchar_t szDrive[4]; // L"C:"
 	CEStr szTemp;
 
-	bNeedQuot = false;
-
-	rsOptionalFull.Empty();
+	CEStr rsFound;
 
 	if (!asSearchPath || !*asSearchPath)
 		goto wrap;
@@ -913,20 +1027,89 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 	{
 		// L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Git_is1:InstallLocation]\\bin\\bash.exe",
 		//   "InstallLocation"="C:\\Utils\\Lans\\GIT\\"
-		CEStr lsBuf, lsVal;
+		CEStr lsBuf, lsVal, lsValName;
 		lsBuf.Set(asSearchPath+1);
 		wchar_t *pszFile = wcschr(lsBuf.ms_Val, L']');
 		if (pszFile)
 		{
+			MArray<wchar_t*> RegFiles;
+
+			HKEY roots[] = {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+			DWORD bits[] = {KEY_WOW64_64KEY, KEY_WOW64_32KEY, 0};
+
 			*(pszFile++) = 0;
 			wchar_t* pszValName = wcsrchr(lsBuf.ms_Val, L':');
-			if (pszValName) *(pszValName++) = 0;
-			if (RegGetStringValue(NULL, lsBuf.ms_Val, pszValName, lsVal) > 0)
+			if (pszValName)
 			{
-				rsFound.Attach(JoinPath(lsVal, pszFile));
+				*pszValName = 0;
+				lsValName.Set(pszValName+1);
+
+				pszValName = wcsrchr(lsBuf.ms_Val, L':');
+				if (pszValName && *(pszValName - 1) == L'*' && *(pszValName - 2) == L'\\')
+				{
+					// #DEF_TASK L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*:DisplayName=MSYS2 64bit:InstallLocation]\\usr\\bin\\bash.exe",
+					struct SearchImpl
+					{
+						LPCWSTR pszValName, pszFile;
+						CEStr lsCheckName, lsCheckValue;
+						MArray<wchar_t*>* RegFiles;
+
+						static bool WINAPI Enum(HKEY hk, LPCWSTR pszSubkeyName, LPARAM lParam)
+						{
+							SearchImpl* i = (SearchImpl*)lParam;
+							CEStr lsPath;
+							if (RegGetStringValue(hk, NULL, i->lsCheckName, lsPath) <= 0)
+								return true;
+							if (lsPath.Compare(i->lsCheckValue) != 0)
+								return true;
+							if (RegGetStringValue(hk, NULL, i->pszValName, lsPath) > 0)
+							{
+								i->RegFiles->push_back(JoinPath(lsPath, i->pszFile));
+							}
+							return true;
+						}
+					} impl;
+					impl.RegFiles = &RegFiles;
+					impl.pszValName = lsValName;
+					impl.pszFile = pszFile;
+
+					*(pszValName - 2) = 0;
+					impl.lsCheckName.Set(++pszValName);
+					pszValName = wcschr(impl.lsCheckName.ms_Val, L'=');
+					if (pszValName)
+					{
+						*pszValName = 0;
+						impl.lsCheckValue.Set(++pszValName);
+
+						for (size_t r = 0; r < countof(roots); ++r)
+						{
+							RegEnumKeys(roots[r], lsBuf, SearchImpl::Enum, (LPARAM)&impl);
+						}
+					}
+				}
+				else
+				{
+					// Evaluate HKLM, HKCU, 32bit and 64bit in all variants
+					for (size_t r = 0; r < countof(roots); ++r)
+					{
+						for (size_t b = IsWindows64() ? 0 : 1; b < countof(bits); ++b)
+						{
+							if (RegGetStringValue(roots[r], lsBuf, lsValName, lsVal, bits[b]) > 0)
+							{
+								RegFiles.push_back(JoinPath(lsVal, pszFile));
+							}
+						}
+					}
+				}
+			}
+
+			// When keys population is done
+			for (INT_PTR i = 0; i < RegFiles.size(); ++i)
+			{
+				rsFound.Attach(STD_MOVE(RegFiles[i]));
 				if (FileExists(rsFound))
 				{
-					bNeedQuot = IsQuotationNeeded(rsFound);
+					foundFiles.Add(rsFound, NULL);
 					bFound = true;
 				}
 			}
@@ -940,9 +1123,7 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 		pszExpanded = ExpandEnvStr(asSearchPath);
 		if (pszExpanded && FileExists(pszExpanded))
 		{
-			bNeedQuot = IsQuotationNeeded(pszExpanded);
-			rsOptionalFull.Set(pszExpanded);
-			rsFound.Set(asSearchPath);
+			foundFiles.Add(asSearchPath, pszExpanded);
 			bFound = true;
 		}
 		goto wrap;
@@ -954,15 +1135,13 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 		if (apiSearchPath(NULL, asSearchPath, NULL, szTemp))
 		{
 			// OK, create task with just a name of exe file
-			bNeedQuot = IsQuotationNeeded(szTemp);
-			rsOptionalFull.Set(szTemp);
-			rsFound.Set(asSearchPath);
+			foundFiles.Add(asSearchPath, szTemp);
 			bFound = true;
 		}
 		// Search in [HKCU|HKLM]\Software\Microsoft\Windows\CurrentVersion\App Paths
 		else if (SearchAppPaths(asSearchPath, rsFound, false/*abSetPath*/))
 		{
-			bNeedQuot = IsQuotationNeeded(rsFound);
+			foundFiles.Add(rsFound, NULL);
 			bFound = true;
 		}
 		goto wrap;
@@ -972,8 +1151,7 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 	if (IsFilePath(asSearchPath, true)
 		&& FileExists(asSearchPath))
 	{
-		bNeedQuot = IsQuotationNeeded(asSearchPath);
-		rsFound.Set(asSearchPath);
+		foundFiles.Add(asSearchPath, NULL);
 		bFound = true;
 		goto wrap;
 	}
@@ -985,7 +1163,7 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 		rsFound.Attach(JoinPath(asFirstDrive, asSearchPath));
 		if (FileExists(rsFound))
 		{
-			bNeedQuot = IsQuotationNeeded(rsFound);
+			foundFiles.Add(rsFound, NULL);
 			bFound = true;
 			goto wrap;
 		}
@@ -1002,7 +1180,7 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 		rsFound.Attach(JoinPath(szDrive, asSearchPath));
 		if (FileExists(rsFound))
 		{
-			bNeedQuot = IsQuotationNeeded(rsFound);
+			foundFiles.Add(rsFound, NULL);
 			bFound = true;
 			goto wrap;
 		}
@@ -1010,7 +1188,8 @@ static bool FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, CEStr& rsFo
 
 wrap:
 	SafeFree(pszExpanded);
-	return bFound;
+	_ASSERTE(bFound == (foundFiles.size() != 0));
+	return foundFiles.size();
 }
 
 class CVarDefs
@@ -1087,7 +1266,7 @@ static CVarDefs *spVars = NULL;
 static bool UnExpandEnvStrings(LPCWSTR asSource, wchar_t* rsUnExpanded, INT_PTR cchMax)
 {
 	// Don't use PathUnExpandEnvStrings because it uses %SystemDrive% instead of %ConEmuDrive%,
-	// and %ProgramFiles% but it may fails on 64-bit OS due to bitness differences
+	// and %ProgramFiles% but it may fail on 64-bit OS due to bitness differences
 	// - if (UnExpandEnvStrings(szFound, szUnexpand, countof(szUnexpand)) && (lstrcmp(szFound, szUnexpand) != 0)) ;
 	if (!spVars)
 	{
@@ -1172,7 +1351,10 @@ protected:
 		// Use GetImageSubsystem as condition because many exe-s may not have VersionInfo at all
 		if (GetImageSubsystem(pszPath, FI.dwSubsystem, FI.dwBits, FileAttrs))
 		{
-			LoadAppVersion(pszPath, FI.Ver, ErrText);
+			if (FI.dwSubsystem && FI.dwSubsystem <= IMAGE_SUBSYSTEM_WINDOWS_CUI)
+				LoadAppVersion(pszPath, FI.Ver, ErrText);
+			else
+				ZeroStruct(FI.Ver);
 
 			// App instance found, add it to Installed array?
 			bool bAlready = false;
@@ -1246,34 +1428,40 @@ public:
 		bool bCreated = false;
 		va_list argptr;
 		va_start(argptr, asExePath);
-		CEStr szFound, szArgs, szOptFull;
+		CEStr szArgs;
 		wchar_t szUnexpand[MAX_PATH+32];
 
-		while (asExePath)
+		LPCWSTR pszExePathNext = asExePath;
+		while (pszExePathNext)
 		{
-			bool bNeedQuot = false;
-			LPCWSTR pszExePath = asExePath;
-			asExePath = va_arg( argptr, LPCWSTR );
+			LPCWSTR pszExePath = pszExePathNext;
+			pszExePathNext = va_arg( argptr, LPCWSTR );
 
 			// Return expanded env string
-			TODO("Repace with list of 'drives'");
-			if (!FindOnDrives(szConEmuDrive, pszExePath, szFound, bNeedQuot, szOptFull))
+			FoundFiles files;
+			if (!FindOnDrives(szConEmuDrive, pszExePath, files))
 				continue;
-
-			LPCWSTR pszFound = szFound;
-			// Don't use PathUnExpandEnvStrings because it do not do what we need
-			if (UnExpandEnvStrings(szFound, szUnexpand, countof(szUnexpand)) && (lstrcmp(szFound, szUnexpand) != 0))
+			for (INT_PTR i = 0; i < files.size(); ++i)
 			{
-				pszFound = szUnexpand;
-			}
+				FoundFile& f = files[i];
+				LPCWSTR szFound = f.rsFound;
+				LPCWSTR szOptFull = f.rsOptionalFull;
 
-			if (AddAppPath(asName, pszFound, szOptFull.IsEmpty() ? szFound : szOptFull, bNeedQuot, asArgs, asPrefix, asGuiArg) >= 0)
-			{
-				bCreated = true;
-
-				if (Trim())
+				LPCWSTR pszFound = szFound;
+				// Don't use PathUnExpandEnvStrings because it do not do what we need
+				if (UnExpandEnvStrings(szFound, szUnexpand, countof(szUnexpand)) && (lstrcmp(szFound, szUnexpand) != 0))
 				{
-					break;
+					pszFound = szUnexpand;
+				}
+
+				if (AddAppPath(asName, pszFound, (szOptFull && *szOptFull) ? szOptFull : szFound, f.bNeedQuot, asArgs, asPrefix, asGuiArg) >= 0)
+				{
+					bCreated = true;
+
+					if (Trim())
+					{
+						break;
+					}
 				}
 			}
 		}
@@ -1412,25 +1600,25 @@ public:
 					switch (u)
 					{
 					case 1: // Naked, only add platform
-						_wsprintf(FJ.szTaskName, SKIPLEN(countof(FJ.szTaskName)-16) L"%s%s",
+						swprintf_c(FJ.szTaskName, countof(FJ.szTaskName)-16/*#SECURELEN*/, L"%s%s",
 							FJ.szTaskBaseName, szPlatform);
 						break;
 
 					case 2: // Add App version and platform
 						if (FJ.Ver.dwFileVersionMS)
-							_wsprintf(FJ.szTaskName, SKIPLEN(countof(FJ.szTaskName)-16) L"%s %u.%u%s",
+							swprintf_c(FJ.szTaskName, countof(FJ.szTaskName)-16/*#SECURELEN*/, L"%s %u.%u%s",
 								FJ.szTaskBaseName, HIWORD(FJ.Ver.dwFileVersionMS), LOWORD(FJ.Ver.dwFileVersionMS), szPlatform);
 						else // If there was not VersionInfo in the exe file (same as u==1)
-							_wsprintf(FJ.szTaskName, SKIPLEN(countof(FJ.szTaskName)-16) L"%s%s",
+							swprintf_c(FJ.szTaskName, countof(FJ.szTaskName)-16/*#SECURELEN*/, L"%s%s",
 								FJ.szTaskBaseName, szPlatform);
 						break;
 
 					case 3: // Add App version, platform and index
 						if (FJ.Ver.dwFileVersionMS)
-							_wsprintf(FJ.szTaskName, SKIPLEN(countof(FJ.szTaskName)-16) L"%s %u.%u%s (%u)",
+							swprintf_c(FJ.szTaskName, countof(FJ.szTaskName)-16/*#SECURELEN*/, L"%s %u.%u%s (%u)",
 								FJ.szTaskBaseName, HIWORD(FJ.Ver.dwFileVersionMS), LOWORD(FJ.Ver.dwFileVersionMS), szPlatform, ++idx);
 						else // If there was not VersionInfo in the exe file
-							_wsprintf(FJ.szTaskName, SKIPLEN(countof(FI.szTaskName)-16) L"%s%s (%u)",
+							swprintf_c(FJ.szTaskName, countof(FI.szTaskName)-16/*#SECURELEN*/, L"%s%s (%u)",
 								FI.szTaskBaseName, szPlatform, ++idx);
 						break;
 					}
@@ -1623,8 +1811,15 @@ public:
 		// Find in %Path% and on drives
 		for (i = 0; FarExe[i]; i++)
 		{
-			if (FindOnDrives(szConEmuDrive, FarExe[i], szFound, bNeedQuot, szOptFull))
-				AddAppPath(L"Far", szFound, szOptFull.IsEmpty() ? NULL : szOptFull.ms_Val, true);
+			FoundFiles files;
+			if (FindOnDrives(szConEmuDrive, FarExe[i], files))
+			{
+				for (INT_PTR i = 0; i < files.size(); ++i)
+				{
+					const FoundFile& f = files[i];
+					AddAppPath(L"Far", f.rsFound, f.rsOptionalFull, true);
+				}
+			}
 		}
 
 		// [HKCU|HKLM]\Software\Microsoft\Windows\CurrentVersion\App Paths
@@ -1704,15 +1899,15 @@ public:
 					switch (u)
 					{
 					case 0: // Naked
-						_wsprintf(FI.szTaskName, SKIPLEN(countof(FI.szTaskName)-16) L"%sFar %u.%u%s",
+						swprintf_c(FI.szTaskName, countof(FI.szTaskName)-16/*#SECURELEN*/, L"%sFar %u.%u%s",
 							pszPrefix, FI.FarVer.dwVerMajor, FI.FarVer.dwVerMinor, szPlatform);
 						break;
 					case 1: // Add Far Build no?
-						_wsprintf(FI.szTaskName, SKIPLEN(countof(FI.szTaskName)-16) L"%sFar %u.%u.%u%s",
+						swprintf_c(FI.szTaskName, countof(FI.szTaskName)-16/*#SECURELEN*/, L"%sFar %u.%u.%u%s",
 							pszPrefix, FI.FarVer.dwVerMajor, FI.FarVer.dwVerMinor, FI.FarVer.dwBuild, szPlatform);
 						break;
 					case 2: // Add Build and index
-						_wsprintf(FI.szTaskName, SKIPLEN(countof(FI.szTaskName)-16) L"%sFar %u.%u.%u%s (%u)",
+						swprintf_c(FI.szTaskName, countof(FI.szTaskName)-16/*#SECURELEN*/, L"%sFar %u.%u.%u%s (%u)",
 							pszPrefix, FI.FarVer.dwVerMajor, FI.FarVer.dwVerMinor, FI.FarVer.dwBuild, szPlatform, ++idx);
 						break;
 					}
@@ -1799,7 +1994,7 @@ static void CreateFarTasks()
 
 			// Force Far to use proper plugins folders
 			if (!bDontDuplicate)
-				lstrmerge(&pszCommand, L" /p\"%ConEmuDir%\\Plugins\\ConEmu;%FARHOME%\\Plugins\"");
+				lstrmerge(&pszCommand, L" /p\"%ConEmuDir%\\Plugins\\ConEmu;%FARHOME%\\Plugins;%FARPROFILE%\\Plugins\"");
 
 
 			// Suggest this task as ConEmu startup default
@@ -1891,69 +2086,144 @@ static bool WINAPI CreateWinSdkTasks(HKEY hkVer, LPCWSTR pszVer, LPARAM lParam)
 }
 
 // Visual Studio C++
+static void CreateVCTask(AppFoundList& App, LPCWSTR pszPlatform, LPCWSTR pszVer, LPCWSTR pszDir)
+{
+	// "12.0" = "C:\\Program Files (x86)\\Microsoft Visual Studio 12.0\\VC\\"
+	// %comspec% /k ""C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\vcvarsall.bat"" x86
+
+	// "15.0" = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Professional\\"
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat [x86|x64]
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvars32.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvars64.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsamd64_x86.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsx86_amd64.bat
+
+
+	CEStr pszVcVarsBat;
+	for (int i = 0;; ++i)
+	{
+		switch (i)
+		{
+		case 0:
+			pszVcVarsBat.Attach(JoinPath(pszDir, L"vcvarsall.bat"));
+			break;
+		case 1:
+			pszVcVarsBat.Attach(JoinPath(pszDir, L"VC\\Auxiliary\\Build\\vcvarsall.bat"));
+			break;
+		default:
+			return;
+		}
+
+		if (FileExists(pszVcVarsBat))
+			break;
+	}
+
+	int iVer = wcstol(pszVer, NULL, 10);
+	CEStr pszPrefix(L"cmd /k \"");
+	CEStr pszSuffix(L"-new_console:t:\"VS ", pszVer, L"\"");
+
+	CEStr lsIcon; LPCWSTR pszIconSource = NULL;
+	LPCWSTR pszIconSources[] = {
+		L"%CommonProgramFiles(x86)%\\microsoft shared\\MSEnv\\VSFileHandler.dll",
+		L"%CommonProgramFiles%\\microsoft shared\\MSEnv\\VSFileHandler.dll",
+		NULL};
+	for (int i = 0; pszIconSources[i]; i++)
+	{
+		if (lsIcon.Attach(ExpandEnvStr(pszIconSources[i]))
+			&& FileExists(lsIcon))
+		{
+			pszIconSource = pszIconSources[i];
+			break;
+		}
+	}
+
+	if (iVer && pszIconSource)
+	{
+		LPCWSTR pszIconSfx;
+		switch (iVer)
+		{
+		case 15: pszIconSfx = L",38\""; break;
+		case 14: pszIconSfx = L",33\""; break;
+		case 12: pszIconSfx = L",28\""; break;
+		case 11: pszIconSfx = L",23\""; break;
+		case 10: pszIconSfx = L",16\""; break;
+		case 9:  pszIconSfx = L",10\""; break;
+		default: pszIconSfx = L"\"";
+		}
+		lstrmerge(&pszSuffix.ms_Val, L" -new_console:C:\"", pszIconSource, pszIconSfx);
+	}
+
+	CEStr pszName(L"SDK::VS ", pszVer, L" ", pszPlatform, L" tools prompt");
+	CEStr pszSuffixReady(L"\" ", pszPlatform, L" ", pszSuffix);
+	App.Add(pszName, pszSuffixReady, pszPrefix, NULL/*asGuiArg*/, pszVcVarsBat, NULL);
+}
+
+// Visual Studio C++
 static bool WINAPI CreateVCTasks(HKEY hkVer, LPCWSTR pszVer, LPARAM lParam)
 {
+	AppFoundList *App = (AppFoundList*)lParam;
+
 	//[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\11.0\Setup\VC]
 	//"ProductDir"="C:\\Program Files (x86)\\Microsoft Visual Studio 11.0\\VC\\"
 	//[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\12.0\Setup\VC]
 	//"ProductDir"="C:\\Program Files (x86)\\Microsoft Visual Studio 12.0\\VC\\"
 	// %comspec% /k ""C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\vcvarsall.bat"" x86
 
-	CEStr pszDir;
-	if (wcschr(pszVer, L'.'))
+	if (wcschr(pszVer, L'.') && isDigit(*pszVer))
 	{
-		int iVer = wcstol(pszVer, NULL, 10);
-
+		CEStr pszDir;
 		if (RegGetStringValue(hkVer, L"Setup\\VC", L"ProductDir", pszDir) > 0)
 		{
-			CEStr pszVcVarsBat(JoinPath(pszDir, L"vcvarsall.bat"));
-			if (FileExists(pszVcVarsBat))
-			{
-				CEStr pszName(L"SDK::VS ", pszVer, L" x86 tools prompt");
-				CEStr pszFull(L"cmd /k \"\"", pszVcVarsBat, L"\"\" x86 -new_console:t:\"VS ", pszVer, L"\"");
-
-				CEStr lsIcon; LPCWSTR pszIconSource = NULL;
-				LPCWSTR pszIconSources[] = {
-					L"%CommonProgramFiles(x86)%\\microsoft shared\\MSEnv\\VSFileHandler.dll",
-					L"%CommonProgramFiles%\\microsoft shared\\MSEnv\\VSFileHandler.dll",
-					NULL};
-				for (int i = 0; pszIconSources[i]; i++)
-				{
-					if (lsIcon.Attach(ExpandEnvStr(pszIconSources[i]))
-						&& FileExists(lsIcon))
-					{
-						pszIconSource = pszIconSources[i];
-						break;
-					}
-				}
-
-				if (iVer && pszIconSource)
-				{
-					LPCWSTR pszIconSfx;
-					switch (iVer)
-					{
-					case 14: pszIconSfx = L",33\""; break;
-					case 12: pszIconSfx = L",28\""; break;
-					case 11: pszIconSfx = L",23\""; break;
-					case 10: pszIconSfx = L",16\""; break;
-					case 9:  pszIconSfx = L",10\""; break;
-					default: pszIconSfx = L"\"";
-					}
-					lstrmerge(&pszFull.ms_Val, L" -new_console:C:\"", pszIconSource, pszIconSfx);
-				}
-
-				SettingsLoadedFlags old = sAppendMode;
-				if (!(sAppendMode & slf_AppendTasks))
-					sAppendMode = (slf_AppendTasks | slf_RewriteExisting);
-
-				CreateDefaultTask(pszName, L"", pszFull);
-
-				sAppendMode = old;
-			}
+			CreateVCTask(App[0], L"x86", pszVer, pszDir);
+			CreateVCTask(App[1], L"x64", pszVer, pszDir);
 		}
 	}
 
 	return true; // continue reg enum
+}
+
+static bool WINAPI CreateVCTasks(HKEY hkVS, LPCWSTR pszVer, DWORD dwType, LPARAM lParam)
+{
+	AppFoundList *App = (AppFoundList*)lParam;
+
+	//[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\SxS\VS7]
+	//"12.0"="C:\\Program Files (x86)\\Microsoft Visual Studio 12.0\\"
+	//"15.0"="C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Professional\\"
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsall.bat [x86|x64]
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvars32.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvars64.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsamd64_x86.bat
+	// --> ...\2017\Professional\VC\Auxiliary\Build\vcvarsx86_amd64.bat
+
+	if (wcschr(pszVer, L'.') && isDigit(*pszVer))
+	{
+		CEStr pszDir;
+		if (RegGetStringValue(hkVS, NULL, pszVer, pszDir) > 0)
+		{
+			CreateVCTask(App[0], L"x86", pszVer, pszDir);
+			CreateVCTask(App[1], L"x64", pszVer, pszDir);
+		}
+	}
+
+	return true; // continue reg enum
+}
+
+static void CreateVisualStudioTasks()
+{
+	AppFoundList App[2];
+
+	SettingsLoadedFlags old = sAppendMode;
+	if (!(sAppendMode & slf_AppendTasks))
+		sAppendMode = (slf_AppendTasks | slf_RewriteExisting);
+
+	// Visual Studio prompt: HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio
+	RegEnumKeys(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\VisualStudio", CreateVCTasks, (LPARAM)App);
+	RegEnumValues(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7", CreateVCTasks, (LPARAM)App);
+
+	App[0].Commit();
+	App[1].Commit();
+
+	sAppendMode = old;
 }
 
 static void CreateChocolateyTask()
@@ -2040,7 +2310,8 @@ static void CreateHelperTasks()
 
 	// Type ANSI color codes
 	// cmd /k type "%ConEmuBaseDir%\Addons\AnsiColors16t.ans" -cur_console:n
-	if (FindOnDrives(NULL, L"%ConEmuBaseDir%\\Addons\\AnsiColors16t.ans", szFound, bNeedQuot, szOptFull))
+	FoundFiles files;
+	if (FindOnDrives(NULL, L"%ConEmuBaseDir%\\Addons\\AnsiColors16t.ans", files))
 	{
 		// Don't use 'App.Add' here, we are creating "cmd.exe" tasks directly
 		CreateDefaultTask(L"Helper::Show ANSI colors", L"", L"cmd.exe /k type \"%ConEmuBaseDir%\\Addons\\AnsiColors16t.ans\" -cur_console:n");
@@ -2051,6 +2322,8 @@ static void CreateHelperTasks()
 static void CreateBashTask()
 {
 	AppFoundList App;
+
+	bool bash_found = false;
 
 	// New Windows 10 feature (build 14316 and higher)
 	//   User have to
@@ -2064,14 +2337,82 @@ static void CreateBashTask()
 		MWow64Disable wow; wow.Disable(); // We need 64-bit version of system32
 		#endif
 		wchar_t BashOnUbuntu[] = L"%windir%\\system32\\bash.exe";
-		CEStr lsExpanded(ExpandEnvStr(BashOnUbuntu));
-		if (FileExists(lsExpanded))
+		wchar_t WslLoader[] = L"%windir%\\system32\\wsl.exe";
+		CEStr lsBashOnUbuntu(ExpandEnvStr(BashOnUbuntu));
+		CEStr lsWslLoader(ExpandEnvStr(BashOnUbuntu));
+		if (FileExists(lsWslLoader) || FileExists(lsBashOnUbuntu))
 		{
-			App.Add(L"Bash::bash",
-				L" -cur_console:p", // "--login -i" is not required yet
-				NULL /*L"chcp utf8 & "*/, // doesn't work either. can't type Russian or international characters.
-				L"-icon \"%USERPROFILE%\\AppData\\Local\\lxss\\bash.ico\"",
-				BashOnUbuntu,
+			// Prefer to run WSL via connector+wsl_bridge
+			bool use_bridge = false;
+			CEStr lsConnector;
+			const wchar_t* bridgeFiles[] = {L"wsl\\wslbridge.exe", L"wsl\\wslbridge-backend"};
+			const wchar_t* apiFiles[] = {L"wsl\\msys-2.0.dll", L"wsl\\cygwin1.dll"};
+			const wchar_t* connFiles32[] = {L"conemu-msys2-32.exe", L"conemu-cyg-32.exe"};
+			const wchar_t* connFiles64[] = {L"conemu-msys2-64.exe", L"conemu-cyg-64.exe"};
+			CEStr szBaseDir(ExpandEnvStr(L"%ConEmuBaseDir%"));
+			// Check for wslbridge files
+			DWORD bridge_bits = 0, bridge_api = -1;
+			DWORD dwSubsystem = 0, dwBits = 0, FileAttrs = 0;
+			for (size_t i = 0; i < countof(bridgeFiles); ++i)
+			{
+				CEStr lsPath(szBaseDir, L"\\", bridgeFiles[i]);
+				if (!FileExists(lsPath))
+				{
+					break;
+				}
+				// for Windows binaries
+				else if (wcschr(lsPath, L'.') != NULL)
+				{
+					if (GetImageSubsystem(lsPath, dwSubsystem, dwBits, FileAttrs) && (dwBits == 64 || dwBits == 32))
+						bridge_bits = dwBits;
+				}
+			}
+			// wslbridge.exe found?
+			if (bridge_bits == 32 || bridge_bits == 64)
+			{
+				// Check for appropriate API (cygwin1 or msys2)
+				for (size_t i = 0; i < countof(apiFiles); ++i)
+				{
+					CEStr lsPath(szBaseDir, L"\\", apiFiles[i]);
+					if (GetImageSubsystem(lsPath, dwSubsystem, dwBits, FileAttrs) && (dwBits == bridge_bits))
+					{
+						LPCWSTR pszConnectorName = (dwBits == 32) ? connFiles32[i] : connFiles64[i];
+						lsConnector.Attach(JoinPath(szBaseDir, pszConnectorName));
+						if (FileExists(lsConnector))
+						{
+							bridge_api = (DWORD)i;
+							use_bridge = true;
+							lsConnector.Attach(JoinPath(L"%ConEmuBaseDirShort%", pszConnectorName));
+						}
+						break;
+					}
+				}
+			}
+			// Find the icon
+			CEStr wslIcon;
+			const wchar_t* iconFiles[] = {
+				// legacy?
+				L"%USERPROFILE%\\AppData\\Local\\lxss\\bash.ico",
+				// Find via registry by "CanonicalGroupLimited"?
+				// [HKEY_CLASSES_ROOT\ActivatableClasses\Package\CanonicalGroupLimited.UbuntuonWindows_1604.2017.922.0_x64__79rhkp1fndgsc]
+				L"%ProgramW6432%\\WindowsApps\\CanonicalGroupLimited.UbuntuonWindows_1604.2017.922.0_x64__79rhkp1fndgsc\\images\\icon.ico",
+				L"%ProgramFiles%\\WindowsApps\\CanonicalGroupLimited.UbuntuonWindows_1604.2017.922.0_x64__79rhkp1fndgsc\\images\\icon.ico"
+			};
+			for (size_t i = 0; i < countof(iconFiles); ++i)
+			{
+				CEStr lsPath(ExpandEnvStr(iconFiles[i]));
+				if (FileExists(lsPath))
+				{
+					wslIcon.Attach(lstrmerge(L"-icon \"", iconFiles[i], L"\""));
+					break;
+				}
+			}
+			// Create the task
+			bash_found |= App.Add(L"Bash::bash",
+				use_bridge ? L" --wsl -cur_console:pm:/mnt" : L" -cur_console:pm:/mnt", // "--login -i" is not required yet
+				use_bridge ? L"set \"PATH=%ConEmuBaseDirShort%\\wsl;%PATH%\" & " : NULL,
+				wslIcon.c_str(),
+				use_bridge ? lsConnector.ms_Val : BashOnUbuntu,
 				NULL);
 		}
 	}
@@ -2079,53 +2420,149 @@ static void CreateBashTask()
 	// From Git-for-Windows (aka msysGit v2)
 	bool bGitBashExist = // No sense to add both `git-cmd.exe` and `bin/bash.exe`
 		App.Add(L"Bash::Git bash",
-			L" --no-cd --command=usr/bin/bash.exe -l -i", NULL, NULL,
+			L" --no-cd --command=/usr/bin/bash.exe -l -i", NULL, L"git",
+			L"[SOFTWARE\\GitForWindows:InstallPath]\\git-cmd.exe",
 			L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Git_is1:InstallLocation]\\git-cmd.exe",
 			L"%ProgramFiles%\\Git\\git-cmd.exe", L"%ProgramW6432%\\Git\\git-cmd.exe",
-#ifdef _WIN64
-			L"%ProgramFiles(x86)%\\Git\\git-cmd.exe",
-#endif
+			WIN3264TEST(NULL,L"%ProgramFiles(x86)%\\Git\\git-cmd.exe"),
 			NULL);
-	App.Add(L"Bash::GitSDK bash",
-		L" --no-cd --command=usr/bin/bash.exe -l -i", NULL, NULL,
+	bash_found |= bGitBashExist;
+	bash_found |= App.Add(L"Bash::GitSDK bash",
+		L" --no-cd --command=/usr/bin/bash.exe -l -i", NULL, L"git",
 		L"\\GitSDK\\git-cmd.exe",
 		NULL);
 	// From msysGit
-	if (!bGitBashExist) // Skip if `git-cmd.exe` was already found
-		App.Add(L"Bash::Git bash",
-			L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\etc\\git.ico\"", NULL, NULL,
+	if (!bGitBashExist) // Skip if `git-cmd.exe` was already found (from MSYS2 or Git-for-Windows)
+		bash_found |= App.Add(L"Bash::Git bash",
+			L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\etc\\git.ico\"", NULL,  L"msys1",
 			L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Git_is1:InstallLocation]\\bin\\bash.exe",
 			L"%ProgramFiles%\\Git\\bin\\bash.exe", L"%ProgramW6432%\\Git\\bin\\bash.exe",
-#ifdef _WIN64
-			L"%ProgramFiles(x86)%\\Git\\bin\\bash.exe",
-#endif
+			WIN3264TEST(NULL,L"%ProgramFiles(x86)%\\Git\\bin\\bash.exe"),
 			NULL);
 	// For cygwin we can check registry keys
 	// HKLM\SOFTWARE\Wow6432Node\Cygwin\setup\rootdir
 	// HKLM\SOFTWARE\Cygwin\setup\rootdir
 	// HKCU\Software\Cygwin\setup\rootdir
-	App.Add(L"Bash::CygWin bash",
-		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\Cygwin.ico\"", L"set CHERE_INVOKING=1 & ", NULL,
+	bash_found |= App.Add(L"Bash::CygWin bash",
+		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\Cygwin.ico\"", L"set CHERE_INVOKING=1 & ", L"cygwin",
 		L"[SOFTWARE\\Cygwin\\setup:rootdir]\\bin\\bash.exe",
 		L"\\CygWin\\bin\\bash.exe", NULL);
 	//{L"CygWin mintty", L"\\CygWin\\bin\\mintty.exe", L" -"},
-	App.Add(L"Bash::MinGW bash",
-		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\msys.ico\"", L"set CHERE_INVOKING=1 & ", NULL,
+	bash_found |= App.Add(L"Bash::MinGW bash",
+		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\msys.ico\"", L"set CHERE_INVOKING=1 & ", L"msys1",
 		L"\\MinGW\\msys\\1.0\\bin\\bash.exe", NULL);
 	//{L"MinGW mintty", L"\\MinGW\\msys\\1.0\\bin\\mintty.exe", L" -"},
 	// MSys2 project: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\MSYS2 32bit'
-	App.Add(L"Bash::Msys2-64",
-		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\..\\msys2.ico\"", L"set CHERE_INVOKING=1 & ", NULL,
-		L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MSYS2 64bit:InstallLocation]\\usr\\bin\\bash.exe",
+	// Perhaps for Msys2 we shall use "sh.exe" instead of "bash.exe"?
+	//   the "bash.exe" may be is used for legacy emulation?
+	bash_found |= App.Add(L"Bash::Msys2-64",
+		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\..\\msys2.ico\"", L"set CHERE_INVOKING=1 & ", L"msys64",
+		L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*:DisplayName=MSYS2 64bit:InstallLocation]\\usr\\bin\\bash.exe",
 		L"msys64\\usr\\bin\\bash.exe",
 		NULL);
-	App.Add(L"Bash::Msys2-32",
-		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\..\\msys2.ico\"", L"set CHERE_INVOKING=1 & ", NULL,
-		L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MSYS2 32bit:InstallLocation]\\usr\\bin\\bash.exe",
+	bash_found |= App.Add(L"Bash::Msys2-32",
+		L" --login -i -new_console:C:\"" FOUND_APP_PATH_STR L"\\..\\..\\msys2.ico\"", L"set CHERE_INVOKING=1 & ", L"msys32",
+		L"[SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*:DisplayName=MSYS2 32bit:InstallLocation]\\usr\\bin\\bash.exe",
 		L"msys32\\usr\\bin\\bash.exe",
 		NULL);
 	// Last chance for bash
-	App.Add(L"Bash::bash", L" --login -i", L"set CHERE_INVOKING=1 & ", NULL, L"bash.exe", NULL);
+	if (!bash_found)
+		App.Add(L"Bash::bash", L" --login -i", L"set CHERE_INVOKING=1 & ", NULL, L"bash.exe", NULL);
+
+	// Force connector
+	CEStr szBaseDir(ExpandEnvStr(L"%ConEmuBaseDir%"));
+	bool bNeedQuot = IsQuotationNeeded(szBaseDir);
+	for (INT_PTR i = 0; i < App.Installed.size(); ++i)
+	{
+		AppFoundList::AppInfo& ai = App.Installed[i];
+		if (!ai.szGuiArg)
+			continue;
+		DWORD bits = ai.dwBits;
+		CEStr szConnector;
+		LPCWSTR szConnectorName = NULL;
+		bool msys_git_2 = false;
+		if (wcscmp(ai.szGuiArg, L"cygwin") == 0)
+			szConnectorName = bits==32 ? L"conemu-cyg-32.exe"
+				: bits==64 ? L"conemu-cyg-64.exe"
+				: NULL;
+		else if (wcscmp(ai.szGuiArg, L"msys1") == 0)
+			szConnectorName = bits==32 ? L"conemu-msys-32.exe"
+				: NULL;
+		else if (wcscmp(ai.szGuiArg, L"msys32") == 0)
+			szConnectorName = bits==32 ? L"conemu-msys2-32.exe"
+				: NULL;
+		else if (wcscmp(ai.szGuiArg, L"msys64") == 0)
+			szConnectorName = bits==64 ? L"conemu-msys2-64.exe"
+				: NULL;
+		else if ((msys_git_2 = (wcscmp(ai.szGuiArg, L"git") == 0)))
+			szConnectorName = bits==64 ? L"conemu-msys2-64.exe"
+				: bits==32 ? L"conemu-msys2-32.exe"
+				: NULL;
+		else
+			continue;
+
+		SafeFree(ai.szGuiArg);
+
+		if (szConnectorName)
+		{
+			CEStr szConnector(JoinPath(szBaseDir, szConnectorName));
+			if (FileExists(szConnector))
+			{
+				// For git-cmd ai.szPrefix is empty by default
+				_ASSERTE(!ai.szPrefix || (*ai.szPrefix && ai.szPrefix[wcslen(ai.szPrefix)-1]==L' '));
+
+				CEStr szBinPath;
+				szBinPath.Set(ai.szFullPath);
+				wchar_t* ptrFound = wcsrchr(szBinPath.ms_Val, L'\\');
+				if (ptrFound) *ptrFound = 0;
+
+				if (!msys_git_2)
+				{
+					lstrmerge(&ai.szPrefix,
+						// TODO: Optimize: Don't add PATH if required cygwin1.dll/msys2.dll is already on path
+						L"set \"PATH=", szBinPath, L";%PATH%\" & ",
+						// Change main executable
+						/*bNeedQuot ? L"\"" :*/ L"",
+						L"%ConEmuBaseDirShort%\\", szConnectorName,
+						/*bNeedQuot ? L"\" " :*/ L" ",
+						// Force xterm mode
+						L"-new_console:p "
+						);
+				}
+				else
+				{
+					_ASSERTE(ai.szArgs && wcsstr(ai.szArgs, L"--command=/usr/bin/bash.exe"));
+					const wchar_t* cmd_ptr = L"--command=";
+					wchar_t* pszCmd = wcsstr(ai.szArgs, cmd_ptr);
+					if (pszCmd)
+					{
+						pszCmd += wcslen(cmd_ptr);
+						_ASSERTE(ai.szPrefix == NULL || !*ai.szPrefix);
+						lstrmerge(&ai.szPrefix,
+							// TODO: Optimize: Don't add PATH if required cygwin1.dll/msys2.dll is already on path
+							L"set \"PATH=", szBinPath, L"\\usr\\bin;%PATH%\" & ");
+						// Insert connector between "--command=" and "/usr/bin/bash.exe"
+						_ASSERTE(*pszCmd == L'/');
+						*pszCmd = 0;
+						CEStr lsArgs(
+							// git-cmd options
+							ai.szArgs,
+							// Change main executable
+							/*bNeedQuot ? L"\"" :*/ L"",
+							L"%ConEmuBaseDirShort%\\", szConnectorName,
+							/*bNeedQuot ? L"\" " :*/ L" ",
+							// And the tail of the command: "/usr/bin/bash.exe -l -i"
+							L"/", pszCmd+1,
+							// Force xterm mode
+							L" -new_console:p");
+						SafeFree(ai.szArgs);
+						ai.szArgs = lsArgs.Detach();
+					}
+				}
+			}
+		}
+	}
+
 	// Create all bash tasks
 	App.Commit();
 }
@@ -2242,8 +2679,8 @@ void CreateDefaultTasks(SettingsLoadedFlags slfFlags)
 	// Windows SDK: HKLM\SOFTWARE\Microsoft\Microsoft SDKs\Windows
 	RegEnumKeys(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows", CreateWinSdkTasks, 0);
 
-	// Visual Studio prompt: HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio
-	RegEnumKeys(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\VisualStudio", CreateVCTasks, 0);
+	// Visual Studio prompt
+	CreateVisualStudioTasks();
 
 	// Docker Toolbox
 	CreateDockerTask();
@@ -2256,6 +2693,8 @@ void CreateDefaultTasks(SettingsLoadedFlags slfFlags)
 	// Choose default startup command
 	if (slfFlags & (slf_DefaultSettings|slf_DefaultTasks))
 	{
-		Fast_FindStartupTask(slfFlags);
+		FindStartupTask(slfFlags);
 	}
 }
+
+}; // namespace FastConfig

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2010-2015 Maximus5
+Copyright (c) 2010-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -98,7 +98,7 @@ COLORREF gcrHilightPlugBack = RGB(0xA8,0,0); // чуть светлее крас
 int WINAPI GetMinFarVersionW(void)
 {
 	// ACTL_SYNCHRO required
-	return MAKEFARVERSION(2,0,max(1007,FAR_X_VER));
+	return MAKEFARVERSION(2,0,std::max<int>(1007,FAR_X_VER));
 }
 
 void WINAPI GetPluginInfoWcmn(void *piv)
@@ -135,7 +135,7 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved
 		case DLL_PROCESS_ATTACH:
 		{
 			ghPluginModule = (HMODULE)hModule;
-			//ghWorkingModule = (u64)hModule;
+			//ghWorkingModule = hModule;
 			HeapInitialize();
 
 #ifdef SHOW_STARTED_MSGBOX

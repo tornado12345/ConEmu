@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 #define SHOWDEBUGSTR
 
-#include "ConEmuC.h"
+#include "ConEmuSrv.h"
 #include "../common/MStrDup.h"
 
 #include "Actions.h"
@@ -197,7 +197,7 @@ void CStartEnv::UnitTests()
 {
 	CStartEnv setEnv;
 	wchar_t szTempName[80]; SYSTEMTIME st = {}; GetLocalTime(&st);
-	_wsprintf(szTempName, SKIPCOUNT(szTempName) L"ce_temp_%u%u%u%u", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+	swprintf_c(szTempName, L"ce_temp_%u%u%u%u", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 	SetEnvironmentVariable(szTempName, NULL);
 
 	const wchar_t szInit[] = L"initial", szPref[] = L"abc;", szSuff[] = L";def";

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2015 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -927,7 +927,7 @@ struct PipeServer
 			{
 				if (ptrRequest->nCmd == CECMD_CONSOLEDATA)
 					return; // Skip this event
-				_wsprintf(pPipe->szDbgInfo, SKIPLEN(countof(pPipe->szDbgInfo))
+				swprintf_c(pPipe->szDbgInfo,
 					L"<< CmdRecv: PID=%5u  TID=%5u  Cmd=%3u  DataSize=%u  FromPID=%u  FromTID=%u\n", GetCurrentProcessId(), GetCurrentThreadId(), ptrRequest->nCmd,
 					(UINT)(ptrRequest->cbSize - sizeof(*ptrRequest)),
 					ptrRequest->nSrcPID, ptrRequest->nSrcThreadId);
@@ -1252,7 +1252,7 @@ struct PipeServer
 			// we possibly get in deadlock on "normal" thread termination
 			// LdrShutdownThread in THIS thread fails to enter into critical section,
 			// because it already locked by MAIN thread (DllMain)
-			// So, StopPipeServer will fails on wait for pipe threads
+			// So, StopPipeServer will fail on wait for pipe threads
 			if (pPipe->pServer->mb_StopFromDllMain)
 			{
 				//WaitForSingleObject(pPipe->hThread, INFINITE); -- don't enter infinite lock
@@ -1558,7 +1558,7 @@ struct PipeServer
 							// we possibly get in deadlock on "normal" thread termination
 							// LdrShutdownThread in PIPE thread fails to enter into critical section,
 							// because it already locked by THIS thread (DllMain)
-							// So, StopPipeServer will fails on wait for pipe threads
+							// So, StopPipeServer will fail on wait for pipe threads
 							if (!mb_StopFromDllMain)
 							{
 								SuspendThread(m_Pipes[i].hThread);

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2016 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,8 +34,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ConEmuUpdateSettings::ConEmuUpdateSettings()
 {
-	// struct, memset is valid
-	memset(this, 0, sizeof(*this));
 }
 
 LPCWSTR ConEmuUpdateSettings::UpdateVerLocation()
@@ -110,16 +108,23 @@ void ConEmuUpdateSettings::SetUpdateVerLocation(LPCWSTR asNewIniLocation)
 	}
 }
 
+ConEmuUpdateSettings::Builds ConEmuUpdateSettings::GetDefaultUpdateChannel()
+{
+	return (ConEmuVersionStage == CEVS_ALPHA) ? Builds::Alpha
+		: (ConEmuVersionStage == CEVS_PREVIEW) ? Builds::Preview
+		: Builds::Undefined;
+}
+
 void ConEmuUpdateSettings::ResetToDefaults()
 {
 	// Указатели должны быть освобождены перед вызовом
 	_ASSERTE(szUpdateExeCmdLine==NULL);
 
 	szUpdateVerLocation = NULL;
-	isUpdateCheckOnStartup = false;
-	isUpdateCheckHourly = false;
+	isUpdateCheckOnStartup = true;
+	isUpdateCheckHourly = true;
 	isUpdateConfirmDownload = true; // true-Show MsgBox, false-notify via TSA only
-	isUpdateUseBuilds = 0; // 0-спросить пользователя при первом запуске, 1-stable only, 2-latest, 3-preview
+	isUpdateUseBuilds = GetDefaultUpdateChannel();
 	isUpdateInetTool = false;
 	szUpdateInetTool = NULL;
 	isUpdateUseProxy = false;
@@ -198,15 +203,15 @@ void ConEmuUpdateSettings::ResetToDefaults()
 			{
 				_ASSERTE(bWinRar==true);
 				//Issue 537: old WinRAR beta's fails
-				//_wsprintf(szUpdateArcCmdLineDef, SKIPLEN(cchMax) L"\"%s\" x -y \"%%1\"%s", pszArcPath, bWinRar ? L" \"%%2\\\"" : L"");
-				_wsprintf(szUpdateArcCmdLineDef, SKIPLEN(cchMax) L"\"%s\" x -y \"%%1\"", pszArcPath);
+				//swprintf_c(szUpdateArcCmdLineDef, cchMax/*#SECURELEN*/, L"\"%s\" x -y \"%%1\"%s", pszArcPath, bWinRar ? L" \"%%2\\\"" : L"");
+				swprintf_c(szUpdateArcCmdLineDef, cchMax/*#SECURELEN*/, L"\"%s\" x -y \"%%1\"", pszArcPath);
 			}
 			else
 			{
 				_ASSERTE(bWinRar==false);
 				int nLen = lstrlen(pszArcPath);
 				bool bNeedSlash = (*pszArcPath && (pszArcPath[nLen-1] != L'\\')) ? true : false;
-				_wsprintf(szUpdateArcCmdLineDef, SKIPLEN(cchMax) L"\"%s%s7zg.exe\" x -y \"%%1\"", pszArcPath, bNeedSlash ? L"\\" : L"");
+				swprintf_c(szUpdateArcCmdLineDef, cchMax/*#SECURELEN*/, L"\"%s%s7zg.exe\" x -y \"%%1\"", pszArcPath, bNeedSlash ? L"\\" : L"");
 			}
 		}
 	}
@@ -250,7 +255,8 @@ void ConEmuUpdateSettings::LoadFrom(ConEmuUpdateSettings* apFrom)
 	isUpdateCheckOnStartup = apFrom->isUpdateCheckOnStartup;
 	isUpdateCheckHourly = apFrom->isUpdateCheckHourly;
 	isUpdateConfirmDownload = apFrom->isUpdateConfirmDownload;
-	isUpdateUseBuilds = (apFrom->isUpdateUseBuilds >= 1 && apFrom->isUpdateUseBuilds <= 3) ? apFrom->isUpdateUseBuilds : 2; // 1-stable only, 2-latest, 3-preivew
+	isUpdateUseBuilds = (apFrom->isUpdateUseBuilds >= Builds::Stable && apFrom->isUpdateUseBuilds <= Builds::Preview)
+		? apFrom->isUpdateUseBuilds : GetDefaultUpdateChannel();
 	isUpdateInetTool = apFrom->isUpdateInetTool;
 	szUpdateInetTool = lstrdup(apFrom->szUpdateInetTool);
 	isUpdateUseProxy = apFrom->isUpdateUseProxy;
@@ -279,7 +285,7 @@ bool ConEmuUpdateSettings::UpdatesAllowed(wchar_t (&szReason)[128])
 		return false; // Не указано расположение обновления
 	}
 
-	if (isUpdateUseBuilds != 1 && isUpdateUseBuilds != 2 && isUpdateUseBuilds != 3)
+	if (isUpdateUseBuilds != Builds::Stable && isUpdateUseBuilds != Builds::Preview && isUpdateUseBuilds != Builds::Alpha)
 	{
 		wcscpy_c(szReason, L"Update.UseBuilds is not specified");
 		return false; // Не указано, какие сборки можно загружать
@@ -418,15 +424,17 @@ LPCWSTR ConEmuUpdateSettings::GetUpdateInetToolCmd()
 
 void ConEmuUpdateSettings::CheckHourlyUpdate()
 {
+	const DWORD dwCurTick = GetTickCount();
 	if (!dwLastUpdateCheck)
 	{
-		dwLastUpdateCheck = GetTickCount();
+		dwLastUpdateCheck = dwCurTick;
 	}
 	else
 	{
-		DWORD dwDelta = (GetTickCount() - dwLastUpdateCheck);
+		DWORD dwDelta = (dwCurTick - dwLastUpdateCheck);
 		if (dwDelta >= (60*60*1000))
 		{
+			dwLastUpdateCheck = dwCurTick;
 			gpConEmu->CheckUpdates(FALSE);
 		}
 	}

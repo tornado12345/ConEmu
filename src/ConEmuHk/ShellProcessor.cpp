@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2016 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	#undef PRINT_SHELL_LOG
 #endif
 
-#include <windows.h>
+#include "../common/Common.h"
+
 #include <TCHAR.h>
 #include <Tlhelp32.h>
 #include <shlwapi.h>
@@ -43,7 +44,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Shlobj.h>
 #pragma warning(default: 4091)
 #include "../common/CmdLine.h"
-#include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/execute.h"
 #include "../common/HandleKeeper.h"
@@ -91,32 +91,32 @@ void TestShellProcessor()
 		case 0:
 			pszFile = L"C:\\GCC\\mingw\\bin\\mingw32-make.exe";
 			pszParam = L"mingw32-make \"1.cpp\" ";
-			sp->OnCreateProcessW(&pszFile, &pszParam, &nCreateFlags, &si);
+			sp->OnCreateProcessW(&pszFile, &pszParam, NULL, &nCreateFlags, &si);
 			break;
 		case 1:
 			pszFile = L"C:\\GCC\\mingw\\bin\\mingw32-make.exe";
 			pszParam = L"\"mingw32-make.exe\" \"1.cpp\" ";
-			sp->OnCreateProcessW(&pszFile, &pszParam, &nCreateFlags, &si);
+			sp->OnCreateProcessW(&pszFile, &pszParam, NULL, &nCreateFlags, &si);
 			break;
 		case 2:
 			pszFile = L"C:\\GCC\\mingw\\bin\\mingw32-make.exe";
 			pszParam = L"\"C:\\GCC\\mingw\\bin\\mingw32-make.exe\" \"1.cpp\" ";
-			sp->OnCreateProcessW(&pszFile, &pszParam, &nCreateFlags, &si);
+			sp->OnCreateProcessW(&pszFile, &pszParam, NULL, &nCreateFlags, &si);
 			break;
 		case 3:
 			pszFile = L"F:\\VCProject\\FarPlugin\\ConEmu\\Bugs\\DOS\\Prince\\PRINCE.EXE";
 			pszParam = L"prince megahit";
-			sp->OnCreateProcessW(&pszFile, &pszParam, &nCreateFlags, &si);
+			sp->OnCreateProcessW(&pszFile, &pszParam, NULL, &nCreateFlags, &si);
 			break;
 		case 4:
 			pszFile = NULL;
 			pszParam = L" \"F:\\VCProject\\FarPlugin\\ConEmu\\Bugs\\DOS\\Prince\\PRINCE.EXE\"";
-			sp->OnCreateProcessW(&pszFile, &pszParam, &nCreateFlags, &si);
+			sp->OnCreateProcessW(&pszFile, &pszParam, NULL, &nCreateFlags, &si);
 			break;
 		case 5:
 			pszFile = L"C:\\GCC\\mingw\\bin\\mingw32-make.exe";
 			pszParam = L" \"1.cpp\" ";
-			sp->OnShellExecuteW(NULL, &pszFile, &pszParam, &nCreateFlags, &nShowCmd);
+			sp->OnShellExecuteW(NULL, &pszFile, &pszParam, NULL, &nCreateFlags, &nShowCmd);
 			break;
 		default:
 			break;
@@ -141,28 +141,7 @@ PROCESS_INFORMATION CShellProc:: m_WaitDebugVsThread = {};
 CShellProc::CShellProc()
 {
 	mn_CP = AreFileApisANSI() ? CP_ACP : CP_OEMCP;
-	mpwsz_TempAction = mpwsz_TempFile = mpwsz_TempParam = NULL;
-	mpsz_TempRetFile = mpsz_TempRetParam = mpsz_TempRetDir = NULL;
-	mpwsz_TempRetFile = mpwsz_TempRetParam = mpwsz_TempRetDir = NULL;
-	mlp_ExecInfoA = NULL; mlp_ExecInfoW = NULL;
-	mlp_SaveExecInfoA = NULL; mlp_SaveExecInfoW = NULL;
-	mb_WasSuspended = FALSE;
-	mb_NeedInjects = FALSE;
-	mb_Opt_DontInject = false;
-	mb_Opt_SkipNewConsole = false;
-	mb_Opt_SkipCmdStart = false;
-	mb_DebugWasRequested = FALSE;
-	mb_HiddenConsoleDetachNeed = FALSE;
-	mb_PostInjectWasRequested = FALSE;
-	// int CShellProc::mn_InShellExecuteEx = 0; <-- static
-	mb_InShellExecuteEx = FALSE;
-	//mb_DosBoxAllowed = FALSE;
-	m_SrvMapping.cbSize = 0;
-
-	mb_TempConEmuWnd = FALSE;
 	mh_PreConEmuWnd = ghConEmuWnd; mh_PreConEmuWndDC = ghConEmuWndDC;
-
-	hOle32 = NULL;
 
 	// Current application is GUI subsystem run in ConEmu tab?
 	CheckIsCurrentGuiClient();
@@ -180,9 +159,10 @@ CShellProc::~CShellProc()
 		ghConEmuWnd = mh_PreConEmuWnd; ghConEmuWndDC = mh_PreConEmuWndDC;
 	}
 
-	if (mb_InShellExecuteEx && gnInShellExecuteEx)
+	if (mb_InShellExecuteEx)
 	{
-		gnInShellExecuteEx--;
+		if (gnInShellExecuteEx > 0)
+			gnInShellExecuteEx--;
 		mb_InShellExecuteEx = FALSE;
 	}
 
@@ -387,12 +367,14 @@ BOOL CShellProc::LoadSrvMapping(BOOL bLightCheck /*= FALSE*/)
 		if (!gpDefTerm)
 		{
 			_ASSERTEX(gpDefTerm!=NULL);
+			LogShellString(L"LoadSrvMapping failed: !gpDefTerm");
 			return FALSE;
 		}
 
 		// Parameters are stored in the registry now
 		if (!isDefTermEnabled())
 		{
+			LogShellString(L"LoadSrvMapping failed: !isDefTermEnabled()");
 			return FALSE;
 		}
 
@@ -451,12 +433,18 @@ BOOL CShellProc::LoadSrvMapping(BOOL bLightCheck /*= FALSE*/)
 	if (!m_SrvMapping.cbSize || (m_SrvMapping.hConEmuWndDc && !IsWindow(m_SrvMapping.hConEmuWndDc)))
 	{
 		if (!::LoadSrvMapping(ghConWnd, m_SrvMapping))
+		{
+			LogShellString(L"LoadSrvMapping failed: !::LoadSrvMapping()");
 			return FALSE;
+		}
 		_ASSERTE(m_SrvMapping.ComSpec.ConEmuExeDir[0] && m_SrvMapping.ComSpec.ConEmuBaseDir[0]);
 	}
 
 	if (!m_SrvMapping.hConEmuWndDc || !IsWindow(m_SrvMapping.hConEmuWndDc))
+	{
+		LogShellString(L"LoadSrvMapping failed: !::IsWindow()");
 		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -618,8 +606,7 @@ BOOL CShellProc::ChangeExecuteParms(enum CmdOnCreateType aCmd, bool bConsoleMode
 	wchar_t *szComspec = NULL;
 	wchar_t *pszOurExe = NULL; // ConEmuC64.exe или ConEmu64.exe (для DefTerm)
 	BOOL lbUseDosBox = FALSE;
-	size_t cchDosBoxExe = MAX_PATH+16, cchDosBoxCfg = MAX_PATH+16;
-	wchar_t *szDosBoxExe = NULL, *szDosBoxCfg = NULL;
+	CEStr szDosBoxExe, szDosBoxCfg;
 	BOOL lbComSpec = FALSE; // TRUE - если %COMSPEC% отбрасывается
 	int nCchSize = 0;
 	BOOL lbEndQuote = FALSE, lbCheckEndQuote = FALSE;
@@ -668,7 +655,7 @@ BOOL CShellProc::ChangeExecuteParms(enum CmdOnCreateType aCmd, bool bConsoleMode
 				//	lbSkipEndQuote = TRUE;
 				//}
 				int nLen = lstrlen(asFile)+1;
-				int cchMax = max(nLen,(MAX_PATH+1));
+				int cchMax = std::max(nLen,(MAX_PATH+1));
 				wchar_t* pszTest = (wchar_t*)malloc(cchMax*sizeof(wchar_t));
 				_ASSERTE(pszTest);
 				if (pszTest)
@@ -908,13 +895,6 @@ BOOL CShellProc::ChangeExecuteParms(enum CmdOnCreateType aCmd, bool bConsoleMode
 
 
 	lbUseDosBox = FALSE;
-	szDosBoxExe = (wchar_t*)calloc(cchDosBoxExe, sizeof(*szDosBoxExe));
-	szDosBoxCfg = (wchar_t*)calloc(cchDosBoxCfg, sizeof(*szDosBoxCfg));
-	if (!szDosBoxExe || !szDosBoxCfg)
-	{
-		_ASSERTE(szDosBoxExe && szDosBoxCfg);
-		goto wrap;
-	}
 
 	if ((ImageBits != 16) && lbComSpec && asParam && *asParam)
 	{
@@ -967,10 +947,8 @@ BOOL CShellProc::ChangeExecuteParms(enum CmdOnCreateType aCmd, bool bConsoleMode
 	{
 		if (m_SrvMapping.cbSize && (m_SrvMapping.Flags & CECF_DosBox))
 		{
-			wcscpy_c(szDosBoxExe, m_SrvMapping.ComSpec.ConEmuBaseDir);
-			wcscat_c(szDosBoxExe, L"\\DosBox\\DosBox.exe");
-			wcscpy_c(szDosBoxCfg, m_SrvMapping.ComSpec.ConEmuBaseDir);
-			wcscat_c(szDosBoxCfg, L"\\DosBox\\DosBox.conf");
+			szDosBoxExe.Attach(JoinPath(m_SrvMapping.ComSpec.ConEmuBaseDir, L"\\DosBox\\DosBox.exe"));
+			szDosBoxCfg.Attach(JoinPath(m_SrvMapping.ComSpec.ConEmuBaseDir, L"\\DosBox\\DosBox.conf"));
 
 			if (!FileExists(szDosBoxExe) || !FileExists(szDosBoxCfg))
 			{
@@ -1383,7 +1361,7 @@ BOOL CShellProc::ChangeExecuteParms(enum CmdOnCreateType aCmd, bool bConsoleMode
 		wchar_t* pszDbgMsg = (wchar_t*)calloc(cchLen, sizeof(wchar_t));
 		if (pszDbgMsg)
 		{
-			msprintf(pszDbgMsg, cchLen, L"RunChanged(ParentPID=%u): %s <%s> <%s>\n",
+			msprintf(pszDbgMsg, cchLen, L"RunChanged(ParentPID=%u): %s <%s> <%s>",
 				GetCurrentProcessId(),
 				(aCmd == eShellExecute) ? L"Shell" : (aCmd == eCreateProcess) ? L"Create" : L"???",
 				*psFile ? *psFile : L"", *psParam ? *psParam : L"");
@@ -1398,10 +1376,6 @@ wrap:
 		free(szComspec);
 	if (pszOurExe)
 		free(pszOurExe);
-	if (szDosBoxExe)
-		free(szDosBoxExe);
-	if (szDosBoxCfg)
-		free(szDosBoxCfg);
 	return TRUE;
 }
 
@@ -1468,6 +1442,7 @@ int CShellProc::PrepareExecuteParms(
 	}
 
 
+	// #HOOKS Move to external function
 	bool bAnsiCon = false;
 	for (int i = 0; (i <= 1); i++)
 	{
@@ -1536,15 +1511,16 @@ int CShellProc::PrepareExecuteParms(
 	}
 
 	// DefTerm logging
-	wchar_t szInfo[140];
+	wchar_t szInfo[200];
 	#define LogExit(frc) \
 		msprintf(szInfo, countof(szInfo), \
-			L"PrepareExecuteParms rc=%i %u:%u:%u W:%u I:%u,%u,%u D:%u H:%u S:%u,%u line=%i", \
-			(frc), \
+			L"PrepareExecuteParms rc=%i T:%u %u:%u:%u W:%u I:%u,%u,%u D:%u H:%u S:%u,%u line=%i", \
+			/*rc*/(frc), /*T:*/gbPrepareDefaultTerminal ? 1 : 0, \
 			(UINT)mn_ImageSubsystem, (UINT)mn_ImageBits, (UINT)mb_isCurrentGuiClient, \
-			(UINT)mb_WasSuspended, (UINT)mb_NeedInjects, (UINT)mb_PostInjectWasRequested, \
-			(UINT)mb_Opt_DontInject, (UINT)mb_DebugWasRequested, (UINT)mb_HiddenConsoleDetachNeed, \
-			(UINT)mb_Opt_SkipNewConsole, (UINT)mb_Opt_SkipCmdStart, \
+			/*W:*/(UINT)mb_WasSuspended, \
+			/*I:*/(UINT)mb_NeedInjects, (UINT)mb_PostInjectWasRequested, (UINT)mb_Opt_DontInject, \
+			/*D:*/(UINT)mb_DebugWasRequested, /*H:*/(UINT)mb_HiddenConsoleDetachNeed, \
+			/*S:*/(UINT)mb_Opt_SkipNewConsole, (UINT)mb_Opt_SkipCmdStart, \
 			__LINE__); \
 		LogShellString(szInfo);
 
@@ -1628,7 +1604,11 @@ int CShellProc::PrepareExecuteParms(
 			#endif
 		}
 	}
-	BOOL bLongConsoleOutput = gFarMode.bFarHookMode && gFarMode.bLongConsoleOutput && !bDetachedOrHidden;
+
+	// Used to automatically increase the height of the console (backscroll) buffer when starting smth from Far Manager prompt,
+	// save output to our server internal buffer, and revert the height to original size.
+	// Was useful until ‘Far -w’ appeared.
+	BOOL bLongConsoleOutput = gFarMode.FarVer.dwVerMajor && gFarMode.bFarHookMode && gFarMode.bLongConsoleOutput && !bDetachedOrHidden;
 
 	// Current application is GUI subsystem run in ConEmu tab?
 	CheckIsCurrentGuiClient();
@@ -1767,7 +1747,7 @@ int CShellProc::PrepareExecuteParms(
 				{
 					if (mn_ImageSubsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI)
 					{
-						mb_DebugWasRequested = true;
+						mb_DebugWasRequested = TRUE;
 						LogExit(0);
 						return 0;
 					}
@@ -1903,7 +1883,7 @@ int CShellProc::PrepareExecuteParms(
 							+ _tcslen(szArguments)+1
 							+ (*szDir ? (_tcslen(szDir)+32) : 0); // + "-new_console:d<Dir>
 						pszConsoles[iCount] = (wchar_t*)malloc(cchLen*sizeof(wchar_t));
-						_wsprintf(pszConsoles[iCount], SKIPLEN(cchLen) L"\"%s\"%s%s",
+						swprintf_c(pszConsoles[iCount], cchLen/*#SECURELEN*/, L"\"%s\"%s%s",
 							Unquote(szExe), *szArguments ? L" " : L"", szArguments);
 						if (*szDir)
 						{
@@ -1921,7 +1901,7 @@ int CShellProc::PrepareExecuteParms(
 			{
 				cchLen = _tcslen(szPart) + 3;
 				pszConsoles[iCount] = (wchar_t*)malloc(cchLen*sizeof(wchar_t));
-				_wsprintf(pszConsoles[iCount], SKIPLEN(cchLen) L"\"%s\"", szPart);
+				swprintf_c(pszConsoles[iCount], cchLen/*#SECURELEN*/, L"\"%s\"", szPart);
 				iCount++;
 
 				cchAllLen += cchLen+3;
@@ -1976,12 +1956,22 @@ int CShellProc::PrepareExecuteParms(
 					{
 						bDebugWasRequested = true;
 					}
-				}
+				} // end of check "starting *.vshost.exe" (seems like not used in latest VS & .Net)
+				else if (gbIsVSDebug && (mn_ImageSubsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI))
+				{
+					// Intended for .Net debugging (without native support)
+					if (anCreateFlags && ((*anCreateFlags) & CREATE_SUSPENDED)
+						// DEBUG_XXX flags are processed above explicitly
+						&& !((*anCreateFlags) & (DEBUG_PROCESS|DEBUG_ONLY_THIS_PROCESS)))
+					{
+						bDebugWasRequested = true;
+					}
+				} // end of check "starting C# console app from msvsmon.exe"
 				else if (lbGnuDebugger)
 				{
 					bDebugWasRequested = true;
 					mb_PostInjectWasRequested = true;
-				}
+				} // end of check "starting new gnu debugger"
 				else if (lstrcmpi(gsExeName, ms_ExeTmp))
 				{
 					// Idle from (Pythonw.exe, gh-457), VisualStudio Code (code.exe), and so on
@@ -1989,7 +1979,7 @@ int CShellProc::PrepareExecuteParms(
 					CEStr lsMsg(L"Forcing mb_NeedInjects for `", gsExeName, L"` started from `", gsExeName, L"`");
 					LogShellString(lsMsg);
 					mb_NeedInjects = true;
-				}
+				} // end of check "<starting exe> == <current exe>"
 			}
 		}
 
@@ -2044,7 +2034,7 @@ int CShellProc::PrepareExecuteParms(
 		wchar_t* pszDbgMsg = (wchar_t*)calloc(cchLen, sizeof(wchar_t));
 		if (pszDbgMsg)
 		{
-			msprintf(pszDbgMsg, cchLen, L"Run(ParentPID=%u): %s <%s> <%s>\n",
+			msprintf(pszDbgMsg, cchLen, L"Run(ParentPID=%u): %s <%s> <%s>",
 				GetCurrentProcessId(),
 				(aCmd == eShellExecute) ? L"Shell" : (aCmd == eCreateProcess) ? L"Create" : L"???",
 				asFile ? asFile : L"", asParam ? asParam : L"");
@@ -2144,10 +2134,14 @@ int CShellProc::PrepareExecuteParms(
 
 	if (bLongConsoleOutput)
 	{
-		// MultiArc issue. При поиске нефиг включать длинный буфер. Как отсечь?
-		// Пока по запуску не из главного потока.
-		if (GetCurrentThreadId() != gnHookMainThreadId)
+		// MultiArc issue. Don't turn on LongConsoleOutput for "windowless" archive operations
+		// gh-1307: In Win10 ShellExecuteEx executes CreateProcess from background thread
+		if (!((aCmd == eCreateProcess) && (gnInShellExecuteEx > 0))
+			&& (GetCurrentThreadId() != gnHookMainThreadId)
+			)
+		{
 			bLongConsoleOutput = FALSE;
+		}
 	}
 
 	if (aCmd == eShellExecute)
@@ -2271,7 +2265,16 @@ int CShellProc::PrepareExecuteParms(
 		// eCreateProcess перехватывать не нужно (сами сделаем InjectHooks после CreateProcess)
 		else if ((mn_ImageBits != 16) && (m_SrvMapping.bUseInjects & 1)
 				&& (NewConsoleFlags // CEF_NEWCON_SWITCH | CEF_NEWCON_PREPEND
-					|| (bLongConsoleOutput && (aCmd == eShellExecute) && (anShellFlags && (*anShellFlags & SEE_MASK_NO_CONSOLE)) && (anShowCmd && *anShowCmd))
+					|| (bLongConsoleOutput &&
+						(((aCmd == eShellExecute)
+							&& (gFarMode.FarVer.dwVerMajor >= 3)
+							&& (anShellFlags && (*anShellFlags & SEE_MASK_NO_CONSOLE)) && (anShowCmd && *anShowCmd))
+						|| ((aCmd == eCreateProcess)
+							// gh-1307: when user runs "script.py" it's executed by Far3 via ShellExecuteEx->CreateProcess(py.exe),
+							// we don't know it's a console process at the moment of ShellExecuteEx
+							&& ((gFarMode.FarVer.dwVerMajor <= 2) || ((gFarMode.FarVer.dwVerMajor >= 3) && (gnInShellExecuteEx)))
+							&& (anCreateFlags && (*anCreateFlags & CREATE_DEFAULT_ERROR_MODE))))
+						)
 					|| (bCurConsoleArg && (m_Args.LongOutputDisable != crb_On))
 					#ifdef _DEBUG
 					|| lbAlwaysAddConEmuC
@@ -2441,7 +2444,7 @@ wrap:
 					if (m_Args.nBufHeight)
 					{
 						WARNING("Хорошо бы на команду сервера это перевести");
-						//SHORT nNewHeight = max((csbi.srWindow.Bottom - csbi.srWindow.Top + 1),(SHORT)m_Args.nBufHeight);
+						//SHORT nNewHeight = std::max((csbi.srWindow.Bottom - csbi.srWindow.Top + 1),(SHORT)m_Args.nBufHeight);
 						//if (nNewHeight != csbi.dwSize.Y)
 						//{
 						//	csbi.dwSize.Y = nNewHeight;
@@ -2536,8 +2539,11 @@ BOOL CShellProc::OnShellExecuteA(LPCSTR* asAction, LPCSTR* asFile, LPCSTR* asPar
 		return TRUE; // Перехватывать только под ConEmu
 	}
 
-	mb_InShellExecuteEx = TRUE;
-	gnInShellExecuteEx ++;
+	if (GetCurrentThreadId() == gnHookMainThreadId)
+	{
+		mb_InShellExecuteEx = TRUE;
+		gnInShellExecuteEx ++;
+	}
 
 	mpwsz_TempAction = str2wcs(asAction ? *asAction : NULL, mn_CP);
 	mpwsz_TempFile = str2wcs(asFile ? *asFile : NULL, mn_CP);
@@ -2597,8 +2603,11 @@ BOOL CShellProc::OnShellExecuteW(LPCWSTR* asAction, LPCWSTR* asFile, LPCWSTR* as
 		return TRUE;
 	}
 
-	mb_InShellExecuteEx = TRUE;
-	gnInShellExecuteEx ++;
+	if (GetCurrentThreadId() == gnHookMainThreadId)
+	{
+		mb_InShellExecuteEx = TRUE;
+		gnInShellExecuteEx ++;
+	}
 
 	_ASSERTEX(!mpwsz_TempRetFile && !mpwsz_TempRetParam && !mpwsz_TempRetDir);
 
@@ -2950,31 +2959,29 @@ void CShellProc::OnCreateProcessFinished(BOOL abSucceeded, PROCESS_INFORMATION *
 {
 	// logging
 	{
-		int cchLen = 255;
-		wchar_t* pszDbgMsg = (wchar_t*)calloc(cchLen, sizeof(wchar_t));
-		if (pszDbgMsg)
+		const size_t cchLen = 255;
+		wchar_t szDbgMsg[cchLen];
+		if (!abSucceeded)
 		{
-			if (!abSucceeded)
-			{
-				msprintf(pszDbgMsg, cchLen, L"Create(ParentPID=%u): Failed, ErrCode=0x%08X",
-					GetCurrentProcessId(), GetLastError());
-			}
-			else
-			{
-				msprintf(pszDbgMsg, cchLen, L"Create(ParentPID=%u): Ok, PID=%u",
-					GetCurrentProcessId(), lpPI->dwProcessId);
-				if (WaitForSingleObject(lpPI->hProcess, 0) == WAIT_OBJECT_0)
-				{
-					DWORD dwExitCode = 0;
-					GetExitCodeProcess(lpPI->hProcess, &dwExitCode);
-					msprintf(pszDbgMsg+lstrlen(pszDbgMsg), cchLen-lstrlen(pszDbgMsg),
-						L", Terminated!!! Code=%u", dwExitCode);
-				}
-			}
-			_wcscat_c(pszDbgMsg, cchLen, L"\n");
-			LogShellString(pszDbgMsg);
-			free(pszDbgMsg);
+			msprintf(szDbgMsg, cchLen,
+				L"Create(ParentPID=%u): Failed, ErrCode=0x%08X",
+				GetCurrentProcessId(), GetLastError());
 		}
+		else
+		{
+			msprintf(szDbgMsg, cchLen,
+				L"Create(ParentPID=%u): Ok, PID=%u",
+				GetCurrentProcessId(), lpPI->dwProcessId);
+			if (WaitForSingleObject(lpPI->hProcess, 0) == WAIT_OBJECT_0)
+			{
+				DWORD dwExitCode = 0;
+				GetExitCodeProcess(lpPI->hProcess, &dwExitCode);
+				int len = lstrlen(szDbgMsg);
+				msprintf(szDbgMsg+len, cchLen-len,
+					L", Terminated!!! Code=%u", dwExitCode);
+			}
+		}
+		LogShellString(szDbgMsg);
 	}
 
 	BOOL bAttachCreated = FALSE;
@@ -2984,7 +2991,7 @@ void CShellProc::OnCreateProcessFinished(BOOL abSucceeded, PROCESS_INFORMATION *
 		CShellProc::mn_LastStartedPID = lpPI->dwProcessId;
 
 		// ssh-agent.exe is intended to do self-fork to detach from current console
-		if (lpPI->dwProcessId && IsSshAgentHelper(ms_ExeTmp))
+		if (lpPI->dwProcessId && !ms_ExeTmp.IsEmpty() && IsSshAgentHelper(ms_ExeTmp))
 		{
 			CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_SSHAGENTSTART, sizeof(CESERVER_REQ_HDR)+sizeof(DWORD));
 			if (pIn)
@@ -3023,7 +3030,7 @@ void CShellProc::OnCreateProcessFinished(BOOL abSucceeded, PROCESS_INFORMATION *
 
 		if (m_Args.nPTY)
 		{
-			CEAnsi::ChangeTermMode(tmc_Keyboard, (m_Args.nPTY == 1), lpPI->dwProcessId);
+			CEAnsi::ChangeTermMode(tmc_TerminalType, (m_Args.nPTY & pty_XTerm) ? 1 : 0, lpPI->dwProcessId);
 		}
 
 		if (isDefTermEnabled())
@@ -3075,7 +3082,7 @@ void CShellProc::OnCreateProcessFinished(BOOL abSucceeded, PROCESS_INFORMATION *
 						wchar_t* pszDbg = (wchar_t*)malloc(MAX_PATH*3*sizeof(*pszDbg));
 						if (pszDbg)
 						{
-							msprintf(pszDbg, MAX_PATH*3, L"ConEmuHk: Failed to start attach server, Err=%u! %s\n", nErr, pszCmdLine);
+							msprintf(pszDbg, MAX_PATH*3, L"ConEmuHk: Failed to start attach server, Err=%u! %s", nErr, pszCmdLine);
 							LogShellString(pszDbg);
 							free(pszDbg);
 						}
@@ -3105,7 +3112,7 @@ void CShellProc::OnCreateProcessFinished(BOOL abSucceeded, PROCESS_INFORMATION *
 void CShellProc::RunInjectHooks(LPCWSTR asFrom, PROCESS_INFORMATION *lpPI)
 {
 	wchar_t szDbgMsg[255];
-	msprintf(szDbgMsg, countof(szDbgMsg), L"%s: InjectHooks(x%u), ParentPID=%u (%s), ChildPID=%u\n",
+	msprintf(szDbgMsg, countof(szDbgMsg), L"%s: InjectHooks(x%u), ParentPID=%u (%s), ChildPID=%u",
 		asFrom, WIN3264TEST(32,64), GetCurrentProcessId(), gsExeName, lpPI->dwProcessId);
 	LogShellString(szDbgMsg);
 

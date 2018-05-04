@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -81,7 +81,7 @@ LRESULT CSetPgSizePos::OnInitDialog(HWND hDlg, bool abInitial)
 	EnablePosSizeControls(hDlg);
 	MCHKHEAP
 
-	gpSetCls->UpdatePos(gpConEmu->wndX, gpConEmu->wndY, true);
+	gpSetCls->UpdatePos(gpConEmu->WndPos.x, gpConEmu->WndPos.y, true);
 
 	checkRadioButton(hDlg, rCascade, rFixed, gpSet->wndCascade ? rCascade : rFixed);
 	if (!abInitial)
@@ -112,6 +112,7 @@ LRESULT CSetPgSizePos::OnInitDialog(HWND hDlg, bool abInitial)
 
 	checkDlgButton(hDlg, cbIntegralSize, !gpSet->mb_IntegralSize);
 
+	checkDlgButton(hDlg, cbRestoreInactive, gpSet->isRestoreInactive);
 	checkDlgButton(hDlg, cbRestore2ActiveMonitor, gpSet->isRestore2ActiveMon);
 
 	checkDlgButton(hDlg, cbSnapToDesktopEdges, gpSet->isSnapToDesktopEdges);
@@ -182,7 +183,7 @@ LRESULT CSetPgSizePos::OnEditChanged(HWND hDlg, WORD nCtrlId)
 		if (isChecked(hDlg, rNormal) == BST_CHECKED)
 		{
 			wchar_t *pVal = GetDlgItemTextPtr(hDlg, nCtrlId);
-			bool bValid = (pVal && isDigit(*pVal));
+			bool bValid = (pVal && (isDigit(pVal[0]) || (pVal[0]==L'-' && isDigit(pVal[1]))));
 			enableDlgItem(hDlg, cbApplyPos, bValid);
 			SafeFree(pVal);
 		}
@@ -235,7 +236,8 @@ LRESULT CSetPgSizePos::OnEditChanged(HWND hDlg, WORD nCtrlId)
 		}
 		else
 		{
-			SetDlgItemText(hDlg, nCtrlId, _ltow(gpSet->DefaultBufferHeight, szTemp, 10));
+			_ltow_s(gpSet->DefaultBufferHeight, szTemp, 10);
+			SetDlgItemText(hDlg, nCtrlId, szTemp);
 		}
 		break;
 	} //case tLongOutputHeight:

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,9 +28,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define HIDE_USE_EXCEPTION_INFO
 
-#include <windows.h>
 #include "../common/defines.h"
 #include "../common/Common.h"
+#include "../common/HandleKeeper.h"
 #include "../ConEmuCD/ExitCodes.h"
 #include "Connector.h"
 #include "hkConsole.h"
@@ -72,10 +72,10 @@ static DWORD ProtectCtrlBreakTrap(HANDLE h_input)
 	return conInMode;
 }
 
-static BOOL WINAPI termReadInput(PINPUT_RECORD pir, DWORD nCount, PDWORD pRead)
+static ReadInputResult WINAPI termReadInput(PINPUT_RECORD pir, DWORD nCount, PDWORD pRead)
 {
-	if (gbTerminateReadInput)
-		return FALSE;
+	if (gbTerminateReadInput || !pir || !pRead)
+		return rir_None;
 
 	if (!ghTermInput)
 		ghTermInput = GetStdHandle(STD_INPUT_HANDLE);
@@ -84,16 +84,27 @@ static BOOL WINAPI termReadInput(PINPUT_RECORD pir, DWORD nCount, PDWORD pRead)
 
 	UpdateAppMapFlags(rcif_LLInput);
 
+	ReadInputResult result = rir_None;
 	InterlockedIncrement(&gnInTermInputReading);
-	BOOL bRc = ReadConsoleInputW(ghTermInput, pir, nCount, pRead);
+	DWORD peek = 0;
+	BOOL bRc = (PeekConsoleInputW(ghTermInput, pir, nCount, &peek) && peek)
+		? ReadConsoleInputW(ghTermInput, pir, peek, pRead)
+		: FALSE;
+	if (bRc && *pRead)
+	{
+		result = rir_Ready;
+		INPUT_RECORD temp = {};
+		if (PeekConsoleInputW(ghTermInput, &temp, 1, &peek) && peek)
+			result = rir_Ready_More;
+	}
 	InterlockedDecrement(&gnInTermInputReading);
 
 	if (!bRc)
-		return FALSE;
+		return rir_None;
 	if (gbTerminateReadInput)
-		return FALSE;
+		return rir_None;
 
-	return TRUE;
+	return result;
 }
 
 int WINAPI RequestTermConnector(/*[IN/OUT]*/RequestTermConnectorParm* Parm)
@@ -131,8 +142,16 @@ int WINAPI RequestTermConnector(/*[IN/OUT]*/RequestTermConnectorParm* Parm)
 		Parm->ReadInput = termReadInput;
 		Parm->WriteText = WriteProcessedA;
 
+		if (Parm->pszMntPrefix)
+		{
+			CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, CECMD_STARTCONNECTOR,
+				lstrlenA(Parm->pszMntPrefix)+1, (LPBYTE)Parm->pszMntPrefix, ghConWnd);
+			ExecuteFreeResult(pOut);
+		}
+
 		CEAnsi::StartXTermMode(true);
 		gbWasStarted = true;
+		HandleKeeper::SetConnectorMode(true);
 		iRc = 0;
 		break;
 	}
@@ -173,6 +192,7 @@ int WINAPI RequestTermConnector(/*[IN/OUT]*/RequestTermConnectorParm* Parm)
 		}
 
 		gbWasStarted = false;
+		HandleKeeper::SetConnectorMode(false);
 		iRc = 0;
 		break;
 	}

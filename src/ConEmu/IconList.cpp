@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,7 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DEBUGSTRICON(s) //DEBUGSTR(s)
 
-#include <windows.h>
+#include "../common/defines.h"
 #include <commctrl.h>
 #include "header.h"
 #include "ConEmu.h"
@@ -86,13 +86,13 @@ bool CIconList::Initialize()
 		int iFontY = gpSetCls->EvalSize(gpSet->nTabFontHeight, esf_Vertical|esf_CanUseUnits|esf_CanUseDpi|esf_CanUseZoom);
 		if (iFontY < 0)
 			iFontY = gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, iFontY, gpSet->nTabFontHeight);
-		int iDpyY = gpSetCls->EvalSize(max(16,iSysY), esf_Vertical|esf_CanUseDpi);
+		int iDpyY = gpSetCls->EvalSize(std::max(16,iSysY), esf_Vertical|esf_CanUseDpi);
 		mn_CxIcon = 16; mn_CyIcon = 16;
 		if (iFontY > 16)
 		{
 			if (iDpyY <= iFontY)
 			{
-				mn_CxIcon = gpSetCls->EvalSize(max(16,iSysX), esf_Horizontal|esf_CanUseDpi);
+				mn_CxIcon = gpSetCls->EvalSize(std::max(16,iSysX), esf_Horizontal|esf_CanUseDpi);
 				mn_CyIcon = iDpyY;
 			}
 			else
@@ -113,7 +113,7 @@ bool CIconList::Initialize()
 		}
 
 		wchar_t szLog[100];
-		_wsprintf(szLog, SKIPCOUNT(szLog) L"Creating IconList for size {%ix%i} SysIcon size is {%ix%i}", mn_CxIcon, mn_CyIcon, iSysX, iSysY);
+		swprintf_c(szLog, L"Creating IconList for size {%ix%i} SysIcon size is {%ix%i}", mn_CxIcon, mn_CyIcon, iSysX, iSysY);
 		gpConEmu->LogString(szLog);
 
 		if ((mh_TabIcons = ImageList_Create(mn_CxIcon, mn_CyIcon, ILC_COLOR24|ILC_MASK, 0, 16)) != NULL)
@@ -236,7 +236,7 @@ int CIconList::CreateTabIconInt(LPCWSTR asIconDescr, bool bAdmin, LPCWSTR asWork
 
 	if (asWorkDir && *asWorkDir)
 	{
-		// Executable (or icon) file may be not availbale by %PATH%, let "cd" to it...
+		// Executable (or icon) file may be not available by %PATH%, let "cd" to it...
 		bDirChanged = gpConEmu->ChangeWorkDir(asWorkDir);
 	}
 
@@ -343,7 +343,7 @@ LPCWSTR CIconList::GetIconInfoStr(HICON h, wchar_t (&szInfo)[80])
 	GetIconInfo(h, &ii);
 	BITMAP bi = {};
 	GetObject(ii.hbmColor, sizeof(bi), &bi);
-	_wsprintf(szInfo, SKIPCOUNT(szInfo) L"{%ix%i} planes=%u bpp=%u", bi.bmWidth, bi.bmHeight, bi.bmPlanes, bi.bmBitsPixel);
+	swprintf_c(szInfo, L"{%ix%i} planes=%u bpp=%u", bi.bmWidth, bi.bmHeight, bi.bmPlanes, bi.bmBitsPixel);
 	SafeDeleteObject(ii.hbmColor);
 	SafeDeleteObject(ii.hbmMask);
 	return szInfo;

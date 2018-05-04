@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -274,6 +274,8 @@ BOOL WINAPI OnBeep(DWORD dwFreq, DWORD dwDuration)
 	{
 		wchar_t szBeep[64]; msprintf(szBeep, countof(szBeep), L"--- Skipped Beep(Freq=%u,Dur=%u)\n", dwFreq, dwDuration);
 		LogBeepSkip(szBeep);
+		Sleep(dwDuration);
+		lbRc = TRUE;
 		goto wrap;
 	}
 
@@ -296,6 +298,7 @@ BOOL WINAPI OnMessageBeep(UINT uType)
 	{
 		wchar_t szBeep[48]; msprintf(szBeep, countof(szBeep), L"--- Skipped MessageBeep(ID=0x%X)\n", uType);
 		LogBeepSkip(szBeep);
+		lbRc = TRUE;
 		goto wrap;
 	}
 

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2013-2016 Maximus5
+Copyright (c) 2013-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -147,5 +147,6 @@ struct ConEmuHotKey
 	static bool UseDndLKey();
 	static bool UseDndRKey();
 	static bool UseWndDragKey();
+	static bool UsePromptFind();
 	//static bool DontHookJumps(const ConEmuHotKey* pHK);
 };

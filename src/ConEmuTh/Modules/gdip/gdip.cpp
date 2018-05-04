@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2010-2015 Maximus5
+Copyright (c) 2010-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
+#include "../../../common/defines.h"
+using namespace std;
 #include <GdiPlus.h>
 #include <crtdbg.h>
 #include "../../../common/Memory.h"
@@ -35,7 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //#include "../PVD2Helper.h"
 //#include "../BltHelper.h"
-#include "MStream.h"
+#include "../MStream.h"
 
 HMODULE ghModule;
 
@@ -396,7 +397,7 @@ struct GDIPlusImage
 	};
 
 
-	//Gdiplus::GpBitmap* OpenBitmapFromStream(const u8 *pBuffer, i64 lFileSize)
+	//Gdiplus::GpBitmap* OpenBitmapFromStream(const uint8_t *pBuffer, int64_t lFileSize)
 	//{
 	//	Gdiplus::Status lRc = Gdiplus::Ok;
 	//	Gdiplus::GpBitmap *img = NULL;
@@ -436,7 +437,7 @@ struct GDIPlusImage
 		return bmp;
 	}
 
-	bool Open(bool bVirtual, const wchar_t *pFileName, const u8 *pBuffer, i64 lFileSize, COORD crLoadSize)
+	bool Open(bool bVirtual, const wchar_t *pFileName, const uint8_t *pBuffer, int64_t lFileSize, COORD crLoadSize)
 	{
 		_ASSERTE(img == NULL);
 		_ASSERTE(gdi != NULL);
@@ -623,20 +624,20 @@ struct GDIPlusImage
 	{
 		nShowWidth = lWidth;
 		nShowHeight = lHeight;
-		i64 aSrc = (100 * (i64) lWidth / lHeight);
-		i64 aCvs = (100 * (i64) nCanvasWidth / nCanvasHeight);
+		int64_t aSrc = (100 * (int64_t) lWidth / lHeight);
+		int64_t aCvs = (100 * (int64_t) nCanvasWidth / nCanvasHeight);
 
 		if (aSrc > aCvs)
 		{
 			if (lWidth >= (UINT)nCanvasWidth)
 			{
 				nShowWidth = nCanvasWidth;
-				nShowHeight = (int)((((i64)lHeight) * nCanvasWidth) / lWidth); //-V537
+				nShowHeight = (int)((((int64_t)lHeight) * nCanvasWidth) / lWidth); //-V537
 
 				if (!nShowHeight || nShowHeight < (nShowWidth/8))
 				{
-					nShowHeight = min(min(8,(UINT)nCanvasHeight),lHeight);
-					UINT lNewWidth = (UINT)((((i64)nCanvasWidth) * lHeight) / nShowHeight);
+					nShowHeight = std::min(std::min<UINT>(8, (UINT)nCanvasHeight), lHeight);
+					UINT lNewWidth = (UINT)((((int64_t)nCanvasWidth) * lHeight) / nShowHeight);
 
 					if (lNewWidth < lWidth)
 					{
@@ -650,13 +651,13 @@ struct GDIPlusImage
 		{
 			if (lHeight >= (UINT)nCanvasHeight)
 			{
-				nShowWidth = (int)((((i64)lWidth) * nCanvasHeight) / lHeight); //-V537
+				nShowWidth = (int)((((int64_t)lWidth) * nCanvasHeight) / lHeight); //-V537
 				nShowHeight = nCanvasHeight;
 
 				if (!nShowWidth || nShowWidth < (nShowHeight/8))
 				{
-					nShowWidth = min(min(8,(UINT)nCanvasWidth),lWidth);
-					UINT lNewHeight = (UINT)((((i64)nCanvasHeight) * lWidth) / nShowWidth);
+					nShowWidth = std::min(std::min<UINT>(8, (UINT)nCanvasWidth), lWidth);
+					UINT lNewHeight = (UINT)((((int64_t)nCanvasHeight) * lWidth) / nShowWidth);
 
 					if (lNewHeight < lHeight)
 					{
@@ -703,7 +704,7 @@ struct GDIPlusImage
 
 			int nCanvasWidth  = pDecodeInfo->crLoadSize.X;
 			int nCanvasHeight = pDecodeInfo->crLoadSize.Y;
-			BOOL lbAllowThumb = (nFormatID == cfTIFF || nFormatID == cfTIFF || nFormatID == cfEXIF || nFormatID == cfJPEG);
+			BOOL lbAllowThumb = (nFormatID == cfPNG || nFormatID == cfTIFF || nFormatID == cfEXIF || nFormatID == cfJPEG);
 			//&& (lWidth > (UINT)nCanvasWidth*5) && (lHeight > (UINT)nCanvasHeight*5);
 			int nShowWidth, nShowHeight;
 			CalculateShowSize(nCanvasWidth, nCanvasHeight, nShowWidth, nShowHeight, lbAllowThumb);

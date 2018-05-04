@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2015-2016 Maximus5
+Copyright (c) 2015-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#include "../common/defines.h"
 
 class CConEmuMain;
 
@@ -41,7 +41,7 @@ enum CESwitchType
 	sw_FnSet,   // "/log1" -> Int=1
 	sw_Str,     // string, may be min/max length specified
 	sw_EnvStr,  // expanded env string, may be min/max length specified
-	sw_PathStr, // path, may contains env strings, may be min/max length specified
+	sw_PathStr, // path, may contain env strings, may be min/max length specified
 	sw_Cmd,     // "-run ..."
 	sw_CmdList, // "-runlist ..."
 };
@@ -127,6 +127,8 @@ public:
 	bool mb_ConEmuHere;
 	/* switch -QuitOnClose: close ConEmu with last tab or cross-clicking */
 	bool mb_ForceQuitOnClose;
+	/* Settings dialog was requested on startup */
+	bool mb_SettingsRequested;
 
 public:
 	/* Store/retrieve command line, specified with "-run" or "-runlist" switches */
@@ -201,6 +203,7 @@ public:
 		CESwitch ResetSettings; // sw_Simple
 		CESwitch AdvLogging; // sw_Int: -log[1|2|3|4]
 		CESwitch Detached; // sw_Simple
+		CESwitch NoAutoClose; // checked by isCloseOnLastTabClose()
 	public:
 		// Suppress intellisense warning:
 		// the default constructor of "CConEmuStart::StartOptions" cannot be referenced -- it is a deleted function	ConEmu

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <shlobj.h>
 #pragma warning(default: 4091)
 #include "Update.h"
+#include "UpdateConst.h"
 #include "UpdateSet.h"
 #include "Options.h"
 #include "OptionsClass.h"
@@ -52,25 +53,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 CConEmuUpdate* gpUpd = NULL;
 
 #define UPDATETHREADTIMEOUT 2500
-
-#define sectionConEmuStable  L"ConEmu_Stable_2"
-#define sectionConEmuPreview L"ConEmu_Preview_2"
-#define sectionConEmuDevel   L"ConEmu_Devel_2"
-
-#define szWhatsNewLabel L"Whats new (project wiki page)"
-
-#define szRetryVersionIniCheck \
-	L"ConEmu is unable to load current version information from servers.\n" \
-	L"You may either check and download new versions manually from\n" \
-	CEDOWNLPAGE /* http://www.fosshub.com/ConEmu.html */ L"\n" \
-	L"or let ConEmu retry the check.\n"
-
-#define szRetryPackageDownload \
-	L"ConEmu is unable to download update package.\n" \
-	L"You may either download new versions manually from\n" \
-	CEDOWNLPAGE /* http://www.fosshub.com/ConEmu.html */ L"\n" \
-	L"or let ConEmu retry the downloading.\n"
-
 
 
 CConEmuUpdate::CConEmuUpdate()
@@ -100,7 +82,7 @@ CConEmuUpdate::CConEmuUpdate()
 	mpsz_ConfirmSource = NULL;
 
 	wchar_t szVer4[8] = L""; lstrcpyn(szVer4, _T(MVV_4a), countof(szVer4));
-	_wsprintf(ms_OurVersion, SKIPLEN(countof(ms_OurVersion)) L"%02u%02u%02u%s",
+	swprintf_c(ms_OurVersion, L"%02u%02u%02u%s",
 		(MVV_1%100), MVV_2, MVV_3, szVer4);
 
 	lstrcpyn(ms_DefaultTitle, gpConEmu->GetDefaultTitle(), countof(ms_DefaultTitle));
@@ -152,7 +134,7 @@ CConEmuUpdate::~CConEmuUpdate()
 		wchar_t *pszParm = (wchar_t*)calloc(cchParmMax,sizeof(*pszParm));
 		// Обязательно двойное окавычивание. cmd.exe отбрасывает кавычки,
 		// и при наличии разделителей (пробелы, скобки,...) получаем проблемы
-		_wsprintf(pszParm, SKIPLEN(cchParmMax) L"/c \"\"%s\"\"", mpsz_PendingBatchFile);
+		swprintf_c(pszParm, cchParmMax/*#SECURELEN*/, L"/c \"\"%s\"\"", mpsz_PendingBatchFile);
 
 		// Наверное на Elevated процесс это не распространится, но для четкости - взведем флажок
 		SetEnvironmentVariable(ENV_CONEMU_INUPDATE_W, ENV_CONEMU_INUPDATE_YES);
@@ -162,7 +144,7 @@ CConEmuUpdate::~CConEmuUpdate()
 		if (nShellRc <= 32)
 		{
 			wchar_t szErrInfo[MAX_PATH*4];
-			_wsprintf(szErrInfo, SKIPLEN(countof(szErrInfo))
+			swprintf_c(szErrInfo,
 				L"Failed to start update batch\n%s\nError code=%i", mpsz_PendingBatchFile, (int)nShellRc);
 			MsgBox(szErrInfo, MB_ICONSTOP|MB_SYSTEMMODAL, L"ConEmu", NULL, false);
 
@@ -195,10 +177,18 @@ void CConEmuUpdate::StartCheckProcedure(UINT abShowMessages)
 		// Already in update procedure
 		if ((m_UpdateStep == us_PostponeUpdate) || (m_UpdateStep == us_ExitAndUpdate))
 		{
-			if (gpConEmu)
+			if (gpConEmu && (m_UpdateStep == us_ExitAndUpdate))
 			{
 				// Повторно?
 				gpConEmu->CallMainThread(true, RequestExitUpdate, 0);
+			}
+			else if (ms_NewVersion[0] && (m_UpdateStep == us_PostponeUpdate))
+			{
+				CEStr lsMsg;
+				LPCWSTR pszFormat = L"Update to version %s will be started when you close ConEmu window";
+				INT_PTR cchMax = wcslen(pszFormat) + wcslen(ms_NewVersion) + 3;
+				msprintf(lsMsg.GetBuffer(cchMax), cchMax, pszFormat, ms_NewVersion);
+				Icon.ShowTrayIcon(lsMsg, tsa_Source_Updater);
 			}
 		}
 		else if (abShowMessages)
@@ -840,13 +830,13 @@ DWORD CConEmuUpdate::CheckProcInt()
 				wchar_t szInfo[2048];
 				if (liSize.HighPart || liSize.LowPart != nSrcLen)
 				{
-					_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"%s\nRequired size=%u, local size=%u", pszSource, nSrcLen, liSize.LowPart);
+					swprintf_c(szInfo, L"%s\nRequired size=%u, local size=%u", pszSource, nSrcLen, liSize.LowPart);
 					ReportError(L"Downloaded file does not match\n%s\n%s", pszLocalPackage, szInfo, 0);
 					lbDownloadRc = FALSE;
 				}
 				else if (nLocalCRC != nSrcCRC)
 				{
-					_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"Required CRC32=x%08X, local CRC32=x%08X", nSrcCRC, nLocalCRC);
+					swprintf_c(szInfo, L"Required CRC32=x%08X, local CRC32=x%08X", nSrcCRC, nLocalCRC);
 					ReportError(L"Invalid local file\n%s\n%s", pszLocalPackage, szInfo, 0);
 					lbDownloadRc = FALSE;
 				}
@@ -917,6 +907,11 @@ DWORD CConEmuUpdate::CheckProcInt()
 	lbExecuteRc = TRUE;
 
 wrap:
+	if (!lbExecuteRc && gpConEmu && ms_LastErrorInfo)
+	{
+		gpConEmu->CallMainThread(false, ShowLastError, (LPARAM)this);
+	}
+
 	_ASSERTE(mpsz_DeletePackageFile==NULL);
 	mpsz_DeletePackageFile = NULL;
 	if (pszLocalPackage)
@@ -1009,8 +1004,8 @@ bool CConEmuUpdate::LoadVersionInfoFromServer()
 
 	// What version user prefers?
 	_wcscpy_c(szSection, countof(szSection),
-		(mp_Set->isUpdateUseBuilds==1) ? sectionConEmuStable :
-		(mp_Set->isUpdateUseBuilds==3) ? sectionConEmuPreview
+		(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? sectionConEmuStable
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? sectionConEmuPreview
 		: sectionConEmuDevel);
 	_wcscpy_c(szItem, countof(szItem), (mp_Set->UpdateDownloadSetup()==1) ? L"location_exe" : L"location_arc");
 
@@ -1123,7 +1118,7 @@ wchar_t* CConEmuUpdate::CreateBatchFile(LPCWSTR asPackage)
 	LPCWSTR pszFormat = NULL;
 	size_t cchCmdMax = 0;
 
-	wchar_t szPID[16]; _wsprintf(szPID, SKIPLEN(countof(szPID)) L"%u", GetCurrentProcessId());
+	wchar_t szPID[16]; swprintf_c(szPID, L"%u", GetCurrentProcessId());
 	// Setupper bitness will be corrected in mp_Set->UpdateExeCmdLine
 	wchar_t szCPU[4]; wcscpy_c(szCPU, WIN3264TEST(L"x86",L"x64"));
 
@@ -1429,7 +1424,7 @@ wchar_t* CConEmuUpdate::CreateTempFile(LPCWSTR asDir, LPCWSTR asFileNameTempl, H
 	{
 		_wcscpy_c(pszFilePart, MAX_PATH, szName);
 		if (i)
-			_wsprintf(pszFilePart+_tcslen(pszFilePart), SKIPLEN(16) L"(%u)", i);
+			swprintf_c(pszFilePart+_tcslen(pszFilePart), 16/*#SECURELEN*/, L"(%u)", i);
 		_wcscat_c(pszFilePart, MAX_PATH, pszExt);
 
 		SECURITY_ATTRIBUTES sec = {sizeof(sec), NULL, TRUE};
@@ -1594,7 +1589,7 @@ void CConEmuUpdate::ReportErrorInt(wchar_t* asErrorInfo)
 	// Append error
 	{
 		wchar_t szTime[40] = L""; SYSTEMTIME st = {}; GetLocalTime(&st);
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"\r\n%u-%02u-%02u %u:%02u:%02u.%03u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+		swprintf_c(szTime, L"\r\n%u-%02u-%02u %u:%02u:%02u.%03u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
 		MSectionLockSimple CS;
 		if (CS.Lock(mps_ErrorLock, 5000))
@@ -1651,7 +1646,7 @@ void CConEmuUpdate::ReportError(LPCWSTR asFormat, DWORD nErrCode)
 	wchar_t* pszErrInfo = (wchar_t*)malloc(cchMax*sizeof(wchar_t));
 	if (pszErrInfo)
 	{
-		_wsprintf(pszErrInfo, SKIPLEN(cchMax) asFormat, nErrCode);
+		swprintf_c(pszErrInfo, cchMax/*#SECURELEN*/, asFormat, nErrCode);
 		ReportErrorInt(pszErrInfo);
 	}
 }
@@ -1665,7 +1660,7 @@ void CConEmuUpdate::ReportError(LPCWSTR asFormat, LPCWSTR asArg, DWORD nErrCode)
 	wchar_t* pszErrInfo = (wchar_t*)malloc(cchMax*sizeof(wchar_t));
 	if (pszErrInfo)
 	{
-		_wsprintf(pszErrInfo, SKIPLEN(cchMax) asFormat, asArg, nErrCode);
+		swprintf_c(pszErrInfo, cchMax/*#SECURELEN*/, asFormat, asArg, nErrCode);
 		ReportErrorInt(pszErrInfo);
 	}
 }
@@ -1679,7 +1674,7 @@ void CConEmuUpdate::ReportError(LPCWSTR asFormat, LPCWSTR asArg1, LPCWSTR asArg2
 	wchar_t* pszErrInfo = (wchar_t*)malloc(cchMax*sizeof(wchar_t));
 	if (pszErrInfo)
 	{
-		_wsprintf(pszErrInfo, SKIPLEN(cchMax) asFormat, asArg1, asArg2, nErrCode);
+		swprintf_c(pszErrInfo, cchMax/*#SECURELEN*/, asFormat, asArg1, asArg2, nErrCode);
 		ReportErrorInt(pszErrInfo);
 	}
 }
@@ -1870,8 +1865,10 @@ int CConEmuUpdate::QueryConfirmation(CConEmuUpdate::UpdateStep step)
 				cchMax = 200;
 				pszMsg = (wchar_t*)malloc(cchMax*sizeof(*pszMsg));
 
-				_wsprintf(pszMsg, SKIPLEN(cchMax) L"New %s version available: %s\nClick here to download",
-					(mp_Set->isUpdateUseBuilds==1) ? CV_STABLE : (mp_Set->isUpdateUseBuilds==3) ? CV_PREVIEW : CV_DEVEL,
+				swprintf_c(pszMsg, cchMax/*#SECURELEN*/, L"New %s version available: %s\nClick here to download",
+					(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? CV_STABLE
+					: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? CV_PREVIEW
+					: CV_DEVEL,
 					ms_NewVersion);
 				Icon.ShowTrayIcon(pszMsg, tsa_Source_Updater);
 
@@ -1954,11 +1951,13 @@ int CConEmuUpdate::QueryConfirmationDownload()
 	else
 		tsk.pszMainIcon = MAKEINTRESOURCE(IDI_ICON1);
 
-	_wsprintf(szNewVer, SKIPLEN(countof(szNewVer)) L"New %s version available: %s",
-		(mp_Set->isUpdateUseBuilds==1) ? CV_STABLE : (mp_Set->isUpdateUseBuilds==3) ? CV_PREVIEW : CV_DEVEL, ms_NewVersion);
+	swprintf_c(szNewVer, L"New %s version available: %s",
+		(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? CV_STABLE
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? CV_PREVIEW
+		: CV_DEVEL, ms_NewVersion);
 	tsk.pszMainInstruction = szNewVer;
 
-	_wsprintf(szWWW, SKIPLEN(countof(szWWW)) L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
+	swprintf_c(szWWW, L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
 	tsk.pszFooter = szWWW;
 
 	pszMsg = CreateVersionOnServerInfo(true);
@@ -1991,8 +1990,10 @@ MsgOnly:
 	cchMax = 300 + (mpsz_ConfirmSource ? _tcslen(mpsz_ConfirmSource) : 0);
 	pszMsg = (wchar_t*)malloc(cchMax*sizeof(*pszMsg));
 
-	_wsprintf(pszMsg, SKIPLEN(cchMax) L"New %s version available: %s\n\nVersions on server\n%s\n\n%s\n%s\n\nDownload?",
-		(mp_Set->isUpdateUseBuilds==1) ? CV_STABLE : (mp_Set->isUpdateUseBuilds==3) ? CV_PREVIEW : CV_DEVEL,
+	swprintf_c(pszMsg, cchMax/*#SECURELEN*/, L"New %s version available: %s\n\nVersions on server\n%s\n\n%s\n%s\n\nDownload?",
+		(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? CV_STABLE
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? CV_PREVIEW
+		: CV_DEVEL,
 		ms_NewVersion,
 		ms_VerOnServer,
 		pszServerPath,
@@ -2037,12 +2038,12 @@ int CConEmuUpdate::QueryConfirmationUpdate()
 
 	tsk.pszMainInstruction = L"Close ConEmu window and update?";
 
-	_wsprintf(szWWW, SKIPLEN(countof(szWWW)) L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
+	swprintf_c(szWWW, L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
 	tsk.pszFooter = szWWW;
 
-	_wsprintf(szMsg, SKIPLEN(countof(szMsg)) L"Close and update\nto %s version %s%s",
-		mb_DroppedMode ? L"dropped" : (mp_Set->isUpdateUseBuilds==1) ? L"new " CV_STABLE
-		: (mp_Set->isUpdateUseBuilds==3) ? L"new " CV_PREVIEW : L"new " CV_DEVEL, ms_NewVersion,
+	swprintf_c(szMsg, L"Close and update\nto %s version %s%s",
+		mb_DroppedMode ? L"dropped" : (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? L"new " CV_STABLE
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? L"new " CV_PREVIEW : L"new " CV_DEVEL, ms_NewVersion,
 		(mp_Set->UpdateDownloadSetup() == 1) ? (mp_Set->isSetup64 ? L".x64" : L".x86") : L" (7-Zip)");
 	btns[0].nButtonID  = IDYES;    btns[0].pszButtonText = szMsg;
 	btns[1].nButtonID  = IDNO; btns[1].pszButtonText = L"Postpone\nupdate will be started when you close ConEmu window";
@@ -2061,12 +2062,12 @@ int CConEmuUpdate::QueryConfirmationUpdate()
 
 MsgOnly:
 
-	_wsprintf(szMsg, SKIPLEN(countof(szMsg))
+	swprintf_c(szMsg,
 		L"Do you want to close ConEmu and\n"
 		L"update to %s version %s?\n\n"
 		L"Press <No> to postpone.",
-		mb_DroppedMode ? L"dropped" : (mp_Set->isUpdateUseBuilds==1) ? L"new " CV_STABLE
-		: (mp_Set->isUpdateUseBuilds==3) ? L"new " CV_PREVIEW : L"new " CV_DEVEL, ms_NewVersion);
+		mb_DroppedMode ? L"dropped" : (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? L"new " CV_STABLE
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? L"new " CV_PREVIEW : L"new " CV_DEVEL, ms_NewVersion);
 
 	iBtn = MsgBox(szMsg, MB_SETFOREGROUND|MB_SYSTEMMODAL|MB_ICONQUESTION|MB_YESNOCANCEL, ms_DefaultTitle, NULL, false);
 
@@ -2093,8 +2094,9 @@ int CConEmuUpdate::QueryConfirmationNoNewVer()
 	LPCWSTR pszServerPath = L"";
 	wchar_t* pszBtn2 = NULL;
 
-	_wsprintf(szCurVer, SKIPLEN(countof(szCurVer)) L"No newer %s version is available",
-		(mp_Set->isUpdateUseBuilds==1) ? CV_STABLE : (mp_Set->isUpdateUseBuilds==3) ? CV_PREVIEW : CV_DEVEL);
+	swprintf_c(szCurVer, L"No newer %s version is available",
+		(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? CV_STABLE
+		: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? CV_PREVIEW : CV_DEVEL);
 
 	if (gOSVer.dwMajorVersion < 6)
 		goto MsgOnly;
@@ -2107,7 +2109,7 @@ int CConEmuUpdate::QueryConfirmationNoNewVer()
 
 	tsk.pszMainInstruction = szCurVer;
 
-	_wsprintf(szWWW, SKIPLEN(countof(szWWW)) L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
+	swprintf_c(szWWW, L"<a href=\"%s\">%s</a>", gsWhatsNew, szWhatsNewLabel);
 	tsk.pszFooter = szWWW;
 
 	szInfo = CreateVersionOnServerInfo(true);
@@ -2191,7 +2193,8 @@ wchar_t* CConEmuUpdate::GetCurVerInfo()
 	if (lstrcmpi(ms_NewVersion, ms_OurVersion) > 0)
 	{
 		pszVerInfo = lstrmerge(L"Obsolete, recommended update to ", ms_NewVersion,
-			(mp_Set->isUpdateUseBuilds==1) ? L" " CV_STABLE : (mp_Set->isUpdateUseBuilds==3) ? L" " CV_PREVIEW : L" " CV_DEVEL);
+			(mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Stable) ? L" " CV_STABLE
+			: (mp_Set->isUpdateUseBuilds == ConEmuUpdateSettings::Builds::Preview) ? L" " CV_PREVIEW : L" " CV_DEVEL);
 	}
 	else if (ms_CurVerInfo[0])
 		pszVerInfo = lstrdup(ms_CurVerInfo);
@@ -2213,11 +2216,11 @@ void CConEmuUpdate::WaitAllInstances()
 		{
 			bStillExists = true;
 			DWORD nPID; GetWindowThreadProcessId(hFind, &nPID);
-			wchar_t szPID[16];
+			wchar_t szPID[16]; ultow_s(nPID, szPID, 10);
 			lstrmerge(&szMessage.ms_Val,
 				L"\n",
 				CLngRc::getRsrc(lng_UpdateCloseMsg2/*"ConEmu still running:"*/), L" ",
-				L"PID=", _ultow(nPID, szPID, 10));
+				L"PID=", szPID);
 		}
 
 		if (!bStillExists)

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,7 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define APPDISTINCTBACKGROUND
 
 #include "../common/defines.h"
-#include <windows.h>
+
 #include <Shlwapi.h>
 //#include <vector>
 //#if !defined(__GNUC__)
@@ -50,6 +50,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/Memory.h"
 #include "../common/MAssert.h"
 #include "../common/MStrDup.h"
+#include "../common/CEStr.h"
 
 #if defined(__GNUC__) && !defined(__MINGW64_VERSION_MAJOR)
 #define wmemmove_s(d,ds,s,ss) wmemmove(d,s,ss)
@@ -80,10 +81,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MOUSE_DRAGPANEL_SPLIT 0x0400
 #define MOUSE_DRAGPANEL_LEFT  0x0800
 #define MOUSE_DRAGPANEL_RIGHT 0x1000
-#define MOUSE_DRAGPANEL_SHIFT 0x2000
+#define MOUSE_DRAGPANEL_BOTH  (MOUSE_DRAGPANEL_LEFT|MOUSE_DRAGPANEL_RIGHT)
 #define MOUSE_WINDOW_DRAG     0x4000
 
-#define MOUSE_DRAGPANEL_ALL (MOUSE_DRAGPANEL_SPLIT|MOUSE_DRAGPANEL_LEFT|MOUSE_DRAGPANEL_RIGHT|MOUSE_DRAGPANEL_SHIFT)
+#define MOUSE_DRAGPANEL_ALL (MOUSE_DRAGPANEL_SPLIT|MOUSE_DRAGPANEL_LEFT|MOUSE_DRAGPANEL_RIGHT|MOUSE_DRAGPANEL_BOTH)
 
 #define MAX_TITLE_SIZE 0x400
 
@@ -125,19 +126,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ACTIVATE_TAB_CRITICAL  1000
 #define POST_UPDATE_TIMEOUT   2000
 
-// Undocumented console message
-#define WM_SETCONSOLEINFO           (WM_USER+201)
-// and others
-#define SC_RESTORE_SECRET 0x0000f122
-#define SC_MAXIMIZE_SECRET 0x0000f032
-#define SC_PROPERTIES_SECRET 0x0000fff7
-#define SC_MARK_SECRET 0x0000fff2
-#define SC_COPY_ENTER_SECRET 0x0000fff0
-#define SC_PASTE_SECRET 0x0000fff1
-#define SC_SELECTALL_SECRET 0x0000fff5
-#define SC_SCROLL_SECRET 0x0000fff3
-#define SC_FIND_SECRET 0x0000fff4
-#define SC_SYSMENUPOPUP_SECRET 0x0000f093
+// Undocumented messages
+#include "ConsoleMessages.h"
 
 #define MAX_CMD_HISTORY 100
 #define MAX_CMD_HISTORY_SHOW 16
@@ -167,6 +157,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#define SafeCloseHandle(h) { if ((h)!=NULL) { HANDLE hh = (h); (h) = NULL; if (hh!=INVALID_HANDLE_VALUE) CloseHandle(hh); } }
 //#define SafeFree(p) { if ((p)!=NULL) { LPVOID pp = (p); (p) = NULL; free(pp); } }
 
+#define isWheelEvent(messg) ((messg == WM_MOUSEWHEEL) || (messg == WM_MOUSEHWHEEL/*0x020E*/))
+
 #ifdef MSGLOGGER
 BOOL POSTMESSAGE(HWND h,UINT m,WPARAM w,LPARAM l,BOOL extra);
 LRESULT SENDMESSAGE(HWND h,UINT m,WPARAM w,LPARAM l);
@@ -191,7 +183,7 @@ void DebugLogMessage(HWND h, UINT m, WPARAM w, LPARAM l, int posted, BOOL extra)
 #endif
 LPCWSTR GetMouseMsgName(UINT msg);
 
-void LogString(LPCWSTR asInfo, bool abWriteTime = true, bool abWriteLine = true);
+bool LogString(LPCWSTR asInfo, bool abWriteTime = true, bool abWriteLine = true);
 
 //#if !defined(__GNUC__)
 //#pragma warning (disable : 4005)
@@ -249,8 +241,8 @@ void EscapeChar(bool bSet, LPCWSTR& pszSrc, LPWSTR& pszDst);
 //#pragma warning(disable: 4311) // 'type cast' : pointer truncation from 'HBRUSH' to 'BOOL'
 
 wchar_t* getFocusedExplorerWindowPath();
-wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote);
-wchar_t* MakeWinPath(LPCWSTR asAnyPath);
+wchar_t* DupCygwinPath(LPCWSTR asWinPath, bool bAutoQuote, LPCWSTR asMntPrefix = NULL);
+LPCWSTR MakeWinPath(LPCWSTR asAnyPath, LPCWSTR pszMntPrefix, CEStr& szWinPath);
 wchar_t* MakeStraightSlashPath(LPCWSTR asWinPath);
 bool FixDirEndSlash(wchar_t* rsPath);
 enum CESelectFileFlags
@@ -263,7 +255,7 @@ enum CESelectFileFlags
 wchar_t* SelectFolder(LPCWSTR asTitle, LPCWSTR asDefFolder = NULL, HWND hParent = ghWnd, DWORD/*CESelectFileFlags*/ nFlags = sff_AutoQuote /*bool bAutoQuote = true, bool bCygwin = false*/);
 wchar_t* SelectFile(LPCWSTR asTitle, LPCWSTR asDefFile = NULL, LPCWSTR asDefPath = NULL, HWND hParent = ghWnd, LPCWSTR asFilter = NULL, DWORD/*CESelectFileFlags*/ nFlags = sff_AutoQuote /*bool abAutoQuote = true, bool bCygwin = false, bool bSaveNewFile = false*/);
 
-#include "../common/RConStartArgs.h"
+#include "../common/RConStartArgsEx.h"
 
 
 bool isKey(DWORD wp,DWORD vk);
@@ -274,17 +266,51 @@ void RaiseTestException();
 ///| Registry |///////////////////////////////////////////////////////////
 //------------------------------------------------------------------------
 
+enum class StorageType : int
+{
+	BASIC,
+	REG,
+	XML,
+	INI,
+};
+
 struct SettingsStorage
 {
-	wchar_t szType[8]; // CONEMU_CONFIGTYPE_REG, CONEMU_CONFIGTYPE_XML
-	LPCWSTR pszFile;   // NULL или полный путь к xml-файлу
-	LPCWSTR pszConfig; // Имя конфигурации
+	StorageType Type = StorageType::BASIC;
+	LPCWSTR     File = nullptr;   // NULL or full path to storage file
+	LPCWSTR     Config = nullptr; // Name of configuration
+	bool        ReadOnly = false; // If xml file is write-prohibited (created in "C:\Program Files"?)
+
+	static LPCWSTR getTypeName(const StorageType t)
+	{
+		return (t == StorageType::REG) ? L"[reg]"
+			: (t == StorageType::XML) ? L"[xml]"
+			: (t == StorageType::INI) ? L"[ini]"
+			: L"[basic]";
+	};
+	LPCWSTR getTypeName() const
+	{
+		return  getTypeName(Type);
+	};
+
+	bool isFileType() const
+	{
+		return (Type == StorageType::XML || Type == StorageType::INI);
+	};
+
+	bool hasFile() const
+	{
+		return isFileType() && (File && *File);
+	};
+
+	bool hasConfig() const
+	{
+		return (Config && *Config);
+	};
 };
 
 #define CONEMU_ROOT_KEY L"Software\\ConEmu"
-#define CONEMU_CONFIGTYPE_REG L"[reg]"
-#define CONEMU_CONFIGTYPE_XML L"[xml]"
-#define CONEMU_CONFIGTYPE_INI L"[ini]"
+
 
 #define APP_MODEL_ID_PREFIX L"Maximus5.ConEmu."
 
@@ -356,7 +382,9 @@ enum ConEmuMargins
 	CEM_FRAMEONLY = 0x0001,
 	CEM_CAPTION = 0x0002,
 	CEM_FRAMECAPTION = (CEM_FRAMEONLY|CEM_CAPTION),
+	#if 0
 	CEM_CLIENTSHIFT = 0x0004, // Если клиентская часть "расширена" на рамку
+	#endif
 	// Высота таба (пока только .top)
 	CEM_TAB = 0x0010,
 	CEM_TABACTIVATE = 0x1010,   // Принудительно считать, что таб есть (при включении таба)
@@ -365,6 +393,9 @@ enum ConEmuMargins
 	CEM_SCROLL = 0x0020, // Если полоса прокрутки всегда (!!!) видна - то ее ширина/высота
 	CEM_STATUS = 0x0040, // Высота строки статуса
 	CEM_PAD = 0x0080, // Ширина "отступа" от краев
+	CEM_WIN10FRAME = 0x0100, // Specially created by MS frame margins in Win10
+	CEM_VISIBLE_FRAME = 0x0200, // Takes into account HideCaptionAlwaysFrame() and CEM_WIN10FRAME
+	CEM_INVISIBLE_FRAME = 0x400, // Takes into account HideCaptionAlwaysFrame() and CEM_WIN10FRAME
 	// Маска для получения всех отступов
 	CEM_ALL_MARGINS = CEM_FRAMECAPTION|CEM_TAB|/*CEM_SCROLL|*/CEM_STATUS/*|CEM_PAD*/,
 	CEM_CLIENT_MARGINS = CEM_TAB|/*CEM_SCROLL|*/CEM_STATUS/*|CEM_PAD*/,
@@ -390,8 +421,8 @@ enum ConEmuRect
 //	CER_CORRECTED   // скорректированное положение (чтобы окно было видно на текущем мониторе)
 };
 
-enum ConEmuBorders
-{
+typedef DWORD ConEmuBorders;
+const ConEmuBorders
 	CEB_TOP = 1,
 	CEB_LEFT = 2,
 	CEB_BOTTOM = 4,
@@ -399,14 +430,16 @@ enum ConEmuBorders
 	CEB_ALL = CEB_TOP|CEB_LEFT|CEB_BOTTOM|CEB_RIGHT,
 	// Next means "place window OnScreen when it out of screen totally"
 	CEB_ALLOW_PARTIAL = 16,
-};
+	// None of above
+	CEB_NONE = 0;
 
-enum DragPanelBorder
+enum class DragPanelBorder : int
 {
-	DPB_NONE = 0,
-	DPB_SPLIT,    // драг влево/вправо
-	DPB_LEFT,     // высота левой
-	DPB_RIGHT,    // высота правой
+	None,
+	Split,    // Change width of left/right panels
+	Left,     // Left panel height
+	Right,    // Right panel height
+	Both,     // Change height of both panels
 };
 
 enum TrackMenuPlace
@@ -434,6 +467,14 @@ enum ConEmuWindowMode
 };
 
 LPCWSTR GetWindowModeName(ConEmuWindowMode wm);
+
+// Allow or not to convert pasted Windows path into Posix notation
+typedef BYTE PosixPasteMode;
+const PosixPasteMode
+	pxm_Convert    = 1,  // always try to convert
+	pxm_Intact     = 2,  // never convert
+	pxm_Auto       = 0   // autoselect on certain conditions and m_Args.pszMntRoot value
+;
 
 enum ExpandTextRangeType
 {
@@ -573,14 +614,14 @@ union CESize
 		switch (Style)
 		{
 		case ss_Pixels:
-			_wsprintf(TempSZ, SKIPLEN(countof(TempSZ)) L"%ipx", Value);
+			swprintf_c(TempSZ, L"%ipx", Value);
 			break;
 		case ss_Percents:
-			_wsprintf(TempSZ, SKIPLEN(countof(TempSZ)) L"%i%%", Value);
+			swprintf_c(TempSZ, L"%i%%", Value);
 			break;
 		//case ss_Standard:
 		default:
-			_wsprintf(TempSZ, SKIPLEN(countof(TempSZ)) L"%i", Value);
+			swprintf_c(TempSZ, L"%i", Value);
 		}
 		return TempSZ;
 	};
@@ -670,6 +711,24 @@ union CESize
 		// Done
 		return Set(IsWidth, NewStyle, NewValue);
 	};
+};
+
+// this is NOT a bitmask field!
+// only exact values are allowed!
+enum EnumVConFlags
+{
+	evf_None     = 0,
+	evf_Active   = 1,
+	evf_Visible  = 2,
+	evf_GroupSet = 3, // Consoles with flag vf_GroupSet
+	evf_All      = 4,
+};
+
+enum GroupInputCmd
+{
+	gic_Switch  = 0,
+	gic_Enable  = 1,
+	gic_Disable = 2,
 };
 
 

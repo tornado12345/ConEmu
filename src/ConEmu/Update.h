@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2016 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,13 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define UPD_PROGRESS_DOWNLOAD_START   10
 #define UPD_PROGRESS_CONFIRM_UPDATE   98
 #define UPD_PROGRESS_EXIT_AND_UPDATE  99
-
-#define CV_STABLE  L"stable"
-#define CV_PREVIEW L"preview"
-#define CV_DEVEL   L"alpha"
-#define CV_Stable  L"stable"
-#define CV_Preview L"preview"
-#define CV_Devel   L"alpha"
 
 struct ConEmuUpdateSettings;
 class CConEmuUpdate;

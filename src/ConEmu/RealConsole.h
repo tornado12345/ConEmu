@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SB_HALFPAGEUP   32
 #define SB_HALFPAGEDOWN 33
 #define SB_GOTOCURSOR   34
+#define SB_PROMPTUP     35
+#define SB_PROMPTDOWN   36
 
 #define CES_CMDACTIVE      0x01
 #define CES_TELNETACTIVE   0x02
@@ -68,20 +70,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CES_OPER_ERROR   0x040000
 //... and so on
 
-//// Undocumented console message
-//#define WM_SETCONSOLEINFO           (WM_USER+201)
-//// and others
-//#define SC_RESTORE_SECRET 0x0000f122
-//#define SC_MAXIMIZE_SECRET 0x0000f032
-//#define SC_PROPERTIES_SECRET 0x0000fff7
-//#define SC_MARK_SECRET 0x0000fff2
-//#define SC_COPY_ENTER_SECRET 0x0000fff0
-//#define SC_PASTE_SECRET 0x0000fff1
-//#define SC_SELECTALL_SECRET 0x0000fff5
-//#define SC_SCROLL_SECRET 0x0000fff3
-//#define SC_FIND_SECRET 0x0000fff4
-
-//#define MAX_TITLE_SIZE 0x400
 
 #define FAR_ALIVE_TIMEOUT gpSet->nFarHourglassDelay //1000
 
@@ -90,6 +78,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CONSOLE_DBLCLICK_SELECTION 0x0400 // двойным кликом выделено слово, пропустить WM_LBUTTONUP
 #define CONSOLE_LEFT_ANCHOR 0x0800 // If selection was started rightward
 #define CONSOLE_RIGHT_ANCHOR 0x1000 // If selection was started leftward
+#define CONSOLE_EXPANDED 0x2000 // Support Shift+LClick & Shift+LClick to mark start and end of the selection
 #define CONSOLE_KEYMOD_MASK 0xFF000000 // Здесь хранится модификатор, которым начали выделение мышкой
 
 #define PROCESS_WAIT_START_TIME RELEASEDEBUGTEST(1000,1000)
@@ -101,50 +90,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CONSOLEINACTIVERGNTIMEOUT 500
 #define SERVERCLOSETIMEOUT 2000
 #define UPDATESERVERACTIVETIMEOUT 2500
-
-/*#pragma pack(push, 1)
-
-
-//
-//  Structure to send console via WM_SETCONSOLEINFO
-//
-typedef struct _CONSOLE_INFO
-{
-    ULONG       Length;
-    COORD       ScreenBufferSize;
-    COORD       WindowSize;
-    ULONG       WindowPosX;
-    ULONG       WindowPosY;
-
-    COORD       FontSize;
-    ULONG       FontFamily;
-    ULONG       FontWeight;
-    WCHAR       FaceName[32];
-
-    ULONG       CursorSize;
-    ULONG       FullScreen;
-    ULONG       QuickEdit;
-    ULONG       AutoPosition;
-    ULONG       InsertMode;
-
-    USHORT      ScreenColors;
-    USHORT      PopupColors;
-    ULONG       HistoryNoDup;
-    ULONG       HistoryBufferSize;
-    ULONG       NumberOfHistoryBuffers;
-
-    COLORREF    ColorTable[16];
-
-    ULONG       CodePage;
-    HWND        Hwnd;
-
-    WCHAR       ConsoleTitle[0x100];
-
-} CONSOLE_INFO;
-
-#pragma pack(pop)*/
-
-//#include "../common/ProcList.h"
 
 struct ConProcess
 {
@@ -162,50 +107,6 @@ struct ConProcess
 	wchar_t Name[64]; // чтобы полная инфа об ошибке влезала
 };
 
-//#include <pshpack1.h>
-//typedef struct tag_CharAttr
-//{
-//	TODO("OPTIMIZE: Заменить бы битовые поля на один DWORD, в котором хранить некий общий ИД стиля, заполняемый при формировании буфера");
-//	union {
-//		// Собственно цвета/шрифты
-//		struct {
-//			unsigned int crForeColor : 24; // чтобы в ui64 поместился и nFontIndex
-//			unsigned int nFontIndex : 8; // 0 - normal, 1 - bold, 2 - italic
-//			unsigned int crBackColor : 32; // Старший байт зарезервируем, вдруг для прозрачности понадобится
-//			unsigned int nForeIdx : 8;
-//			unsigned int nBackIdx : 8; // может понадобиться для ExtendColors
-//			unsigned int crOrigForeColor : 32;
-//			unsigned int crOrigBackColor : 32; // Реальные цвета в консоли, crForeColor и crBackColor могут быть изменены колорером
-//			// вспомогательные флаги
-//			unsigned int bDialog : 1;
-//			unsigned int bDialogVBorder : 1;
-//			unsigned int bDialogCorner : 1;
-//			unsigned int bSomeFilled : 1;
-//			unsigned int bTransparent : 1; // UserScreen
-//		};
-//		// А это для сравнения (поиск изменений)
-//		unsigned __int64 All;
-//		// для сравнения, когда фон не важен
-//		unsigned int ForeFont;
-//	};
-//	//
-//	//DWORD dwAttrubutes; // может когда понадобятся дополнительные флаги...
-//	//
-//    ///**
-//    // * Used exclusively by ConsoleView to append annotations to each character
-//    // */
-//    //AnnotationInfo annotationInfo;
-//} CharAttr;
-//#include <poppack.h>
-//
-//inline bool operator==(const CharAttr& s1, const CharAttr& s2)
-//{
-//    return s1.All == s2.All;
-//}
-//
-
-//#define MAX_SERVER_THREADS 3
-//#define MAX_THREAD_PACKETS 100
 
 class CVirtualConsole;
 class CRgnDetect;
@@ -253,6 +154,7 @@ enum RConStartState
 	rss_StartingServer,
 	rss_ServerStarted,
 	rss_ServerConnected,
+	rss_DataAquired,
 	rss_ProcessActive,
 };
 
@@ -282,10 +184,10 @@ class CRealConsole
 
 	public:
 
-		uint TextWidth();
-		uint TextHeight();
-		uint BufferHeight(uint nNewBufferHeight=0);
-		uint BufferWidth();
+		unsigned TextWidth();
+		unsigned TextHeight();
+		unsigned BufferHeight(unsigned nNewBufferHeight=0);
+		unsigned BufferWidth();
 		void OnBufferHeight();
 
 	private:
@@ -294,6 +196,7 @@ class CRealConsole
 		BYTE    mn_TextColorIdx, mn_BackColorIdx, mn_PopTextColorIdx, mn_PopBackColorIdx;
 		HKEY    PrepareConsoleRegistryKey(LPCWSTR asSubKey);
 		void    PrepareDefaultColors(BYTE& nTextColorIdx, BYTE& nBackColorIdx, BYTE& nPopTextColorIdx, BYTE& nPopBackColorIdx, bool bUpdateRegistry = false, HKEY hkConsole = NULL);
+		void    PrepareNewConArgs();
 	public:
 		void    PrepareDefaultColors();
 	private:
@@ -310,6 +213,7 @@ class CRealConsole
 			bool    bChildConAttached;  // TRUE if ChildGui started CONSOLE application (CommandPromptPortable.exe). Don't confuse with Putty/plink-proxy.
 			bool    bInGuiAttaching;
 			bool    bInSetFocus;
+			bool    bCreateHidden;
 			DWORD   nGuiWndStyle, nGuiWndStylEx; // Исходные стили окна ДО подцепления в ConEmu
 			ConProcess Process;
 			CESERVER_REQ_PORTABLESTARTED paf;
@@ -336,6 +240,12 @@ class CRealConsole
 			wchar_t szText[80];
 		} m_ConStatus;
 
+		struct {
+			SHORT nLastHeight = 0;
+			SHORT nLastWndHeight = 0;
+			SHORT nLastTop = 0;
+		} m_ScrollStatus;
+
 	public:
 		HWND    ConWnd();  // HWND RealConsole
 		HWND    GetView(); // HWND отрисовки
@@ -356,15 +266,16 @@ class CRealConsole
 		bool    isGuiOverCon();
 		void    StoreGuiChildRect(LPRECT prcNewPos);
 		void    SetGuiMode(DWORD anFlags, HWND ahGuiWnd, DWORD anStyle, DWORD anStyleEx, LPCWSTR asAppFileName, DWORD anAppPID, int anBits, RECT arcPrev);
-		void    SetSplitProperties(RConStartArgs::SplitType aSplitType, UINT aSplitValue, UINT aSplitPane);
+		void    SetSplitProperties(RConStartArgsEx::SplitType aSplitType, UINT aSplitValue, UINT aSplitPane);
 		static void CorrectGuiChildRect(DWORD anStyle, DWORD anStyleEx, RECT& rcGui, LPCWSTR pszExeName);
 		static bool CanCutChildFrame(LPCWSTR pszExeName);
 
 		CRealConsole(CVirtualConsole* pVCon, CConEmuMain* pOwner);
-		bool Construct(CVirtualConsole* apVCon, RConStartArgs *args);
+		bool Construct(CVirtualConsole* apVCon, RConStartArgsEx *args);
 		~CRealConsole();
 
 		CVirtualConsole* VCon();
+		CConEmuMain* Owner();
 
 		BYTE GetConsoleKeyShortcuts() { return this ? m_ConsoleKeyShortcuts : 0; };
 		BYTE GetDefaultTextColorIdx() { return this ? (mn_TextColorIdx & 0xF) : 7; };
@@ -400,8 +311,12 @@ class CRealConsole
 		void OnKeysSending();
 	protected:
 		friend class CAltNumpad;
-		bool PostString(wchar_t* pszChars, size_t cchCount);
+		bool PostString(wchar_t* pszChars, size_t cchCount, bool allow_group);
 	private:
+		bool ChangePromptPosition(const AppSettings* pApp, COORD crMouse);
+		bool IsPromptActionAllowed(bool bFromMouse, const AppSettings* pApp);
+		int  EvalPromptCtrlBSCount(const AppSettings* pApp);
+		int  EvalPromptLeftRightCount(const AppSettings* pApp, COORD crMouse, WORD& vkKey);
 		void PostMouseEvent(UINT messg, WPARAM wParam, COORD crMouse, bool abForceSend = false);
 	public:
 		bool OpenConsoleEventPipe();
@@ -449,6 +364,7 @@ class CRealConsole
 		TermEmulationType GetTermType();
 		bool GetBracketedPaste();
 		bool GetAppCursorKeys();
+		LPCWSTR GetMntPrefix();
 		bool ProcessXtermSubst(const INPUT_RECORD& r);
 		void ProcessKeyboard(UINT messg, WPARAM wParam, LPARAM lParam, const wchar_t *pszChars);
 		void OnKeyboardIme(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
@@ -462,6 +378,7 @@ class CRealConsole
 		void StopThread(bool abRecreating = false);
 		bool StartStopTermMode(TermModeCommand mode, ChangeTermAction action);
 		void StartStopXTerm(DWORD nPID, bool xTerm);
+		void StartStopXMouse(DWORD nPID, TermMouseMode MouseMode);
 		void StartStopBracketedPaste(DWORD nPID, bool bUseBracketedPaste);
 		void StartStopAppCursorKeys(DWORD nPID, bool bAppCursorKeys);
 		void PortableStarted(CESERVER_REQ_PORTABLESTARTED* pStarted);
@@ -478,6 +395,7 @@ class CRealConsole
 		bool QueryPromptStart(COORD *cr);
 		void QueryTermModes(wchar_t* pszInfo, int cchMax, bool bFull);
 		void QueryRConModes(wchar_t* pszInfo, int cchMax, bool bFull);
+		void QueryCellInfo(wchar_t* pszInfo, int cchMax);
 		void GetConsoleCursorInfo(CONSOLE_CURSOR_INFO *ci, COORD *cr = NULL);
 		DWORD GetConsoleCP();
 		DWORD GetConsoleOutputCP();
@@ -494,6 +412,7 @@ class CRealConsole
 		void SetProgramStatus(DWORD nDrop, DWORD nSet);
 		void SetFarStatus(DWORD nNewFarStatus);
 		bool GetProcessInformation(DWORD nPID, ConProcess* rpProcess = NULL);
+		ConEmuAnsiLog GetAnsiLogInfo();
 		LPCWSTR GetConsoleInfo(LPCWSTR asWhat, CEStr& rsInfo);
 		LPCWSTR GetActiveProcessInfo(CEStr& rsInfo);
 		DWORD GetActivePID(ConProcess* rpProcess = NULL);
@@ -502,6 +421,7 @@ class CRealConsole
 		DWORD GetRunningPID();
 		LPCWSTR GetActiveProcessName();
 		CEActiveAppFlags GetActiveAppFlags();
+		DWORD GetActiveDlgFlags();
 		int GetActiveAppSettingsId(bool bReload = false);
 	private:
 		int GetDefaultAppSettingsId();
@@ -521,6 +441,8 @@ class CRealConsole
 		bool GetConsoleSelectionInfo(CONSOLE_SELECTION_INFO *sel);
 		bool isConSelectMode();
 		bool isCygwinMsys();
+		bool isUnixFS();
+		bool isPosixConvertAllowed();
 		bool isFar(bool abPluginRequired=false);
 		bool isFarBufferSupported();
 		bool isSendMouseAllowed();
@@ -552,15 +474,15 @@ class CRealConsole
 		bool AttachConemuC(HWND ahConWnd, DWORD anConemuC_PID, const CESERVER_REQ_STARTSTOP* rStartStop, CESERVER_REQ_SRVSTARTSTOPRET& pRet);
 		void QueryStartStopRet(CESERVER_REQ_SRVSTARTSTOPRET& pRet);
 		void SetInitEnvCommands(CESERVER_REQ_SRVSTARTSTOPRET& pRet);
-		bool RecreateProcess(RConStartArgs *args);
+		bool RecreateProcess(RConStartArgsEx *args);
 		void GetConsoleData(wchar_t* pChar, CharAttr* pAttr, int nWidth, int nHeight, ConEmuTextRange& etr);
 		void ResetHighlightHyperlinks();
 		ExpandTextRangeType GetLastTextRangeType();
 		bool IsFarHyperlinkAllowed(bool abFarRequired);
 	private:
-		bool PreCreate(RConStartArgs *args);
+		bool PreCreate(RConStartArgsEx *args);
 
-		CDpiForDialog* mp_RenameDpiAware;
+		CDpiForDialog* mp_RenameDpiAware = nullptr;
 		static INT_PTR CALLBACK renameProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam);
 	public:
 		bool IsConsoleDataChanged();
@@ -602,11 +524,11 @@ class CRealConsole
 		bool isConsoleClosing();
 		bool isConsoleReady();
 		void OnServerClosing(DWORD anSrvPID, int* pnShellExitCode);
-		void Paste(CEPasteMode PasteMode = pm_Standard, LPCWSTR asText = NULL, bool abNoConfirm = false, bool abCygWin = false);
+		void Paste(CEPasteMode PasteMode = pm_Standard, LPCWSTR asText = NULL, bool abNoConfirm = false, PosixPasteMode posixMode = pxm_Auto);
 		bool Write(LPCWSTR pszText, int nLen = -1, DWORD* pnWritten = NULL);
-		uint isLogging(uint level = 1);
-		void LogString(LPCSTR asText);
-		void LogString(LPCWSTR asText);
+		unsigned isLogging(unsigned level = 1);
+		bool LogString(LPCSTR asText);
+		bool LogString(LPCWSTR asText);
 		bool isActive(bool abAllowGroup);
 		bool isInFocus();
 		bool isFarPanelAllowed();
@@ -618,7 +540,7 @@ class CRealConsole
 		bool isVisible();
 		bool isNtvdm();
 		bool isFixAndCenter(COORD* lpcrConSize = NULL);
-		const RConStartArgs& GetArgs();
+		const RConStartArgsEx& GetArgs();
 		void SetPaletteName(LPCWSTR asPaletteName);
 		LPCWSTR GetCmd(bool bThisOnly = false);
 		LPCWSTR GetStartupDir();
@@ -643,7 +565,7 @@ class CRealConsole
 		void GetStartTime(SYSTEMTIME& st);
 		LPCWSTR GetConsoleStartDir(CEStr& szDir);
 		LPCWSTR GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull);
-		LPCWSTR GetConsoleCurDir(CEStr& szDir);
+		LPCWSTR GetConsoleCurDir(CEStr& szDir, bool NeedRealPath);
 		void GetPanelDirs(CEStr& szActiveDir, CEStr& szPassive);
 
 	public:
@@ -653,7 +575,7 @@ class CRealConsole
 		void SetCursorShape(TermCursorShapes xtermShape);
 		TermCursorShapes GetCursorShape();
 		bool isNeedCursorDraw();
-		bool Detach(bool bPosted = false, bool bSendCloseConsole = false, bool bDontConfirm = false);
+		bool DetachRCon(bool bPosted = false, bool bSendCloseConsole = false, bool bDontConfirm = false);
 		void Unfasten();
 		void AdminDuplicate();
 		const CEFAR_INFO_MAPPING *GetFarInfo(); // FarVer и прочее
@@ -661,7 +583,7 @@ class CRealConsole
 		bool InRecreate();
 		bool GuiAppAttachAllowed(DWORD anServerPID, LPCWSTR asAppFileName, DWORD anAppPID);
 		void ShowPropertiesDialog();
-		void LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = NULL);
+		bool LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = NULL);
 
 		void OnStartProcessAllowed();
 		void OnTimerCheck();
@@ -680,13 +602,21 @@ class CRealConsole
 		void SetInCloseConsole(bool InCloseConsole);
 		// Сервер и альтернативный сервер
 		DWORD mn_MainSrv_PID; HANDLE mh_MainSrv;
-		u64 mn_ProcessAffinity; DWORD mn_ProcessPriority;
-		CDpiForDialog* mp_PriorityDpiAware;
+		uint64_t mn_ProcessAffinity; DWORD mn_ProcessPriority;
+		CDpiForDialog* mp_PriorityDpiAware = nullptr;
 		void RepositionDialogWithTab(HWND hDlg);
 		static INT_PTR CALLBACK priorityProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam);
 		DWORD mn_CheckFreqLock;
 		DWORD mn_ConHost_PID;
-		MMap<DWORD,BOOL>* mp_ConHostSearch;
+		class CConHostSearch : public CRefRelease
+		{
+		protected:
+			virtual void FinalRelease() override;
+		public:
+			CConHostSearch();
+			MMap<DWORD,BOOL> data;
+		};
+		CRefGuard<CConHostSearch> m_ConHostSearch;
 		void ConHostSearchPrepare();
 		DWORD ConHostSearch(bool bFinal);
 		void ConHostSetPID(DWORD nConHostPID);
@@ -738,7 +668,7 @@ class CRealConsole
 		// method
 		short CheckProgressInTitle();
 		bool StartProcess();
-		static bool CreateOrRunAs(CRealConsole* pRCon, RConStartArgs& Args, LPWSTR psCurCmd, LPCWSTR& lpszWorkDir, STARTUPINFO& si, PROCESS_INFORMATION& pi, SHELLEXECUTEINFO*& pp_sei, DWORD& dwLastError, bool bExternal = false);
+		static bool CreateOrRunAs(CRealConsole* pRCon, RConStartArgsEx& Args, LPWSTR psCurCmd, LPCWSTR& lpszWorkDir, STARTUPINFO& si, PROCESS_INFORMATION& pi, SHELLEXECUTEINFO*& pp_sei, DWORD& dwLastError, bool bExternal = false);
 		private:
 		bool StartProcessInt(LPCWSTR& lpszCmd, wchar_t*& psCurCmd, LPCWSTR& lpszWorkDir, bool bNeedConHostSearch, HWND hSetForeground, DWORD& nCreateBegin, DWORD& nCreateEnd, DWORD& nCreateDuration, BYTE nTextColorIdx /*= 7*/, BYTE nBackColorIdx /*= 0*/, BYTE nPopTextColorIdx /*= 5*/, BYTE nPopBackColorIdx /*= 15*/, STARTUPINFO& si, PROCESS_INFORMATION& pi, DWORD& dwLastError);
 		void ResetVarsOnStart();
@@ -763,10 +693,11 @@ class CRealConsole
 		MEvent mh_ApplyFinished;
 		HANDLE mh_StartExecuted;
 		bool mb_StartResult;
-		RConStartState m_StartState;
+		RConStartState m_StartState = rss_NotStarted;
+		MSectionSimple m_StartStateCS{true};
 		void UpdateStartState(RConStartState state, bool force = false);
 		bool mb_FullRetrieveNeeded; //, mb_Detached;
-		RConStartArgs m_Args;
+		RConStartArgsEx m_Args;
 		SYSTEMTIME m_StartTime;
 		CEStr ms_DefTitle;
 		CEStr ms_StartWorkDir;
@@ -775,6 +706,9 @@ class CRealConsole
 		MSectionSimple* mpcs_CurWorkDir;
 		void StoreCurWorkDir(CESERVER_REQ_STORECURDIR* pNewCurDir);
 		bool ReloadFarWorkDir();
+
+		wchar_t* ms_MountRoot;
+		void SetMountRoot(CESERVER_REQ* pConnectorInfo);
 
 		bool mb_WasStartDetached;
 		SYSTEMTIME mst_ServerStartingTime;
@@ -870,6 +804,8 @@ class CRealConsole
 		int mn_Focused; //-1 после запуска, 1 - в фокусе, 0 - не в фокусе
 		DWORD mn_InRecreate; // Tick, когда начали пересоздание
 		bool mb_RecreateFailed;
+		bool mb_InDetach; // DetachRCon was initiated
+		DWORD InitiateDetach();
 		DWORD mn_StartTick; // для определения GetRunTime()
 		DWORD mn_DeactivateTick; // чтобы не мигать сразу после "cmd -new_console" из промпта
 		DWORD mn_RunTime; // для информации
@@ -883,7 +819,7 @@ class CRealConsole
 		MFileLog *mp_Log;
 		void CreateLogFiles();
 		void CloseLogFiles();
-		void LogInput(INPUT_RECORD* pRec);
+		bool LogInput(INPUT_RECORD* pRec);
 		bool RecreateProcessStart();
 		void RequestStartup(bool bForce = false);
 		//
@@ -892,7 +828,7 @@ class CRealConsole
 		MEvent m_ConDataChanged;
 		// CECONMAPNAME
 		MFileMapping<CESERVER_CONSOLE_MAPPING_HDR> m_ConsoleMap;
-		// CECONAPPMAPNAME
+		// CECONAPPMAPNAME -- ReadOnly
 		MFileMapping<CESERVER_CONSOLE_APP_MAPPING> m_AppMap;
 		// CEFARMAPNAME: FarVer and others
 		CEFAR_INFO_MAPPING m_FarInfo;
@@ -923,9 +859,10 @@ class CRealConsole
 		//
 		struct TermEmulation
 		{
-			DWORD nCallTermPID; // PID процесса запросившего эмуляцию терминала
-			TermEmulationType Term;
-			bool  bBracketedPaste; // All "pasted" text will be wrapped in `\e[200~ ... \e[201~`
+			// nCallTermPID was removed because modes are maintained by server
+			TermEmulationType   Term; // win32 or xterm
+			bool     bBracketedPaste; // All "pasted" text will be wrapped in `\e[200~ ... \e[201~`
+			TermMouseMode nMouseMode; // mask of enum TermMouseMode
 		} m_Term;
 		struct TermCursor
 		{
@@ -973,5 +910,3 @@ class CRealConsole
 		// XTerm keyboard substitutions
 		TermX* mp_XTerm;
 };
-
-//#define Assert(V) if ((V)==FALSE) { wchar_t szAMsg[MAX_PATH*2]; _wsprintf(szAMsg, SKIPLEN(countof(szAMsg)) L"Assertion (%s) at\n%s:%i\n\nPress <Retry> to report a bug (web page)", _T(#V), _T(__FILE__), __LINE__); CRealConsole::Box(szAMsg, MB_RETRYCANCEL); }

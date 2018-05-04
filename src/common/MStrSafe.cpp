@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "defines.h"
 #include "MAssert.h"
 #include "MStrSafe.h"
@@ -220,7 +220,7 @@ LPCWSTR msprintf(LPWSTR lpOut, size_t cchOutMax, LPCWSTR lpFmt, ...)
 						}
 						else
 						{
-							pszValue = (szValue+klMax(nLen,nCurLen));
+							pszValue = (szValue+std::max(nLen,nCurLen));
 						}
 						// Теперь перекинуть в Dest
 						while (pszValue > szValue)
@@ -427,7 +427,7 @@ LPCSTR msprintf(LPSTR lpOut, size_t cchOutMax, LPCSTR lpFmt, ...)
 					}
 					else
 					{
-						pszValue = (szValue+klMax(nLen,nCurLen));
+						pszValue = (szValue+std::max(nLen,nCurLen));
 					}
 					// Теперь перекинуть в Dest
 					while (pszValue > szValue)
@@ -543,7 +543,7 @@ int startswith(LPCWSTR asStr, LPCWSTR asPattern, bool abIgnoreCase)
 	return (iCmp == 0) ? iLen : 0;
 }
 
-#if defined(_DEBUG) && !defined(STRSAFE_DISABLE)
+//#if defined(_DEBUG) && !defined(STRSAFE_DISABLE)
 int swprintf_c(wchar_t* Buffer, INT_PTR size, const wchar_t *Format, ...)
 {
 	_ASSERTE(Buffer!=Format);
@@ -569,9 +569,9 @@ int sprintf_c(char* Buffer, INT_PTR size, const char *Format, ...)
 	va_end(argList);
 	return nRc;
 }
-#endif // #if defined(_DEBUG) && !defined(STRSAFE_DISABLE)
+//#endif // #if defined(_DEBUG) && !defined(STRSAFE_DISABLE)
 
-#if defined(__CYGWIN__)
+#if 0 //defined(__CYGWIN__)
 
 wchar_t* _itow(int value, wchar_t *str, int radix)
 {

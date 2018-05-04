@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2014-2016 Maximus5
+Copyright (c) 2014-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,7 +47,7 @@ CRConFiles::~CRConFiles()
 LPCWSTR CRConFiles::GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull)
 {
 	CEStr szWinPath;
-	LPCWSTR pszWinPath = szWinPath.Attach(MakeWinPath(asSrc));
+	LPCWSTR pszWinPath = MakeWinPath(asSrc, mp_RCon ? mp_RCon->GetMntPrefix() : NULL, szWinPath);
 	if (!pszWinPath || !*pszWinPath)
 	{
 		_ASSERTE(pszWinPath && *pszWinPath);
@@ -63,8 +63,13 @@ LPCWSTR CRConFiles::GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull)
 	else
 	{
 		CEStr szDir;
-		LPCWSTR pszDir = mp_RCon->GetConsoleCurDir(szDir);
-		_ASSERTE(pszDir && wcschr(pszDir,L'/')==NULL);
+		LPCWSTR pszDir = mp_RCon->GetConsoleCurDir(szDir, true);
+		// We may get empty dir here if we are in "~" subdir
+		if (!pszDir || !*pszDir)
+		{
+			_ASSERTE(pszDir && *pszDir && wcschr(pszDir,L'/')==NULL);
+			return NULL;
+		}
 
 		// Попытаться просканировать один-два уровеня подпапок
 		bool bFound = FileExistSubDir(pszDir, pszWinPath, 1, szFull);
@@ -83,17 +88,32 @@ LPCWSTR CRConFiles::GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull)
 					if (!*pszSlash)
 						break;
 					bFound = FileExistSubDir(pszDir, pszSlash, 1, szFull);
+					if (!bFound)
+					{
+						// Try to go to parent folder (useful while browsing git-diff-s)
+						bFound = CheckParentFolders(pszDir, pszSlash, szFull);
+					}
 				}
+			}
+			else
+			{
+				// let's try to check some paths from #include
+				// for example: #include "src/common/Common.h"
+				LPCWSTR pszSlash = pszWinPath;
+				while (*pszSlash == L'\\') pszSlash++;
+				bFound = CheckParentFolders(pszDir, pszSlash, szFull);
 			}
 		}
 
 		if (!bFound)
 		{
 			// If there is "src" subfolder in the current folder
-			CEStr szSrc(JoinPath(pszDir, L"src"));
-			if (DirectoryExists(szSrc))
+			const wchar_t* predefined[] = {L"trunk", L"src", L"source", L"sources", NULL};
+			for (size_t i = 0; !bFound && predefined[i]; ++i)
 			{
-				bFound = FileExistSubDir(szSrc, pszWinPath, 1, szFull);
+				CEStr szSrc(JoinPath(pszDir, predefined[i]));
+				if (DirectoryExists(szSrc))
+					bFound = FileExistSubDir(szSrc, pszWinPath, 1, szFull);
 			}
 		}
 
@@ -110,6 +130,35 @@ LPCWSTR CRConFiles::GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull)
 	}
 
 	return szFull;
+}
+
+bool CRConFiles::CheckParentFolders(LPCWSTR asParentDir, LPCWSTR asFilePath, CEStr& szFull)
+{
+	bool bFound = false;
+
+	// Try to go to parent folder (useful while browsing git-diff-s or #include-s)
+	CEStr lsParent = asParentDir;
+	MBoxAssert(lsParent.ms_Val && !wcschr(lsParent.ms_Val, L'/')); // WinPath is expected
+	for (int i = 6; i >= 0; --i)
+	{
+		wchar_t* pszDirSlash = wcsrchr(lsParent.ms_Val, L'\\');
+		// Stop on the network server's root and drive letter
+		if (!pszDirSlash || (pszDirSlash - lsParent.ms_Val) <= 2 || *(pszDirSlash-1) == L':')
+			break;
+		*pszDirSlash = 0;
+		// Does it exist?
+		if ((bFound = FileExistSubDir(lsParent, asFilePath, 1, szFull)))
+			break;
+		// Don't try to go upper, if current folder already contains ".git" (root of the repo)
+		if (i > 0)
+		{
+			CEStr szGit(JoinPath(lsParent, L".git"));
+			if (DirectoryExists(szGit))
+				break;
+		}
+	}
+
+	return bFound;
 }
 
 void CRConFiles::ResetCache()

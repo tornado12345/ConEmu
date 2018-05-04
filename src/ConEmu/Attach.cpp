@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -80,15 +80,6 @@ const wchar_t szTypeCon[] = L"CON";
 const wchar_t szTypeGui[] = L"GUI";
 
 CAttachDlg::CAttachDlg()
-	: mh_Dlg(NULL)
-	, mh_List(NULL)
-	, mp_DpiAware(NULL)
-	, mp_Dlg(NULL)
-	, mn_AttachType(0)
-	, mn_AttachPID(0)
-	, mh_AttachHWND(NULL)
-	, mp_ProcessData(NULL)
-	, mn_ExplorerPID(0)
 {
 	mb_IsWin64 = IsWindows64();
 }
@@ -125,8 +116,7 @@ void CAttachDlg::AttachDlg()
 		return;
 	}
 
-	if (!mp_DpiAware)
-		mp_DpiAware = new CDpiForDialog();
+	CDpiForDialog::Create(mp_DpiAware);
 
 	bool bPrev = gpConEmu->SetSkipOnFocus(true);
 	// (CreateDialog)
@@ -176,6 +166,7 @@ bool CAttachDlg::OnStartAttach()
 	ShowWindow(mh_Dlg, SW_HIDE);
 
 	BOOL bAlternativeMode = (IsDlgButtonChecked(mh_Dlg, IDC_ATTACH_ALT) != 0);
+	BOOL bLeaveOpened = (IsDlgButtonChecked(mh_Dlg, IDC_ATTACH_LEAVE_OPEN) != 0);
 
 	iSel = ListView_GetNextItem(mh_List, -1, LVNI_SELECTED);
 	while (iSel >= 0)
@@ -183,7 +174,7 @@ bool CAttachDlg::OnStartAttach()
 		iCur = iSel;
 		iSel = ListView_GetNextItem(mh_List, iCur, LVNI_SELECTED);
 
-		AttachParm L = {NULL, 0, WIN3264TEST(32,64), apt_Unknown, bAlternativeMode};
+		AttachParm L = {NULL, 0, WIN3264TEST(32,64), apt_Unknown, bAlternativeMode, bLeaveOpened};
 
 		ListView_GetItemText(mh_List, iCur, alc_PID, szItem, countof(szItem)-1);
 		L.nPID = wcstoul(szItem, &psz, 10);
@@ -241,7 +232,7 @@ bool CAttachDlg::OnStartAttach()
 	pParm = Parms.detach();
 	if (!pParm)
 	{
-		_wsprintf(szItem, SKIPLEN(countof(szItem)) L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+		swprintf_c(szItem, L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
 		DisplayLastError(L"Parms.detach() failed", -1, 0, szItem);
 		goto wrap;
 	}
@@ -251,7 +242,7 @@ bool CAttachDlg::OnStartAttach()
 		if (!hThread)
 		{
 			DWORD dwErr = GetLastError();
-			_wsprintf(szItem, SKIPLEN(countof(szItem)) L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+			swprintf_c(szItem, L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
 			DisplayLastError(L"Can't start attach thread", dwErr, 0, szItem);
 		}
 		else
@@ -317,7 +308,7 @@ CAttachDlg::AttachMacroRet CAttachDlg::AttachFromMacro(DWORD anPID, bool abAlter
 	if (!hThread)
 	{
 		//DWORD dwErr = GetLastError();
-		//_wsprintf(szItem, SKIPLEN(countof(szItem)) L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+		//swprintf_c(szItem, L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
 		//DisplayLastError(L"Can't start attach thread", dwErr, 0, szItem);
 		return amr_Unexpected;
 	}
@@ -352,7 +343,7 @@ BOOL CAttachDlg::AttachDlgEnumWin(HWND hFind, LPARAM lParam)
 			ListView_SetItemText(hList, nItem, alc_Title, Info.szTitle);
 			ListView_SetItemText(hList, nItem, alc_Class, Info.szClass);
 
-			_wsprintf(szHwnd, SKIPLEN(countof(szHwnd)) L"0x%08X", (DWORD)(((DWORD_PTR)hFind) & (DWORD)-1));
+			swprintf_c(szHwnd, L"0x%08X", (DWORD)(((DWORD_PTR)hFind) & (DWORD)-1));
 			ListView_SetItemText(hList, nItem, alc_HWND, szHwnd);
 
 			ListView_SetItemText(hList, nItem, alc_File, Info.szExeName);
@@ -402,14 +393,14 @@ bool CAttachDlg::CanAttachWindow(HWND hFind, DWORD nSkipPID, CProcessData* apPro
 	if (gpSet->isLogging())
 	{
 		wchar_t szLogInfo[MAX_PATH*3];
-		_wsprintf(szLogInfo, SKIPLEN(countof(szLogInfo)) L"Attach:%s x%08X/x%08X/x%08X {%s} \"%s\"", Info.szExeName, LODWORD(hFind), nStyle, nStyleEx, Info.szClass, Info.szTitle);
+		swprintf_c(szLogInfo, L"Attach:%s x%08X/x%08X/x%08X {%s} \"%s\"", Info.szExeName, LODWORD(hFind), nStyle, nStyleEx, Info.szClass, Info.szTitle);
 		CVConGroup::LogString(szLogInfo);
 	}
 
 	if (!lbCan)
 		return false;
 
-	_wsprintf(Info.szPid, SKIPLEN(countof(Info.szPid)) L"%u", Info.nPID);
+	swprintf_c(Info.szPid, L"%u", Info.nPID);
 	const wchar_t sz32bit[] = L" [32]";
 	const wchar_t sz64bit[] = L" [64]";
 
@@ -548,7 +539,7 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 				pDlg->mp_DpiAware->Attach(hDlg, ghWnd, pDlg->mp_Dlg);
 			}
 
-			// Если ConEmu - AlwaysOnTop, то и диалогу нужно выставит этот флаг
+			// Replicate ConEmu's AlwaysOnTop state
 			if (GetWindowLongPtr(ghWnd, GWL_EXSTYLE) & WS_EX_TOPMOST)
 				SetWindowPos(hDlg, HWND_TOPMOST, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE);
 
@@ -556,8 +547,12 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 			SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hClassIconSm);
 			SetClassLongPtr(hDlg, GCLP_HICON, (LONG_PTR)hClassIcon);
 
-			// В Windows 2000 отсутствует процедура AttachConsole необходимая для этого режима
+			// Window 2000 doesn't have 'AttachConsole' function required for the mode
 			EnableWindow(GetDlgItem(hDlg, IDC_ATTACH_ALT), (gnOsVer >= 0x501));
+
+			// Turn on tab close confirmation after attached process termination
+			// Would be useful to examine output of some long running script after it finishes
+			CheckDlgButton(hDlg, IDC_ATTACH_LEAVE_OPEN, BST_CHECKED);
 
 			HWND hList = GetDlgItem(hDlg, IDC_ATTACHLIST);
 			pDlg->mh_List = hList;
@@ -617,27 +612,42 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 
 		case WM_SIZE:
 		{
-			RECT rcDlg, rcBtn, rcList, rcMode;
+			RECT rcDlg, rcBtn, rcList, rcAttach, rcLeave;
 			::GetClientRect(hDlg, &rcDlg);
 			HWND h = GetDlgItem(hDlg, IDC_ATTACHLIST);
 			GetWindowRect(h, &rcList); MapWindowPoints(NULL, hDlg, (LPPOINT)&rcList, 2);
 			HWND hb = GetDlgItem(hDlg, ID_ATTACH);
 			GetWindowRect(hb, &rcBtn); MapWindowPoints(NULL, hb, (LPPOINT)&rcBtn, 2);
-			HWND hc = GetDlgItem(hDlg, IDC_ATTACH_ALT);
-			GetWindowRect(hc, &rcMode); MapWindowPoints(NULL, hc, (LPPOINT)&rcMode, 2);
+			HWND hAttach = GetDlgItem(hDlg, IDC_ATTACH_ALT);
+			GetWindowRect(hAttach, &rcAttach); MapWindowPoints(NULL, hAttach, (LPPOINT)&rcAttach, 2);
+			HWND hLeave = GetDlgItem(hDlg, IDC_ATTACH_LEAVE_OPEN);
+			GetWindowRect(hLeave, &rcLeave); MapWindowPoints(NULL, hLeave, (LPPOINT)&rcLeave, 2);
 			BOOL lbRedraw = FALSE;
+			const int pad = rcList.left;
+			// ListView (layered)
 			MoveWindow(h,
-				rcList.left, rcList.top, rcDlg.right - 2*rcList.left, rcDlg.bottom - 3*rcList.top - rcBtn.bottom, lbRedraw);
-			MoveWindow(GetDlgItem(hDlg, IDC_NEWCONSOLE),
-				rcList.left, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+				pad, rcList.top, rcDlg.right - 2*pad, rcDlg.bottom - 3*rcList.top - rcBtn.bottom, lbRedraw);
+			// Refresh (left corner)
 			MoveWindow(GetDlgItem(hDlg, IDC_REFRESH),
-				rcList.left*2 + rcBtn.right, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+				pad, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+			// Cancel (right corner)
+			int x = rcDlg.right - pad - rcBtn.right;
 			MoveWindow(GetDlgItem(hDlg, IDCANCEL),
-				rcDlg.right - rcList.left - rcBtn.right, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+				x, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+			// Attach (Cancel's leftwards)
+			x -= pad + rcBtn.right;
 			MoveWindow(GetDlgItem(hDlg, ID_ATTACH),
-				rcDlg.right - 2*rcList.left - 2*rcBtn.right, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
-			MoveWindow(hc,
-				rcDlg.right - 3*rcList.left - 2*rcBtn.right - rcMode.right, rcDlg.bottom - rcList.top - rcBtn.bottom + ((rcBtn.bottom - rcMode.bottom) / 2), rcMode.right, rcMode.bottom, lbRedraw);
+				x, rcDlg.bottom - rcList.top - rcBtn.bottom, rcBtn.right, rcBtn.bottom, lbRedraw);
+			// "Alternative mode"
+			x -= pad + rcAttach.right;
+			const int cbx_y = rcDlg.bottom - rcList.top - rcBtn.bottom + ((rcBtn.bottom - rcAttach.bottom) / 2);
+			MoveWindow(hAttach,
+				x, cbx_y, rcAttach.right, rcAttach.bottom, lbRedraw);
+			// "Leave opened"
+			x -= pad + rcLeave.right;
+			MoveWindow(hLeave,
+				x, cbx_y, rcLeave.right, rcLeave.bottom, lbRedraw);
+			// All done
 			RedrawWindow(hDlg, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
 			break;
 		}
@@ -646,14 +656,15 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 		{
 			MINMAXINFO* p = (MINMAXINFO*)lParam;
 			HWND h;
-			RECT rcBtn = {}, rcList = {}, rcMode = {};
+			RECT rcBtn = {}, rcList = {}, rcMode = {}, rcLeave = {};
 			GetWindowRect((h = GetDlgItem(hDlg, ID_ATTACH)), &rcBtn); MapWindowPoints(NULL, h, (LPPOINT)&rcBtn, 2);
 			GetWindowRect((h = GetDlgItem(hDlg, IDC_ATTACH_ALT)), &rcMode); MapWindowPoints(NULL, h, (LPPOINT)&rcMode, 2);
+			GetWindowRect((h = GetDlgItem(hDlg, IDC_ATTACH_LEAVE_OPEN)), &rcLeave); MapWindowPoints(NULL, h, (LPPOINT)&rcLeave, 2);
 			GetWindowRect((h = GetDlgItem(hDlg, IDC_ATTACHLIST)), &rcList); MapWindowPoints(NULL, hDlg, (LPPOINT)&rcList, 2);
 			RECT rcWnd = {}, rcClient = {};
 			GetWindowRect(hDlg, &rcWnd);
 			::GetClientRect(hDlg, &rcClient);
-			p->ptMinTrackSize.x = (rcWnd.right - rcWnd.left - rcClient.right) + 4*rcBtn.right + 8*rcList.left + rcMode.right;
+			p->ptMinTrackSize.x = (rcWnd.right - rcWnd.left - rcClient.right) + 4*rcBtn.right + 9*rcList.left + rcMode.right + rcLeave.right;
 			p->ptMinTrackSize.y = 6*rcBtn.bottom + 3*rcList.top;
 			return 0;
 		}
@@ -707,11 +718,6 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 						// Просто закрыть
 						pDlg->Close();
 						return 1;
-					case IDC_NEWCONSOLE:
-						// Запрос на создание новой консоли
-						PostMessage(ghWnd, WM_SYSCOMMAND, ID_NEWCONSOLE, 0);
-						pDlg->Close();
-						return 1;
 					case IDC_REFRESH:
 						// Перечитать список доступных окон/процессов
 						{
@@ -737,7 +743,7 @@ INT_PTR CAttachDlg::AttachDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM l
 }
 
 // Do the attach procedure for the requested process
-bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, AttachProcessType anType, BOOL abAltMode)
+bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, AttachProcessType anType, BOOL abAltMode, BOOL abLeaveOpened)
 {
 	bool lbRc = false;
 	wchar_t szPipe[MAX_PATH];
@@ -763,14 +769,16 @@ bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, Attach
 	if (gpSet->isLogging())
 	{
 		wchar_t szInfo[128];
-		_wsprintf(szInfo, SKIPLEN(countof(szInfo))
-			L"CAttachDlg::StartAttach HWND=x%08X, PID=%u, Bits%u, Type=%u, AltMode=%u",
-			(DWORD)(DWORD_PTR)ahAttachWnd, anPID, anBits, (UINT)anType, abAltMode);
+		swprintf_c(szInfo,
+			L"CAttachDlg::StartAttach HWND=x%08X, PID=%u, Bits%u, Type=%u, AltMode=%u, Leave=%u",
+			(DWORD)(DWORD_PTR)ahAttachWnd, anPID, anBits, (UINT)anType, abAltMode, abLeaveOpened);
 		gpConEmu->LogString(szInfo);
 	}
 
+	// If the server already exists in the console
 	if (LoadSrvMapping(ahAttachWnd, srv))
 	{
+		// TODO: abLeaveOpened
 		pIn = ExecuteNewCmd(CECMD_ATTACH2GUI, sizeof(CESERVER_REQ_HDR));
 		pOut = ExecuteSrvCmd(srv.nServerPID, pIn, ghWnd);
 		if (pOut && (pOut->hdr.cbSize >= (sizeof(CESERVER_REQ_HDR)+sizeof(DWORD))) && (pOut->dwData[0] != 0))
@@ -786,7 +794,7 @@ bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, Attach
 
 
 	// Is it a Far Manager with our ConEmu.dll plugin loaded?
-	_wsprintf(szPipe, SKIPLEN(countof(szPipe)) CEPLUGINPIPENAME, L".", anPID);
+	swprintf_c(szPipe, CEPLUGINPIPENAME, L".", anPID);
 	hPluginTest = CreateFile(szPipe, GENERIC_READ|GENERIC_WRITE, 0, LocalSecurity(), OPEN_EXISTING, 0, NULL);
 	if (hPluginTest && hPluginTest != INVALID_HANDLE_VALUE)
 	{
@@ -795,7 +803,7 @@ bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, Attach
 	}
 
 	// May be there is already ConEmuHk[64].dll loaded? Either it is already in the another ConEmu VCon?
-	_wsprintf(szPipe, SKIPLEN(countof(szPipe)) CEHOOKSPIPENAME, L".", anPID);
+	swprintf_c(szPipe, CEHOOKSPIPENAME, L".", anPID);
 	hPipeTest = CreateFile(szPipe, GENERIC_READ|GENERIC_WRITE, 0, LocalSecurity(), OPEN_EXISTING, 0, NULL);
 	if (hPipeTest && hPipeTest != INVALID_HANDLE_VALUE)
 	{
@@ -810,11 +818,12 @@ bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, Attach
 
 	if (abAltMode && (anType == apt_Console))
 	{
-		_wsprintf(szArgs, SKIPLEN(countof(szArgs)) L" /ATTACH /CONPID=%u /GID=%u /GHWND=%08X", anPID, GetCurrentProcessId(), LODWORD(ghWnd));
+		swprintf_c(szArgs, L" /ATTACH /CONPID=%u /GID=%u /GHWND=%08X",
+			anPID, GetCurrentProcessId(), LODWORD(ghWnd));
 	}
 	else
 	{
-		_wsprintf(szArgs, SKIPLEN(countof(szArgs)) L" /INJECT=%u", anPID);
+		swprintf_c(szArgs, L" /INJECT=%u", anPID);
 		abAltMode = FALSE;
 	}
 
@@ -863,8 +872,8 @@ bool CAttachDlg::StartAttach(HWND ahAttachWnd, DWORD anPID, DWORD anBits, Attach
 	{
 		wchar_t szErrMsg[MAX_PATH+255], szTitle[128];
 		DWORD dwErr = GetLastError();
-		_wsprintf(szErrMsg, SKIPLEN(countof(szErrMsg)) L"Can't start %s server\n%s %s", abAltMode ? L"injection" : L"console", szSrv, szArgs);
-		_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+		swprintf_c(szErrMsg, L"Can't start %s server\n%s %s", abAltMode ? L"injection" : L"console", szSrv, szArgs);
+		swprintf_c(szTitle, L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
 		DisplayLastError(szErrMsg, dwErr, 0, szTitle);
 		goto wrap;
 	}
@@ -892,6 +901,7 @@ DoExecute:
 	pIn = ExecuteNewCmd(CECMD_STARTSERVER, sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_START));
 	pIn->NewServer.nGuiPID = GetCurrentProcessId();
 	pIn->NewServer.hGuiWnd = ghWnd;
+	pIn->NewServer.bLeave = abLeaveOpened;
 	if (anType == apt_Gui)
 	{
 		_ASSERTE(ahAttachWnd && IsWindow(ahAttachWnd));
@@ -901,7 +911,10 @@ DoExecute:
 
 DoPluginCall:
 	// Ask Far Manager plugin to do the attach
-	pIn = ExecuteNewCmd(CECMD_ATTACH2GUI, sizeof(CESERVER_REQ_HDR));
+	pIn = ExecuteNewCmd(CECMD_ATTACH2GUI, sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_START));
+	pIn->NewServer.nGuiPID = GetCurrentProcessId();
+	pIn->NewServer.hGuiWnd = ghWnd;
+	pIn->NewServer.bLeave = abLeaveOpened;
 	goto DoPipeCall;
 
 DoPipeCall:
@@ -916,7 +929,7 @@ DoPipeCall:
 			wcscat_c(szMsg, L"\nFar ConEmu plugin was loaded");
 		if (hPipeTest && hPipeTest != INVALID_HANDLE_VALUE)
 			wcscat_c(szMsg, L"\nHooks already were set");
-		_wsprintf(szTitle, SKIPLEN(countof(szTitle)) L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+		swprintf_c(szTitle, L"ConEmu Attach, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
 		DisplayLastError(szMsg, (pOut && (pOut->hdr.cbSize >= pIn->hdr.cbSize)) ? pOut->dwData[1] : -1, 0, szTitle);
 		goto wrap;
 	}
@@ -946,7 +959,7 @@ DWORD CAttachDlg::StartAttachThread(AttachParm* lpParam)
 
 	for (AttachParm* p = lpParam; p->hAttachWnd; p++)
 	{
-		if (!StartAttach(p->hAttachWnd, p->nPID, p->nBits, p->nType, p->bAlternativeMode))
+		if (!StartAttach(p->hAttachWnd, p->nPID, p->nBits, p->nType, p->bAlternativeMode, p->bLeaveOpened))
 			lbRc = false;
 	}
 

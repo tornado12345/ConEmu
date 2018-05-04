@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2014 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,12 +26,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#ifdef _DEBUG
-//#define USE_LOCK_SECTION
-//#endif
-
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "defines.h"
 #include "MAssert.h"
 #include "MSectionSimple.h"
@@ -117,11 +113,11 @@ bool MSectionSimple::RecreateAndLock()
 
 MSectionLockSimple::MSectionLockSimple()
 {
-	mp_S = NULL;
-	mb_Locked = false;
-	#ifdef _DEBUG
-	mn_LockTID = mn_LockTick = 0;
-	#endif
+}
+
+MSectionLockSimple::MSectionLockSimple(MSectionSimple& cs)
+{
+	Lock(&cs);
 }
 
 MSectionLockSimple::~MSectionLockSimple()

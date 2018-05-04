@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -60,6 +60,7 @@ enum CEStatusItems
 	csi_WindowWork,
 	csi_WindowBack,
 	csi_WindowDC,
+	csi_WindowMode,
 	csi_WindowStyle,
 	csi_WindowStyleEx,
 	csi_HwndFore,
@@ -75,6 +76,7 @@ enum CEStatusItems
 	csi_CursorY,
 	csi_CursorSize,
 	csi_CursorInfo,
+	csi_CellInfo,
 	csi_ConEmuPID,
 	csi_ConEmuHWND,
 	csi_ConEmuView,
@@ -108,6 +110,8 @@ class CRealConsole;
 class CStatus
 {
 private:
+	CConEmuMain* mp_ConEmu;
+
 	// Warning!!! тут индекс не соответствует nID, т.к. некоторые элементы могут быть отключены
 	// Warning!!! а в этом векторе добавлены только видимые элементы!
 	struct strItems {
@@ -136,7 +140,6 @@ private:
 	wchar_t ms_Status[200];
 
 	RECT mrc_LastResizeCol;
-	bool mb_StatusResizing;
 	POINT mpt_StatusResizePt;
 	POINT mpt_StatusResizeCmp;
 	RECT mrc_StatusResizeRect;
@@ -178,6 +181,10 @@ private:
 	bool mb_ViewLock;
 	wchar_t ms_ViewLockHint[100];
 
+	struct {
+		ConEmuWindowCommand tile = cwc_Current;
+		ConEmuWindowMode mode = wmNormal;
+	} m_WindowMode = {};
 	DWORD mn_Style, mn_ExStyle;
 	LONG mn_Zoom, mn_Dpi;
 	HWND mh_Fore, mh_Focus;
@@ -195,7 +202,7 @@ private:
 	bool isSettingsOpened(UINT nOpenPageID = 0);
 
 public:
-	CStatus();
+	CStatus(CConEmuMain* _owner);
 	virtual ~CStatus();
 
 	static size_t GetAllStatusCols(StatusColInfo** ppColumns);
@@ -218,15 +225,14 @@ public:
 	void OnKeyboardChanged();
 	void OnTransparency();
 
-	bool IsStatusResizing();
-	bool IsCursorOverResizeMark(POINT ptCurClient);
+	bool IsCursorOverResizeMark(const POINT& ptCurClient);
 	bool IsResizeAllowed();
 	bool ProcessStatusMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, POINT ptCurClient, LRESULT& lResult);
 	void ProcessMenuHighlight(HMENU hMenu, WORD nID, WORD nFlags);
 
 	LPCWSTR GetSettingName(CEStatusItems nID);
 
-	bool GetStatusBarClientRect(RECT* rc);
+	bool GetStatusBarClientRect(RECT& rc);
 	bool GetStatusBarItemRect(CEStatusItems nID, RECT* rc);
 
 public:

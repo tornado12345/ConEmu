@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2015 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,13 +28,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define HIDE_USE_EXCEPTION_INFO
 
-#include <windows.h>
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/execute.h"
 #include "../common/WModuleCheck.h"
 #include "Injects.h"
-#include "Console2.h"
+#include "InjectsBootstrap.h"
 #include "hlpProcess.h"
 
 extern HMODULE ghOurModule;
@@ -124,9 +123,6 @@ UINT_PTR GetLdrGetDllHandleByNameAddress()
 CINJECTHK_EXIT_CODES InjectHooks(PROCESS_INFORMATION pi, BOOL abLogProcess, LPCWSTR asConEmuHkDir /*= NULL*/)
 {
 	CINJECTHK_EXIT_CODES iRc = CIH_OK/*0*/;
-#ifndef CONEMUHK_EXPORTS
-	_ASSERTE(FALSE)
-#endif
 	wchar_t szDllDir[MAX_PATH*2];
 	_ASSERTE(ghOurModule!=NULL);
 	BOOL is64bitOs = FALSE;
@@ -144,7 +140,7 @@ CINJECTHK_EXIT_CODES InjectHooks(PROCESS_INFORMATION pi, BOOL abLogProcess, LPCW
 	DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL);
 	_ASSERTE(_WIN32_WINNT_WIN7==0x601);
 	OSVERSIONINFOEXW osvi7 = {sizeof(osvi7), HIBYTE(_WIN32_WINNT_WIN7), LOBYTE(_WIN32_WINNT_WIN7)};
-	BOOL bOsWin7 = VerifyVersionInfoW(&osvi7, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+	BOOL bOsWin7 = _VerifyVersionInfo(&osvi7, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
 
 	if (!hKernel)
 	{
@@ -330,7 +326,7 @@ CINJECTHK_EXIT_CODES InjectHooks(PROCESS_INFORMATION pi, BOOL abLogProcess, LPCW
 			iRc = CIH_GetLoadLibraryAddress/*-503*/;
 			goto wrap;
 		}
-		else if (bOsWin7 && !GetLdrGetDllHandleByNameAddress())
+		else if (bOsWin7 && !GetLdrGetDllHandleByNameAddress() && !IsWine())
 		{
 			_ASSERTE(gfLdrGetDllHandleByName.fnPtr!=NULL);
 			iRc = CIH_GetLdrHandleAddress/*-514*/;

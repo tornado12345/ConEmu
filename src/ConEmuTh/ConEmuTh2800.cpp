@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <windows.h>
+#include "../common/defines.h"
 #include "../common/MAssert.h"
 #pragma warning( disable : 4995 )
 #include "../common/pluginW2800.hpp" // Far3
@@ -671,7 +671,7 @@ void SetCurrentPanelItemW2800(BOOL abLeftPanel, INT_PTR anTopItem, INT_PTR anCur
 		pszEsc = L"$if (Search) Esc $end";
 		pszFn = L"callplugin";
 	}
-	_wsprintf(szMacro, SKIPCOUNT(szMacro) L"%s %s(\"bd454d48-448e-46cc-909d-b6cf789c2d65\",\"%s\",%u,%s,%s)",
+	swprintf_c(szMacro, L"%s %s(\"bd454d48-448e-46cc-909d-b6cf789c2d65\",\"%s\",%u,%s,%s)",
 			pszEsc, pszFn, SetCurItem, abLeftPanel, szTop, szCur);
 
 	MacroSendMacroText mcr = {sizeof(MacroSendMacroText)};

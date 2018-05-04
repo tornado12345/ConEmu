@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,21 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <windows.h>
+#define NOMINMAX
+#include <limits>
+#include <algorithm>
+
+#if !defined(__GNUC__) || defined(__MINGW32__)
+#pragma warning(disable: 4091)
+#endif
+#include <Windows.h>
+#if !defined(__GNUC__) || defined(__MINGW32__)
+#pragma warning(default: 4091)
+#endif
+
 #include <wchar.h>
+#include <tchar.h>
+
 //#if !defined(__GNUC__)
 //#include <crtdbg.h>
 //#else
@@ -50,14 +63,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TODO(s)
 #define WARNING(s)
 #define PRAGMA_ERROR(s)
-
-#ifndef max
-#define max(a,b)            (((a) > (b)) ? (a) : (b))
-#endif
-
-#ifndef min
-#define min(a,b)            (((a) < (b)) ? (a) : (b))
-#endif
 
 //#define _ASSERT(f)
 //#define _ASSERTE(f)
@@ -137,12 +142,23 @@ WARNING("WIN64 was not defined");
 #endif
 
 #if defined(HAS_CPP11)
+	#include <utility>
 	#define RVAL_REF &&
+	#define STD_MOVE(v) std::move(v)
 	#define FN_DELETE = delete
 #else
 	#define RVAL_REF
+	#define STD_MOVE(v) v
 	#define FN_DELETE
 #endif
+
+
+#ifdef _WIN64
+using ssize_t = int64_t;
+#else
+using ssize_t = int32_t;
+#endif
+
 
 // GCC headers do not describe Task Scheduler 2.0 interfaces
 #if defined(__GNUC__) // && !defined(__MINGW32__)
@@ -159,7 +175,7 @@ WARNING("WIN64 was not defined");
 #define isDigit(c) (c>=L'0' && c<=L'9')
 #define isDot(c) (c==L'.' || c==',')
 #define isAlpha(c) (IsCharAlpha(c))
-#define isSpace(c) (wcschr(L" \xA0\t\r\n",c)!=NULL)
+#define isSpace(c) (c==L' ' || c==L'\xA0' || c==L'\t' || c==L'\r' || c==L'\n')
 
 #define LODWORD(ull) ((DWORD)((ULONGLONG)(ull) & 0x00000000ffffffff))
 #define LOLONG(ull)  ((LONG)LODWORD(ull))
@@ -172,7 +188,8 @@ WARNING("WIN64 was not defined");
 #define LOGSRECTCOORDS(rc) (rc).Left, (rc).Top, (rc).Right, (rc).Bottom
 #define LOGRECTSIZE(rc) RectWidth(rc), RectHeight(rc)
 
-#define _abs(n) (((n)>=0) ? (n) : -(n))
+template <typename T>
+const T _abs(const T& n) { return ((n)>=0) ? (n) : -(n); }
 
 #define LDR_IS_DATAFILE(hm)      ((((ULONG_PTR)(hm)) & (ULONG_PTR)1) == (ULONG_PTR)1)
 #define LDR_IS_IMAGEMAPPING(hm)  ((((ULONG_PTR)(hm)) & (ULONG_PTR)2) == (ULONG_PTR)2)
@@ -193,8 +210,12 @@ WARNING("WIN64 was not defined");
 // Для облегчения кодинга - возвращает значение для соответствующей платформы
 #ifdef _WIN64
 	#define WIN3264TEST(v32,v64) v64
+	#define WIN32TEST(v32)
+	#define WIN64TEST(v64) v64
 #else
 	#define WIN3264TEST(v32,v64) v32
+	#define WIN32TEST(v32) v32
+	#define WIN64TEST(v64)
 #endif
 // Чтобы можно было пользовать 64битные значения в wsprintf
 #ifdef _WIN64
@@ -257,7 +278,6 @@ extern void _DEBUGSTR(LPCWSTR s);
 #endif
 #endif
 
-#include "kl_parts.h"
 #include "MStrSafe.h"
 #include "Memory.h"
 
@@ -266,11 +286,3 @@ extern void _DEBUGSTR(LPCWSTR s);
 // Otherwise, no operation is performed.
 // pv MUST be either DWORD* or LONG*
 #define InterlockedCompareZero(pv,cmp) InterlockedCompareExchange((LONG*)pv,0,cmp)
-
-#if !defined(HAS_CPP11) && !defined(_WIN64)
-inline __int64 InterlockedAdd64(__int64 volatile * Addend, __int64 Value)
-{
-	*Addend += Value;
-	return *Addend;
-};
-#endif

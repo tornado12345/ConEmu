@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2012 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32,10 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PNGDUMP
 //#endif
 
-#include <windows.h>
-//#ifdef PNGDUMP
-//#include <Gdiplus.h>
-//#endif
+#include "../common/defines.h"
 #include "Header.h"
 #include "LoadImg.h"
 #include "ScreenDump.h"
@@ -211,7 +208,7 @@ BOOL DumpImage(HDC hScreen, HBITMAP hBitmap, int anX, int anY, int anWidth, int 
 	{
 		//static wchar_t szLastDumpFile[MAX_PATH];
 		SYSTEMTIME st; GetLocalTime(&st);
-		_wsprintf(szFile, SKIPLEN(countof(szFile)) L"%02u%02u%02u%02u%02u%02u",
+		swprintf_c(szFile, L"%02u%02u%02u%02u%02u%02u",
 			st.wYear%100, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
 		OPENFILENAME ofn; memset(&ofn,0,sizeof(ofn));

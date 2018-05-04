@@ -6,7 +6,6 @@
 #pragma warning(disable: 4091)
 #include <shlobj.h>
 #pragma warning(default: 4091)
-#include <tchar.h>
 
 #if defined(__GNUC__) && !defined(__MINGW64_VERSION_MAJOR)
 #include "ShObjIdl_Part.h"
@@ -308,7 +307,7 @@ CDataObject::CDataObject(FORMATETC *fmtetc, STGMEDIUM *stgmed, int count)
 {
 	m_lRefCount  = 1;
 
-	m_Data.alloc(32+max(count, 32));
+	m_Data.alloc(32+std::max(count, 32));
 
 	for (int i = 0; i < count; i++)
 	{
@@ -440,7 +439,7 @@ LPCWSTR CDataObject::GetFormatName(CLIPFORMAT cfFormat, bool bRaw)
 	if (!bRaw || (szName[0] == 0))
 	{
 		int nLen = lstrlen(szName);
-		_wsprintf(szName+nLen, SKIPLEN(countof(szName)-nLen) L"x%04X(%u)",
+		swprintf_c(szName+nLen, countof(szName)-nLen/*#SECURELEN*/, L"x%04X(%u)",
 			cfFormat, cfFormat);
 	}
 	return szName;
@@ -463,14 +462,14 @@ HRESULT __stdcall CDataObject::GetData(FORMATETC *pFormatEtc, STGMEDIUM *pMedium
 	if ((idx = LookupFormatEtc(pFormatEtc)) == -1)
 	{
 		#ifdef _DEBUG
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"!!! CDataObject::LookupFormatEtc(%s) failed\n", GetFormatName(pFormatEtc->cfFormat));
+		swprintf_c(szDbg, L"!!! CDataObject::LookupFormatEtc(%s) failed\n", GetFormatName(pFormatEtc->cfFormat));
 		DEBUGSTRDATA(szDbg);
 		#endif
 		return DV_E_FORMATETC;
 	}
 
 	#ifdef _DEBUG
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CDataObject::GetData {cfFormat=%s, lindex=%i, tymed=x%02X(%u)})",
+	swprintf_c(szDbg, L"CDataObject::GetData {cfFormat=%s, lindex=%i, tymed=x%02X(%u)})",
 		GetFormatName(pFormatEtc->cfFormat), pFormatEtc->lindex, pFormatEtc->tymed, pFormatEtc->tymed);
 	LPCWSTR pszName = GetFormatName(pFormatEtc->cfFormat, true);
 	DWORD nData = (DWORD)-1;
@@ -488,7 +487,7 @@ HRESULT __stdcall CDataObject::GetData(FORMATETC *pFormatEtc, STGMEDIUM *pMedium
 		{
 			nData = *pdw;
 			int nLen = lstrlen(szDbg);
-			_wsprintf(szDbg+nLen, SKIPLEN(countof(szDbg)-nLen) L", Data=x%02X(%u)", nData, nData);
+			swprintf_c(szDbg+nLen, countof(szDbg)-nLen/*#SECURELEN*/, L", Data=x%02X(%u)", nData, nData);
 		}
 		GlobalUnlock(m_Data[idx].StgMedium.hGlobal);
 	}
@@ -544,7 +543,7 @@ HRESULT __stdcall CDataObject::GetData(FORMATETC *pFormatEtc, STGMEDIUM *pMedium
 	else
 	{
 		#ifdef _DEBUG
-		_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"!!! CDataObject::GetData(tymed=%u) failed", m_Data[idx].FormatEtc.tymed);
+		swprintf_c(szDbg, L"!!! CDataObject::GetData(tymed=%u) failed", m_Data[idx].FormatEtc.tymed);
 		DEBUGSTRDATA(szDbg);
 		//_ASSERTE(FALSE && "Unsupported tymed!");
 		#endif
@@ -560,7 +559,7 @@ HRESULT __stdcall CDataObject::GetDataHere(FORMATETC *pFormatEtc, STGMEDIUM *pMe
 {
 	#ifdef _DEBUG
 	wchar_t szDbg[200];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CDataObject::GetDataHere({cfFormat=x%04X(%u), lindex=%i, tymed=x%02X(%u)}, {tymed=x%02X})\n",
+	swprintf_c(szDbg, L"CDataObject::GetDataHere({cfFormat=x%04X(%u), lindex=%i, tymed=x%02X(%u)}, {tymed=x%02X})\n",
 		pFormatEtc->cfFormat, pFormatEtc->cfFormat, pFormatEtc->lindex, pFormatEtc->tymed, pFormatEtc->tymed, pMedium->tymed);
 	DEBUGSTRDATA(szDbg);
 	#endif
@@ -584,7 +583,7 @@ HRESULT __stdcall CDataObject::QueryGetData(FORMATETC *pFormatEtc)
 {
 	#ifdef _DEBUG
 	wchar_t szDbg[200];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CDataObject::LookupFormatEtc({cfFormat=x%04X(%u), lindex=%i, tymed=x%02X(%u)})\n",
+	swprintf_c(szDbg, L"CDataObject::LookupFormatEtc({cfFormat=x%04X(%u), lindex=%i, tymed=x%02X(%u)})\n",
 		pFormatEtc->cfFormat, pFormatEtc->cfFormat, pFormatEtc->lindex, pFormatEtc->tymed, pFormatEtc->tymed);
 	DEBUGSTRDATA(szDbg);
 	#endif
@@ -658,12 +657,12 @@ HRESULT __stdcall CDataObject::SetData(FORMATETC *pFormatEtc, STGMEDIUM *pMedium
 	}
 
 	wchar_t szDbg[255];
-	_wsprintf(szDbg, SKIPLEN(countof(szDbg)) L"CDataObject::SetData {cfFormat=%s, lindex=%i, tymed=x%02X(%u)}, {tymed=x%02X}",
+	swprintf_c(szDbg, L"CDataObject::SetData {cfFormat=%s, lindex=%i, tymed=x%02X(%u)}, {tymed=x%02X}",
 		GetFormatName(pFormatEtc->cfFormat), pFormatEtc->lindex, pFormatEtc->tymed, pFormatEtc->tymed, pMedium->tymed);
 	if (nData != (DWORD)-1)
 	{
 		int nLen = lstrlen(szDbg);
-		_wsprintf(szDbg+nLen, SKIPLEN(countof(szDbg)-nLen) L", Data=x%02X(%u)", nData, nData);
+		swprintf_c(szDbg+nLen, countof(szDbg)-nLen/*#SECURELEN*/, L", Data=x%02X(%u)", nData, nData);
 	}
 	wcscat_c(szDbg, L"\n");
 	DEBUGSTRDATA(szDbg);

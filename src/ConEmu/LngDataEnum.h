@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -113,6 +113,10 @@ enum LngResources
 	lng_JumpListUpdated           = 81,
 	lng_DetachGuiConfirm          = 82,
 	lng_DetachConConfirm          = 83,
+	lng_DlgRestartConsole         = 84,
+	lng_DlgCreateNewConsole       = 85,
+	lng_HkGlblGnrlMsg             = 86,
+	lng_SpgGeneral                   = 87,
 	// last auto-gen identifier
 	lng_NextId
 };

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2011-2016 Maximus5
+Copyright (c) 2011-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -66,14 +66,8 @@ be received by your application before it calls any ITaskbarList3 method.
 */
 
 CTaskBar::CTaskBar(CConEmuMain* apOwner)
+	: mp_ConEmu(apOwner)
 {
-	mp_ConEmu = apOwner;
-	mp_TaskBar1 = NULL;
-	mp_TaskBar2 = NULL;
-	mp_TaskBar3 = NULL;
-	mp_TaskBar4 = NULL;
-	mh_Shield = NULL;
-	mb_OleInitalized = false;
 }
 
 CTaskBar::~CTaskBar()
@@ -91,11 +85,9 @@ void CTaskBar::Taskbar_Init()
 
 	m_Ghosts.alloc(MAX_CONSOLE_COUNT);
 
-	if (!mb_OleInitalized)
-	{
-		hr = OleInitialize(NULL);  // как бы попробовать включать Ole только во время драга. кажется что из-за него глючит переключалка языка
-		mb_OleInitalized = SUCCEEDED(hr);
-	}
+	// OleInitialize calls CoInitializeEx internally to initialize the COM library on the current apartment.
+	// Because OLE operations are not thread-safe, OleInitialize specifies the concurrency model as single-thread apartment.
+	m_OleInitalizer.Initialize();
 
 	if (!mp_TaskBar1)
 	{
@@ -429,7 +421,7 @@ void CTaskBar::Taskbar_SetOverlay(HICON ahIcon)
 		hr = mp_TaskBar3 ? mp_TaskBar3->SetOverlayIcon(ghWnd, ahIcon, NULL) : E_FAIL;
 
 		wchar_t szInfo[100];
-		_wsprintf(szInfo, SKIPCOUNT(szInfo) L"mp_TaskBar3->SetOverlayIcon(%s) %s code=x%08X", ahIcon?L"ICON":L"NULL", SUCCEEDED(hr)?L"succeeded":L"failed", hr);
+		swprintf_c(szInfo, L"mp_TaskBar3->SetOverlayIcon(%s) %s code=x%08X", ahIcon?L"ICON":L"NULL", SUCCEEDED(hr)?L"succeeded":L"failed", hr);
 		LogString(szInfo);
 
 		// The HRESULT_FROM_WIN32(ERROR_TIMEOUT) may be encountered here

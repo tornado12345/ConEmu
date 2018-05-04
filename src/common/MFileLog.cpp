@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2009-2016 Maximus5
+Copyright (c) 2009-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,17 +26,14 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#ifdef _DEBUG
-//#define USE_LOCK_SECTION
-//#endif
-
 //#define USE_FORCE_FLASH_LOG
 #undef USE_FORCE_FLASH_LOG
 
 #define HIDE_USE_EXCEPTION_INFO
-#include <windows.h>
+
 #include "defines.h"
 #include "MAssert.h"
+#include "MModule.h"
 #include "MFileLog.h"
 #include "MSectionSimple.h"
 #include "MStrDup.h"
@@ -44,10 +41,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../ConEmu/version.h"
 #pragma warning(disable: 4091)
 #include <shlobj.h>
-
-#if !defined(CONEMU_MINIMAL)
-#include "StartupEnvEx.h"
-#endif
 
 #ifdef _DEBUG
 #define DebugString(x) //OutputDebugString(x)
@@ -62,6 +55,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 MFileLog::MFileLog(LPCWSTR asName, LPCWSTR asDir /*= NULL*/, DWORD anPID /*= 0*/)
 {
+	mp_Acquired = NULL;
 	mpcs_Lock = new MSectionSimple(true);
 	mh_LogFile = NULL;
 	ms_FilePathName = NULL;
@@ -84,13 +78,21 @@ HRESULT MFileLog::InitFileName(LPCWSTR asName /*= NULL*/, DWORD anPID /*= 0*/)
 		return E_UNEXPECTED;
 	}
 
-	_wsprintf(ms_FileName, SKIPLEN(cchMax) L"%s-%u.log", asName, anPID);
+	swprintf_c(ms_FileName, cchMax/*#SECURELEN*/, L"%s-%u.log", asName, anPID);
 
 	return S_OK;
 }
 
 MFileLog::~MFileLog()
 {
+	if (mp_Acquired)
+	{
+		_ASSERTE(mp_Acquired==NULL && "Must be already released!");
+		mp_Acquired->pLog = NULL;
+		mp_Acquired->hLogFile = NULL;
+		mp_Acquired->lock.Unlock();
+		mp_Acquired = NULL;
+	}
 	CloseLogFile();
 	SafeFree(ms_DefPath);
 	SafeDelete(mpcs_Lock);
@@ -143,12 +145,12 @@ HRESULT MFileLog::CreateLogFile(LPCWSTR asName /*= NULL*/, DWORD anPID /*= 0*/, 
 
 	wchar_t szLevel[16] = L"";
 	if (anLevel > 0)
-		_wsprintf(szLevel, SKIPLEN(countof(szLevel)) L"[%u]", anLevel);
+		swprintf_c(szLevel, L"[%u]", anLevel);
 	wchar_t szVer4[8] = L"";
 	lstrcpyn(szVer4, WSTRING(MVV_4a), countof(szVer4));
 	wchar_t szConEmu[128];
 	GetLocalTime(&mst_LastWrite);
-	_wsprintf(szConEmu, SKIPLEN(countof(szConEmu))
+	swprintf_c(szConEmu,
 		L"%i-%02i-%02i %i:%02i:%02i.%03i ConEmu %u%02u%02u%s%s[%s%s] log%s",
 		mst_LastWrite.wYear, mst_LastWrite.wMonth, mst_LastWrite.wDay,
 		mst_LastWrite.wHour, mst_LastWrite.wMinute, mst_LastWrite.wSecond, mst_LastWrite.wMilliseconds,
@@ -200,25 +202,14 @@ HRESULT MFileLog::CreateLogFile(LPCWSTR asName /*= NULL*/, DWORD anPID /*= 0*/, 
 			HRESULT hFolderRc = E_NOTIMPL;
 
 			// To avoid static link in ConEmuHk
-			#if !defined(CONEMU_MINIMAL)
-				_SHGetFolderPath = SHGetFolderPathW;
-			#else
-				HMODULE hShell32 = LoadLibrary(L"Shell32.dll");
-				_SHGetFolderPath = hShell32 ? (SHGetFolderPathW_t)GetProcAddress(hShell32, "SHGetFolderPathW") : NULL;
-				_ASSERTEX(_SHGetFolderPath!=NULL);
-			#endif
+			MModule hShell32(L"Shell32.dll");
+			hShell32.GetProcAddress("SHGetFolderPathW", _SHGetFolderPath);
+			_ASSERTEX(_SHGetFolderPath!=NULL);
 
 			if (_SHGetFolderPath)
 			{
 				hFolderRc = _SHGetFolderPath(NULL, CSIDL_DESKTOPDIRECTORY|CSIDL_FLAG_CREATE, NULL, 0/*SHGFP_TYPE_CURRENT*/, szDesktop);
 			}
-
-			#if defined(CONEMU_MINIMAL)
-			if (hShell32)
-			{
-				FreeLibrary(hShell32);
-			}
-			#endif
 
 			// Check the result
 			if (hFolderRc == S_OK)
@@ -280,6 +271,30 @@ LPCWSTR MFileLog::GetLogFileName()
 		return L"<NULL>";
 
 	return (ms_FilePathName ? ms_FilePathName : L"<NullFileName>");
+}
+
+bool MFileLog::AcquireHandle(LPCWSTR asText, MFileLogHandle& Acquired)
+{
+	LogString((asText && *asText) ? asText : L"Acquiring LogFile handle", true, NULL, false);
+	if (!IsLogOpened())
+	{
+		LogString(" - FAILED (log was not opened)");
+		return false;
+	}
+	if (InterlockedCompareExchangePointer((PVOID*)&mp_Acquired, &Acquired, NULL))
+	{
+		LogString(" - FAILED (already acquired)");
+		return false;
+	}
+	if (!mp_Acquired->lock.Lock(mpcs_Lock, 500))
+	{
+		InterlockedExchangePointer((PVOID*)&mp_Acquired, NULL);
+		LogString(" - FAILED (can't lock)");
+		return false;
+	}
+	mp_Acquired->pLog = this;
+	mp_Acquired->hLogFile = mh_LogFile;
+	return true;
 }
 
 void MFileLog::LogString(LPCSTR asText, bool abWriteTime /*= true*/, LPCSTR asThreadName /*= NULL*/, bool abNewLine /*= true*/, UINT anCP /*= CP_ACP*/)
@@ -359,9 +374,9 @@ void MFileLog::LogString(LPCWSTR asText, bool abWriteTime /*= true*/, LPCWSTR as
 		SYSTEMTIME st; GetLocalTime(&st);
 		char szTime[32];
 		if (memcmp(&st, &mst_LastWrite, 4*sizeof(st.wYear)) == 0)
-			_wsprintfA(szTime, SKIPLEN(countof(szTime)) "%i:%02i:%02i.%03i ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+			sprintf_c(szTime, "%i:%02i:%02i.%03i ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 		else
-			_wsprintfA(szTime, SKIPLEN(countof(szTime)) "%i-%02i-%02i %i:%02i:%02i.%03i ", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+			sprintf_c(szTime, "%i-%02i-%02i %i:%02i:%02i.%03i ", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 		mst_LastWrite = st;
 		INT_PTR dwLen = lstrlenA(szTime);
 		memmove(pszBuffer+cchCur, szTime, dwLen);
@@ -416,7 +431,7 @@ void MFileLog::LogString(LPCWSTR asText, bool abWriteTime /*= true*/, LPCWSTR as
 
 	wchar_t szInfo[512]; szInfo[0] = 0;
 	SYSTEMTIME st; GetLocalTime(&st);
-	_wsprintf(szInfo, SKIPLEN(countof(szInfo)) L"%i:%02i:%02i.%03i ",
+	swprintf_c(szInfo, L"%i:%02i:%02i.%03i ",
 	          st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 	int nCur = lstrlenW(szInfo);
 
@@ -440,16 +455,25 @@ void MFileLog::LogString(LPCWSTR asText, bool abWriteTime /*= true*/, LPCWSTR as
 #endif
 }
 
-#if !defined(CONEMU_MINIMAL)
-void MFileLog::LogStartEnvInt(LPCWSTR asText, LPARAM lParam, bool bFirst, bool bNewLine)
+
+MFileLogHandle::MFileLogHandle()
+	: pLog(NULL)
+	, hLogFile(NULL)
 {
-	MFileLog* p = (MFileLog*)lParam;
-	p->LogString(asText, bFirst, NULL, bNewLine);
 }
 
-void MFileLog::LogStartEnv(CEStartupEnv* apStartEnv)
+MFileLogHandle::~MFileLogHandle()
 {
-	LoadStartupEnvEx::ToString(apStartEnv, LogStartEnvInt, (LPARAM)this);
-	LogString(L"MFileLog::LogStartEnv finished", true);
+	if (pLog)
+	{
+		InterlockedExchangePointer((PVOID*)&pLog->mp_Acquired, NULL);
+		pLog = NULL;
+		hLogFile = NULL;
+	}
+	lock.Unlock();
 }
-#endif
+
+MFileLogHandle::operator HANDLE() const
+{
+	return hLogFile;
+}

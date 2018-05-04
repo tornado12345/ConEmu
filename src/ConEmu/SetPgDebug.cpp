@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -132,7 +132,7 @@ void CSetPgDebug::SetLoggingType(GuiLoggingType aNewLogType)
 	{
 		LVCOLUMN col = {
 			LVCF_WIDTH|LVCF_TEXT|LVCF_FMT, LVCFMT_LEFT,
-			gpSetCls->EvalSize(60, esf_Horizontal|esf_CanUseDpi)};
+			gpSetCls->EvalSize(80, esf_Horizontal|esf_CanUseDpi)};
 		wchar_t szTitle[64]; col.pszText = szTitle;
 
 		ListView_SetExtendedListViewStyleEx(hList,LVS_EX_FULLROWSELECT,LVS_EX_FULLROWSELECT);
@@ -290,7 +290,7 @@ void CSetPgDebug::debugLogShell(DebugLogShellActivity *pShl)
 	}
 
 	SYSTEMTIME st; GetLocalTime(&st);
-	wchar_t szTime[128]; _wsprintf(szTime, SKIPLEN(countof(szTime)) L"%02i:%02i:%02i.%03i", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+	wchar_t szTime[128]; swprintf_c(szTime, L"%02i:%02i:%02i.%03i", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 	HWND hList = GetDlgItem(mh_Dlg, lbActivityLog);
 	LVITEM lvi = {LVIF_TEXT|LVIF_STATE};
 	lvi.state = lvi.stateMask = LVIS_SELECTED|LVIS_FOCUSED;
@@ -298,18 +298,18 @@ void CSetPgDebug::debugLogShell(DebugLogShellActivity *pShl)
 	int nItem = ListView_InsertItem(hList, &lvi);
 	//
 	ListView_SetItemText(hList, nItem, lpc_Func, (wchar_t*)pShl->szFunction);
-	_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u:%u", pShl->nParentPID, pShl->nParentBits);
+	swprintf_c(szTime, L"%u:%u", pShl->nParentPID, pShl->nParentBits);
 	ListView_SetItemText(hList, nItem, lpc_PPID, szTime);
 	if (pShl->pszAction)
 		ListView_SetItemText(hList, nItem, lpc_Oper, (wchar_t*)pShl->pszAction);
 	if (pShl->nImageBits)
 	{
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", pShl->nImageBits);
+		swprintf_c(szTime, L"%u", pShl->nImageBits);
 		ListView_SetItemText(hList, nItem, lpc_Bits, szTime);
 	}
 	if (pShl->nImageSubsystem)
 	{
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", pShl->nImageSubsystem);
+		swprintf_c(szTime, L"%u", pShl->nImageSubsystem);
 		ListView_SetItemText(hList, nItem, lpc_System, szTime);
 	}
 
@@ -325,28 +325,28 @@ void CSetPgDebug::debugLogShell(DebugLogShellActivity *pShl)
 
 	szTime[0] = 0;
 	if (pShl->nShellFlags)
-		_wsprintf(szTime+_tcslen(szTime), SKIPLEN(32) L"Sh:0x%04X ", pShl->nShellFlags); //-V112
+		swprintf_c(szTime+_tcslen(szTime), 32/*#SECURELEN*/, L"Sh:0x%04X ", pShl->nShellFlags); //-V112
 	if (pShl->nCreateFlags)
-		_wsprintf(szTime+_tcslen(szTime), SKIPLEN(32) L"Cr:0x%04X ", pShl->nCreateFlags); //-V112
+		swprintf_c(szTime+_tcslen(szTime), 32/*#SECURELEN*/, L"Cr:0x%04X ", pShl->nCreateFlags); //-V112
 	if (pShl->nStartFlags)
-		_wsprintf(szTime+_tcslen(szTime), SKIPLEN(32) L"St:0x%04X ", pShl->nStartFlags); //-V112
+		swprintf_c(szTime+_tcslen(szTime), 32/*#SECURELEN*/, L"St:0x%04X ", pShl->nStartFlags); //-V112
 	if (pShl->nShowCmd)
-		_wsprintf(szTime+_tcslen(szTime), SKIPLEN(32) L"Sw:%u ", pShl->nShowCmd); //-V112
+		swprintf_c(szTime+_tcslen(szTime), 32/*#SECURELEN*/, L"Sw:%u ", pShl->nShowCmd); //-V112
 	ListView_SetItemText(hList, nItem, lpc_Flags, szTime);
 
 	if (pShl->hStdIn)
 	{
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"0x%08X", pShl->hStdIn);
+		swprintf_c(szTime, L"0x%08X", pShl->hStdIn);
 		ListView_SetItemText(hList, nItem, lpc_StdIn, szTime);
 	}
 	if (pShl->hStdOut)
 	{
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"0x%08X", pShl->hStdOut);
+		swprintf_c(szTime, L"0x%08X", pShl->hStdOut);
 		ListView_SetItemText(hList, nItem, lpc_StdOut, szTime);
 	}
 	if (pShl->hStdErr)
 	{
-		_wsprintf(szTime, SKIPLEN(countof(szTime)) L"0x%08X", pShl->hStdErr);
+		swprintf_c(szTime, L"0x%08X", pShl->hStdErr);
 		ListView_SetItemText(hList, nItem, lpc_StdErr, szTime);
 	}
 	if (pShl->pszAction)
@@ -394,19 +394,47 @@ void CSetPgDebug::debugLogShellText(wchar_t* &pszParamEx, LPCWSTR asFile)
 	}
 }
 
+void CSetPgDebug::debugLogString(CSetPgDebug::LogRConString* pInfo)
+{
+	CSetPgDebug* pDbgPg = (CSetPgDebug*)gpSetCls->GetPageObj(thi_Debug);
+	if (!pDbgPg)
+		goto wrap;
+	if (pDbgPg->GetActivityLoggingType() != glt_Input)
+		goto wrap;
+
+	{
+		SYSTEMTIME st; GetLocalTime(&st);
+		wchar_t szTime[255]; swprintf_c(szTime, L"%02i:%02i:%02i.%03i", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+		HWND hList = GetDlgItem(pDbgPg->Dlg(), lbActivityLog);
+		LVITEM lvi = {LVIF_TEXT|LVIF_STATE};
+		lvi.state = lvi.stateMask = LVIS_SELECTED|LVIS_FOCUSED;
+		lvi.pszText = szTime;
+
+		int nItem = ListView_InsertItem(hList, &lvi);
+
+		ListView_SetItemText(hList, nItem, lic_Dup, L"1");
+
+		ListView_SetItemText(hList, nItem, lic_Type, L"X.Key");
+		ListView_SetItemText(hList, nItem, lic_Event, pInfo->pszString);
+	}
+
+wrap:
+	free(pInfo);
+}
+
 void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 {
 	CSetPgDebug* pDbgPg = (CSetPgDebug*)gpSetCls->GetPageObj(thi_Debug);
 	if (!pDbgPg)
-		return;
+		goto wrap;
 	if (pDbgPg->GetActivityLoggingType() != glt_Input)
-		return;
+		goto wrap;
 
 	for (UINT nIdx = 0; nIdx < pInfo->nCount; nIdx++)
 	{
 		const INPUT_RECORD *pr = pInfo->Buffer+nIdx;
 		SYSTEMTIME st; GetLocalTime(&st);
-		wchar_t szTime[255]; _wsprintf(szTime, SKIPLEN(countof(szTime)) L"%02i:%02i:%02i.%03i", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+		wchar_t szTime[255]; swprintf_c(szTime, L"%02i:%02i:%02i.%03i", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 		HWND hList = GetDlgItem(pDbgPg->Dlg(), lbActivityLog);
 		LVITEM lvi = {LVIF_TEXT|LVIF_STATE};
 		lvi.state = lvi.stateMask = LVIS_SELECTED|LVIS_FOCUSED;
@@ -417,7 +445,7 @@ void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 			memcmp(&LastLogEvent1, pr, sizeof(LastLogEvent1)) == 0)
 		{
 			LastLogEventDup1 ++;
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", LastLogEventDup1);
+			swprintf_c(szTime, L"%u", LastLogEventDup1);
 			ListView_SetItemText(hList, 0, lic_Dup, szTime); // верхний
 			//free(pr);
 			continue; // дубли - не показывать? только если прошло время?
@@ -426,7 +454,7 @@ void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 			memcmp(&LastLogEvent2, pr, sizeof(LastLogEvent2)) == 0)
 		{
 			LastLogEventDup2 ++;
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", LastLogEventDup2);
+			swprintf_c(szTime, L"%u", LastLogEventDup2);
 			ListView_SetItemText(hList, 1, lic_Dup, szTime); // верхний
 			//free(pr);
 			continue; // дубли - не показывать? только если прошло время?
@@ -449,7 +477,7 @@ void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 			wcscat_c(szTime, L"Mouse");
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
 			const MOUSE_EVENT_RECORD *rec = &pr->Event.MouseEvent;
-			_wsprintf(szTime, SKIPLEN(countof(szTime))
+			swprintf_c(szTime,
 				L"[%d,%d], Btn=0x%08X (%c%c%c%c%c), Ctrl=0x%08X (%c%c%c%c%c - %c%c%c%c), Flgs=0x%08X (%s)",
 				rec->dwMousePosition.X,
 				rec->dwMousePosition.Y,
@@ -488,7 +516,7 @@ void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 		{
 			wcscat_c(szTime, L"Key");
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%c(%i) VK=%i, SC=%i, U=%c(x%04X), ST=x%08X",
+			swprintf_c(szTime, L"%c(%i) VK=%i, SC=%i, U=%c(x%04X), ST=x%08X",
 				pr->Event.KeyEvent.bKeyDown ? L'D' : L'U',
 				pr->Event.KeyEvent.wRepeatCount,
 				pr->Event.KeyEvent.wVirtualKeyCode, pr->Event.KeyEvent.wVirtualScanCode,
@@ -501,29 +529,30 @@ void CSetPgDebug::debugLogInfo(CESERVER_REQ_PEEKREADINFO* pInfo)
 		{
 			wcscat_c(szTime, L"Focus");
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", (DWORD)pr->Event.FocusEvent.bSetFocus);
+			swprintf_c(szTime, L"%u", (DWORD)pr->Event.FocusEvent.bSetFocus);
 			ListView_SetItemText(hList, nItem, lic_Event, szTime);
 		}
 		else if (pr->EventType == WINDOW_BUFFER_SIZE_EVENT)
 		{
 			wcscat_c(szTime, L"Buffer");
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%ix%i", (int)pr->Event.WindowBufferSizeEvent.dwSize.X, (int)pr->Event.WindowBufferSizeEvent.dwSize.Y);
+			swprintf_c(szTime, L"%ix%i", (int)pr->Event.WindowBufferSizeEvent.dwSize.X, (int)pr->Event.WindowBufferSizeEvent.dwSize.Y);
 			ListView_SetItemText(hList, nItem, lic_Event, szTime);
 		}
 		else if (pr->EventType == MENU_EVENT)
 		{
 			wcscat_c(szTime, L"Menu");
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
-			_wsprintf(szTime, SKIPLEN(countof(szTime)) L"%u", (DWORD)pr->Event.MenuEvent.dwCommandId);
+			swprintf_c(szTime, L"%u", (DWORD)pr->Event.MenuEvent.dwCommandId);
 			ListView_SetItemText(hList, nItem, lic_Event, szTime);
 		}
 		else
 		{
-			_wsprintf(szTime+2, SKIPLEN(countof(szTime)-2) L"%u", (DWORD)pr->EventType);
+			swprintf_c(szTime+2, countof(szTime)-2/*#SECURELEN*/, L"%u", (DWORD)pr->EventType);
 			ListView_SetItemText(hList, nItem, lic_Type, szTime);
 		}
 	}
+wrap:
 	free(pInfo);
 }
 
@@ -554,7 +583,7 @@ void CSetPgDebug::debugLogCommand(CESERVER_REQ* pInfo, BOOL abInput, DWORD anTic
 	switch (pInfo->hdr.nCmd)
 	{
 	case CECMD_POSTCONMSG:
-		_wsprintf(pData->szExtra, SKIPLEN(countof(pData->szExtra))
+		swprintf_c(pData->szExtra,
 			L"HWND=x%08X, Msg=%u, wParam=" WIN3264TEST(L"x%08X",L"x%08X%08X") L", lParam=" WIN3264TEST(L"x%08X",L"x%08X%08X") L": ",
 			pInfo->Msg.hWnd, pInfo->Msg.nMsg, WIN3264WSPRINT(pInfo->Msg.wParam), WIN3264WSPRINT(pInfo->Msg.lParam));
 		GetClassName(pInfo->Msg.hWnd, pData->szExtra+lstrlen(pData->szExtra), countof(pData->szExtra)-lstrlen(pData->szExtra));
@@ -571,6 +600,25 @@ void CSetPgDebug::debugLogCommand(CESERVER_REQ* pInfo, BOOL abInput, DWORD anTic
 	}
 
 	PostMessage(pDbgPg->Dlg(), DBGMSG_LOG_ID, DBGMSG_LOG_CMD_MAGIC, (LPARAM)pData);
+}
+
+void CSetPgDebug::debugLog(WPARAM wParam, LPARAM lParam)
+{
+	switch (wParam)
+	{
+	case DBGMSG_LOG_SHELL_MAGIC:
+		debugLogShell((DebugLogShellActivity*)lParam);
+		break;
+	case DBGMSG_LOG_INPUT_MAGIC:
+		debugLogInfo((CESERVER_REQ_PEEKREADINFO*)lParam);
+		break;
+	case DBGMSG_LOG_STR_MAGIC:
+		debugLogString((LogRConString*)lParam);
+		break;
+	case DBGMSG_LOG_CMD_MAGIC:
+		debugLogCommand((LogCommandsData*)lParam);
+		break;
+	}
 }
 
 void CSetPgDebug::debugLogCommand(LogCommandsData* apData)
@@ -600,19 +648,19 @@ void CSetPgDebug::debugLogCommand(LogCommandsData* apData)
 	int nMin = apData->nTick / 60000; apData->nTick -= nMin*60000;
 	int nSec = apData->nTick / 1000;
 	int nMS = apData->nTick % 1000;
-	_wsprintf(szText, SKIPLEN(countof(szText)) L"%02i:%02i:%03i", nMin, nSec, nMS);
+	swprintf_c(szText, L"%02i:%02i:%03i", nMin, nSec, nMS);
 	ListView_SetItemText(hList, nItem, lcc_Time, szText);
 
-	_wsprintf(szText, SKIPLEN(countof(szText)) apData->bInput ? L"" : L"%u", apData->nDur);
+	swprintf_c(szText, apData->bInput ? L"" : L"%u", apData->nDur);
 	ListView_SetItemText(hList, nItem, lcc_Duration, szText);
 
-	_wsprintf(szText, SKIPLEN(countof(szText)) L"%u", apData->nCmd);
+	swprintf_c(szText, L"%u", apData->nCmd);
 	ListView_SetItemText(hList, nItem, lcc_Command, szText);
 
-	_wsprintf(szText, SKIPLEN(countof(szText)) L"%u", apData->nSize);
+	swprintf_c(szText, L"%u", apData->nSize);
 	ListView_SetItemText(hList, nItem, lcc_Size, szText);
 
-	_wsprintf(szText, SKIPLEN(countof(szText)) apData->nPID ? L"%u" : L"", apData->nPID);
+	swprintf_c(szText, apData->nPID ? L"%u" : L"", apData->nPID);
 	ListView_SetItemText(hList, nItem, lcc_PID, szText);
 
 	ListView_SetItemText(hList, nItem, lcc_Pipe, apData->szPipe);

@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2016 Maximus5
+Copyright (c) 2016-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,8 +58,8 @@ static struct StrDistinctControls
 	{cbClipboardOverride, {
 		gbCopyingOverride, cbCTSDetectLineEnd, cbCTSBashMargin, cbCTSTrimTrailing, stCTSEOL, lbCTSEOL,
 		gbSelectingOverride, cbCTSShiftArrowStartSel,
-		gbPasteM1, rPasteM1MultiLine, rPasteM1SingleLine, rPasteM1FirstLine, rPasteM1Nothing,
-		gbPasteM2, rPasteM2MultiLine, rPasteM2SingleLine, rPasteM2FirstLine, rPasteM2Nothing,
+		gbPasteM1, rPasteM1MultiLine, rPasteM1SingleLine, rPasteM1FirstLine, rPasteM1Nothing, cbPasteM1Posix,
+		gbPasteM2, rPasteM2MultiLine, rPasteM2SingleLine, rPasteM2FirstLine, rPasteM2Nothing, cbPasteM2Posix,
 		gbPromptOverride, cbCTSClickPromptPosition, cbCTSDeleteLeftWord}},
 };
 
@@ -154,7 +154,7 @@ INT_PTR CSetPgApps::SetListAppName(const AppSettings* pApp, int nAppIndex/*1-bas
 	INT_PTR iCount, iIndex;
 	wchar_t szItem[1024];
 
-	_wsprintf(szItem, SKIPLEN(countof(szItem)) L"%i\t%s\t", nAppIndex,
+	swprintf_c(szItem, L"%i\t%s\t", nAppIndex,
 		(pApp->Elevated == 1) ? L"E" : (pApp->Elevated == 2) ? L"N" : L"*");
 	int nPrefix = lstrlen(szItem);
 	if (pApp->AppNames)
@@ -280,17 +280,17 @@ INT_PTR CSetPgApps::pageOpProc_AppsChild(HWND hDlg, UINT messg, WPARAM wParam, L
 				{
 				case SB_LINEDOWN:
 				case SB_PAGEDOWN:
-					nPos = min(si.nMax,si.nPos+nDelta);
+					nPos = std::min(si.nMax,si.nPos+nDelta);
 					break;
 				//case SB_PAGEDOWN:
-				//	nPos = min(si.nMax,si.nPos+si.nPage);
+				//	nPos = std::min(si.nMax,si.nPos+si.nPage);
 				//	break;
 				case SB_LINEUP:
 				case SB_PAGEUP:
-					nPos = max(si.nMin,si.nPos-nDelta);
+					nPos = std::max(si.nMin,si.nPos-nDelta);
 					break;
 				//case SB_PAGEUP:
-				//	nPos = max(si.nMin,si.nPos-si.nPage);
+				//	nPos = std::max(si.nMin,si.nPos-si.nPage);
 				//	break;
 				}
 			}
@@ -453,7 +453,7 @@ void CSetPgApps::DoAppDel()
 
 	int iCount = (int)SendDlgItemMessage(mh_Dlg, lbAppDistinct, LB_GETCOUNT, 0,0);
 
-	SendDlgItemMessage(mh_Dlg, lbAppDistinct, LB_SETCURSEL, min(iCur,(iCount-1)), 0);
+	SendDlgItemMessage(mh_Dlg, lbAppDistinct, LB_SETCURSEL, std::min(iCur,(iCount-1)), 0);
 
 	lockSelChange.Unlock();
 
@@ -607,6 +607,8 @@ INT_PTR CSetPgApps::OnButtonClicked(HWND hDlg, HWND hBtn, WORD nCtrlId)
 			pApp->isPasteAllLines = plm_Nothing; break;
 		}
 		break;
+	case cbPasteM1Posix:
+		pApp->isPosixAllLines = isChecked2(mh_Child, nCtrlId) ? pxm_Auto : pxm_Intact; break;
 	case rPasteM2MultiLine:
 	case rPasteM2FirstLine:
 	case rPasteM2SingleLine:
@@ -623,6 +625,8 @@ INT_PTR CSetPgApps::OnButtonClicked(HWND hDlg, HWND hBtn, WORD nCtrlId)
 			gpSet->AppStd.isPasteFirstLine = plm_Nothing; break;
 		}
 		break;
+	case cbPasteM2Posix:
+		pApp->isPosixFirstLine = isChecked2(mh_Child, nCtrlId) ? pxm_Auto : pxm_Intact; break;
 
 	case cbCTSDetectLineEnd:
 		pApp->isCTSDetectLineEnd = isChecked2(mh_Child, nCtrlId);
@@ -676,7 +680,7 @@ bool CSetPgApps::CreateChildDlg()
 
 		if (!mp_DpiDistinct2 && mp_ParentDpi)
 		{
-			mp_DpiDistinct2 = new CDpiForDialog();
+			CDpiForDialog::Create(mp_DpiDistinct2);
 			mp_DpiDistinct2->Attach(mh_Child, mh_Dlg, mp_DlgDistinct2);
 		}
 
@@ -735,7 +739,7 @@ void CSetPgApps::DoFillControls(const AppSettings* pApp)
 	checkDlgButton(mh_Child, cbColorsOverride, pApp->OverridePalette);
 	// Don't add unknown palettes in the list!
 	int nIdx = SendDlgItemMessage(mh_Child, lbColorsOverride, CB_FINDSTRINGEXACT, -1, (LPARAM)pApp->szPaletteName);
-	SendDlgItemMessage(mh_Child, lbColorsOverride, CB_SETCURSEL, klMax(nIdx, 0), 0);
+	SendDlgItemMessage(mh_Child, lbColorsOverride, CB_SETCURSEL, std::max(nIdx, 0), 0);
 
 	checkDlgButton(mh_Child, cbClipboardOverride, pApp->OverrideClipboard);
 	//
@@ -753,12 +757,14 @@ void CSetPgApps::DoFillControls(const AppSettings* pApp)
 		: (mode == plm_SingleLine) ? rPasteM1SingleLine
 		: (mode == plm_Nothing) ? rPasteM1Nothing
 		: rPasteM1MultiLine);
+	checkDlgButton(mh_Child, cbPasteM1Posix, (pApp->isPosixAllLines != pxm_Intact) ? BST_CHECKED : BST_UNCHECKED);
 	mode = pApp->isPasteFirstLine;
 	checkRadioButton(mh_Child, rPasteM2MultiLine, rPasteM2Nothing,
 		(mode == plm_MultiLine) ? rPasteM2MultiLine
 		: (mode == plm_FirstLine) ? rPasteM2FirstLine
 		: (mode == plm_Nothing) ? rPasteM2Nothing
 		: rPasteM2SingleLine);
+	checkDlgButton(mh_Child, cbPasteM2Posix, (pApp->isPosixFirstLine != pxm_Intact) ? BST_CHECKED : BST_UNCHECKED);
 	//
 	checkDlgButton(mh_Child, cbCTSClickPromptPosition, pApp->isCTSClickPromptPosition);
 	//
@@ -915,8 +921,6 @@ INT_PTR CSetPgApps::OnComboBox(HWND hDlg, WORD nCtrlId, WORD code)
 								BOOL bPopupAttr = (pApp->nPopTextColorIdx != pPal->nPopTextColorIdx) || (pApp->nPopBackColorIdx != pPal->nPopBackColorIdx);
 								pApp->nPopTextColorIdx = pPal->nPopTextColorIdx;
 								pApp->nPopBackColorIdx = pPal->nPopBackColorIdx;
-								pApp->isExtendColors = pPal->isExtendColors;
-								pApp->nExtendColorIdx = pPal->nExtendColorIdx;
 								if (bTextAttr || bPopupAttr)
 								{
 									gpSetCls->UpdateTextColorSettings(bTextAttr, bPopupAttr, pApp);
