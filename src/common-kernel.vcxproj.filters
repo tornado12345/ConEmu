@@ -30,6 +30,9 @@
     <ClInclude Include="common\ConsoleRead.h">
       <Filter>Headers</Filter>
     </ClInclude>
+    <ClInclude Include="common\EnvVar.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
     <ClInclude Include="common\HandleKeeper.h">
       <Filter>Headers</Filter>
     </ClInclude>
@@ -37,6 +40,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="common\InQueue.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="common\Keyboard.h">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="common\MAssert.h">
@@ -122,6 +128,9 @@
     <ClCompile Include="common\ConsoleRead.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="common\EnvVar.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
     <ClCompile Include="common\HandleKeeper.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
@@ -129,6 +138,9 @@
       <Filter>Sources</Filter>
     </ClCompile>
     <ClCompile Include="common\InQueue.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="common\Keyboard.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
     <ClCompile Include="common\MAssert.cpp">

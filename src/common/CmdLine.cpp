@@ -30,6 +30,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Common.h"
 #include "CEStr.h"
 #include "CmdLine.h"
+#include "EnvVar.h"
 #include "MStrDup.h"
 #include "WObjects.h"
 
@@ -38,10 +39,171 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "MWow64Disable.h"
 #endif
 
+
+CmdArg::CmdArg()
+{
+}
+
+CmdArg::CmdArg(const wchar_t* str)
+	: CEStr(str)
+{
+}
+
+CmdArg::~CmdArg()
+{
+	Empty();
+}
+
+CmdArg& CmdArg::operator=(const wchar_t* str)
+{
+	Set(str);
+	return *this;
+}
+
+void CmdArg::Empty()
+{
+	CEStr::Empty();
+
+	mn_TokenNo = 0;
+	mn_CmdCall = cc_Undefined;
+	mpsz_Dequoted = nullptr;
+	mb_Quoted = false;
+
+	#ifdef _DEBUG
+	ms_LastTokenEnd = nullptr;
+	ms_LastTokenSave[0] = 0;
+	#endif
+}
+
+void CmdArg::GetPosFrom(const CmdArg& arg)
+{
+	mpsz_Dequoted = arg.mpsz_Dequoted;
+	mb_Quoted = arg.mb_Quoted;
+	mn_TokenNo = arg.mn_TokenNo;
+	mn_CmdCall = arg.mn_CmdCall;
+	#ifdef _DEBUG
+	ms_LastTokenEnd = arg.ms_LastTokenEnd;
+	lstrcpyn(ms_LastTokenSave, arg.ms_LastTokenSave, countof(ms_LastTokenSave));
+	#endif
+}
+
+bool CmdArg::IsPossibleSwitch() const
+{
+	// Nothing to compare?
+	if (IsEmpty())
+		return false;
+	if ((ms_Val[0] != L'-') && (ms_Val[0] != L'/'))
+		return false;
+
+	// We do not care here about "-new_console:..." or "-cur_console:..."
+	// They are processed by RConStartArgsEx
+
+	// But ':' removed from checks, because otherwise ConEmu will not warn
+	// on invalid usage of "-new_console:a" for example
+
+	// Also, support smth like "-inside=\eCD /d %1"
+	LPCWSTR pszDelim = wcspbrk(ms_Val+1, L"=:");
+	LPCWSTR pszInvalids = wcspbrk(ms_Val+1, L"\\/|.&<>^");
+
+	if (pszInvalids && (!pszDelim || (pszInvalids < pszDelim)))
+		return false;
+
+	// Well, looks like a switch (`-run` for example)
+	return true;
+}
+
+bool CmdArg::CompareSwitch(LPCWSTR asSwitch) const
+{
+	if ((asSwitch[0] == L'-') || (asSwitch[0] == L'/'))
+	{
+		asSwitch++;
+	}
+	else
+	{
+		_ASSERTE((asSwitch[0] == L'-') || (asSwitch[0] == L'/'));
+	}
+
+	int iCmp = lstrcmpi(ms_Val+1, asSwitch);
+	if (iCmp == 0)
+		return true;
+
+	// Support partial comparison for L"-inside=..." when (asSwitch == L"-inside=")
+	int len = lstrlen(asSwitch);
+	if ((len > 1) && ((asSwitch[len-1] == L'=') || (asSwitch[len-1] == L':')))
+	{
+		iCmp = lstrcmpni(ms_Val+1, asSwitch, (len - 1));
+		if ((iCmp == 0) && ((ms_Val[len] == L'=') || (ms_Val[len] == L':')))
+			return true;
+	}
+
+	return false;
+}
+
+bool CmdArg::IsSwitch(LPCWSTR asSwitch) const
+{
+	// Not a switch?
+	if (!IsPossibleSwitch())
+	{
+		return false;
+	}
+
+	if (!asSwitch || !*asSwitch)
+	{
+		_ASSERTE(asSwitch && *asSwitch);
+		return false;
+	}
+
+	return CompareSwitch(asSwitch);
+}
+
+// Stops on first NULL
+bool CmdArg::OneOfSwitches(LPCWSTR asSwitch1, LPCWSTR asSwitch2, LPCWSTR asSwitch3, LPCWSTR asSwitch4, LPCWSTR asSwitch5, LPCWSTR asSwitch6, LPCWSTR asSwitch7, LPCWSTR asSwitch8, LPCWSTR asSwitch9, LPCWSTR asSwitch10) const
+{
+	// Not a switch?
+	if (!IsPossibleSwitch())
+	{
+		return false;
+	}
+
+	LPCWSTR switches[] = {asSwitch1, asSwitch2, asSwitch3, asSwitch4, asSwitch5, asSwitch6, asSwitch7, asSwitch8, asSwitch9, asSwitch10};
+
+	for (size_t i = 0; (i < countof(switches)) && switches[i]; i++)
+	{
+		if (CompareSwitch(switches[i]))
+			return true;
+	}
+
+	return false;
+
+#if 0
+	// Variable argument list is not so safe...
+
+	bool bMatch = false;
+	va_list argptr;
+	va_start(argptr, asSwitch1);
+
+	LPCWSTR pszSwitch = va_arg( argptr, LPCWSTR );
+	while (pszSwitch)
+	{
+		if (CompareSwitch(pszSwitch))
+		{
+			bMatch = true; break;
+		}
+		pszSwitch = va_arg( argptr, LPCWSTR );
+	}
+
+	va_end(argptr);
+
+	return bMatch;
+#endif
+}
+
+
+
 // Returns true on changes
 // bDeQuote:  replace two "" with one "
 // bDeEscape: process special symbols: ^e^[^r^n^t^b
-bool DemangleArg(CEStr& rsDemangle, bool bDeQuote /*= true*/, bool bDeEscape /*= false*/)
+bool DemangleArg(CmdArg& rsDemangle, bool bDeQuote /*= true*/, bool bDeEscape /*= false*/)
 {
 	if (rsDemangle.IsEmpty() || !(bDeQuote || bDeEscape))
 	{
@@ -181,24 +343,18 @@ bool IsNeedDequote(LPCWSTR asCmdLine, bool abFromCmdCK, LPCWSTR* rsEndQuote/*=NU
 	return true;
 }
 
-// Returns PTR to next arg or NULL on error
-LPCWSTR QueryNextArg(const wchar_t* asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/*=NULL*/)
-{
-	if (0 != NextArg(&asCmdLine, rsArg, rsArgStart))
-		return NULL;
-	return asCmdLine;
-}
+// #CmdArg Eliminate QueryNext*** and make Next** return LPCWSTR
 
-// Returns 0 if succeeded, otherwise the error code
-int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/*=NULL*/)
+// Returns PTR to next arg or NULL on error
+const wchar_t* NextArg(const wchar_t* asCmdLine, CmdArg &rsArg, const wchar_t** rsArgStart/*=NULL*/)
 {
 	if (!asCmdLine || !*asCmdLine)
-		return CERR_CMDLINEEMPTY;
+		return NULL;
 
 	#ifdef _DEBUG
 	if ((rsArg.mn_TokenNo==0) // first token
-		|| ((rsArg.mn_TokenNo>0) && (rsArg.ms_LastTokenEnd==*asCmdLine)
-			&& (wcsncmp(*asCmdLine,rsArg.ms_LastTokenSave,countof(rsArg.ms_LastTokenSave)-1))==0))
+		|| ((rsArg.mn_TokenNo>0) && (rsArg.ms_LastTokenEnd==asCmdLine)
+			&& (wcsncmp(asCmdLine, rsArg.ms_LastTokenSave, countof(rsArg.ms_LastTokenSave)-1))==0))
 	{
 		// OK, параметры корректны
 	}
@@ -208,19 +364,19 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 	}
 	#endif
 
-	LPCWSTR psCmdLine = SkipNonPrintable(*asCmdLine), pch = NULL;
+	LPCWSTR psCmdLine = SkipNonPrintable(asCmdLine), pch = NULL;
 	if (!*psCmdLine)
-		return CERR_CMDLINEEMPTY;
+		return NULL;
 
 	// Remote surrounding quotes, in certain cases
 	// Example: ""7z.exe" /?"
 	// Example: "C:\Windows\system32\cmd.exe" /C ""C:\Python27\python.EXE""
-	if ((rsArg.mn_TokenNo == 0) || (rsArg.mn_CmdCall == CEStr::cc_CmdCK))
+	if ((rsArg.mn_TokenNo == 0) || (rsArg.mn_CmdCall == CmdArg::cc_CmdCK))
 	{
-		if (IsNeedDequote(psCmdLine, (rsArg.mn_CmdCall == CEStr::cc_CmdCK), &rsArg.mpsz_Dequoted))
+		if (IsNeedDequote(psCmdLine, (rsArg.mn_CmdCall == CmdArg::cc_CmdCK), &rsArg.mpsz_Dequoted))
 			psCmdLine++;
-		if (rsArg.mn_CmdCall == CEStr::cc_CmdCK)
-			rsArg.mn_CmdCall = CEStr::cc_CmdCommand;
+		if (rsArg.mn_CmdCall == CmdArg::cc_CmdCK)
+			rsArg.mn_CmdCall = CmdArg::cc_CmdCommand;
 	}
 
 	size_t nArgLen = 0;
@@ -270,14 +426,16 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 			}
 		}
 
-		if (!pch) return CERR_CMDLINE;
+		if (!pch)
+			return NULL;
 
 		while (pch[1] == L'"' && (!rsArg.mpsz_Dequoted || ((pch+1) < rsArg.mpsz_Dequoted)))
 		{
 			pch += 2;
 			pch = wcschr(pch, L'"');
 
-			if (!pch) return CERR_CMDLINE;
+			if (!pch)
+				return NULL;
 		}
 
 		// Теперь в pch ссылка на последнюю "
@@ -304,7 +462,7 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 	// Warning: Don't demangle quotes/escapes here, or we'll fail to
 	// concatenate environment or smth, losing quotes and others
 	if (!rsArg.Set(psCmdLine, nArgLen))
-		return CERR_CMDLINE;
+		return NULL;
 	rsArg.mb_Quoted = lbQMode;
 	rsArg.mn_TokenNo++;
 
@@ -327,13 +485,13 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 
 	switch (rsArg.mn_CmdCall)
 	{
-	case CEStr::cc_Undefined:
+	case CmdArg::cc_Undefined:
 		// Если это однозначно "ключ" - то на имя файла не проверяем
 		if (*rsArg.ms_Val == L'/' || *rsArg.ms_Val == L'-')
 		{
 			// Это для парсинга (чтобы ассертов не было) параметров из ShellExecute (там cmd.exe указывается в другом аргументе)
 			if ((rsArg.mn_TokenNo == 1) && (lstrcmpi(rsArg.ms_Val, L"/C") == 0 || lstrcmpi(rsArg.ms_Val, L"/K") == 0))
-				rsArg.mn_CmdCall = CEStr::cc_CmdCK;
+				rsArg.mn_CmdCall = CmdArg::cc_CmdCK;
 		}
 		else
 		{
@@ -344,38 +502,29 @@ int NextArg(const wchar_t** asCmdLine, CEStr &rsArg, const wchar_t** rsArgStart/
 					|| (lstrcmpi(pch, L"ConEmuC") == 0 || lstrcmpi(pch, L"ConEmuC.exe") == 0)
 					|| (lstrcmpi(pch, L"ConEmuC64") == 0 || lstrcmpi(pch, L"ConEmuC64.exe") == 0))
 				{
-					rsArg.mn_CmdCall = CEStr::cc_CmdExeFound;
+					rsArg.mn_CmdCall = CmdArg::cc_CmdExeFound;
 				}
 			}
 		}
 		break;
-	case CEStr::cc_CmdExeFound:
+	case CmdArg::cc_CmdExeFound:
 		if (lstrcmpi(rsArg.ms_Val, L"/C") == 0 || lstrcmpi(rsArg.ms_Val, L"/K") == 0)
-			rsArg.mn_CmdCall = CEStr::cc_CmdCK;
+			rsArg.mn_CmdCall = CmdArg::cc_CmdCK;
 		else if ((rsArg.ms_Val[0] != L'/') && (rsArg.ms_Val[0] != L'-'))
-			rsArg.mn_CmdCall = CEStr::cc_Undefined;
+			rsArg.mn_CmdCall = CmdArg::cc_Undefined;
 		break;
 	}
 
-	*asCmdLine = psCmdLine;
-	return 0;
+	return psCmdLine;
 }
 
 // Returns PTR to next line or NULL on error
-LPCWSTR QueryNextLine(const wchar_t* asLines, CEStr &rsLine, NEXTLINEFLAGS Flags /*= NLF_TRIM_SPACES|NLF_SKIP_EMPTY_LINES*/)
-{
-	if (0 != NextLine(&asLines, rsLine, Flags))
-		return NULL;
-	return asLines;
-}
-
-// Returns 0 if succeeded, otherwise the error code
-int NextLine(const wchar_t** asLines, CEStr &rsLine, NEXTLINEFLAGS Flags /*= NLF_TRIM_SPACES|NLF_SKIP_EMPTY_LINES*/)
+const wchar_t* NextLine(const wchar_t* asLines, CEStr &rsLine, NEXTLINEFLAGS Flags /*= NLF_TRIM_SPACES|NLF_SKIP_EMPTY_LINES*/)
 {
 	if (!asLines || !*asLines)
-		return CERR_CMDLINEEMPTY;
+		return NULL;
 
-	const wchar_t* psz = *asLines;
+	const wchar_t* psz = asLines;
 	//const wchar_t szSpaces[] = L" \t";
 	//const wchar_t szLines[] = L"\r\n";
 	//const wchar_t szSpacesLines[] = L" \t\r\n";
@@ -389,8 +538,7 @@ int NextLine(const wchar_t** asLines, CEStr &rsLine, NEXTLINEFLAGS Flags /*= NLF
 
 	if (!*psz)
 	{
-		*asLines = psz;
-		return CERR_CMDLINEEMPTY;
+		return NULL;
 	}
 
 	const wchar_t* pszEnd = wcspbrk(psz, L"\r\n");
@@ -413,8 +561,7 @@ int NextLine(const wchar_t** asLines, CEStr &rsLine, NEXTLINEFLAGS Flags /*= NLF
 	rsLine.Set(psz, pszTrim-psz);
 	psz = pszEnd;
 
-	*asLines = psz;
-	return 0;
+	return psz;
 }
 
 int AddEndSlash(wchar_t* rsPath, int cchMax)
@@ -558,12 +705,11 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 	if (rsArguments) *rsArguments = NULL;
 
 	bool lbRc = false;
-	int iRc = 0;
 	BOOL lbFirstWasGot = FALSE;
 	LPCWSTR pwszCopy;
 	int nLastChar;
 	#ifdef _DEBUG
-	CEStr szDbgFirst;
+	CmdArg szDbgFirst;
 	#endif
 
 	if (!asCmdLine || !*asCmdLine)
@@ -576,9 +722,8 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 	// Это минимальные проверки, собственно к коду - не относятся
 	bool bIsBatch = false;
 	{
-		LPCWSTR psz = asCmdLine;
-		NextArg(&psz, szDbgFirst);
-		psz = PointToExt(szDbgFirst);
+		NextArg(asCmdLine, szDbgFirst);
+		LPCWSTR psz = PointToExt(szDbgFirst);
 		if (lstrcmpi(psz, L".cmd")==0 || lstrcmpi(psz, L".bat")==0)
 			bIsBatch = true;
 	}
@@ -634,10 +779,9 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 			// cmd /c ""c:\program files\arc\7z.exe" -?"   // да еще и внутри могут быть двойными...
 			// cmd /c "dir c:\"
 
-			LPCWSTR pwszTemp = pwszCopy;
-
 			// Получим первую команду (исполняемый файл?)
-			if ((iRc = NextArg(&pwszTemp, szExe)) != 0)
+			CmdArg arg;
+			if (!NextArg(pwszCopy, arg))
 			{
 				//Parsing command line failed
 				#ifdef WARN_NEED_CMD
@@ -645,6 +789,7 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 				#endif
 				lbRc = true; goto wrap;
 			}
+			szExe.Set(arg);
 
 			if (lstrcmpiW(szExe, L"start") == 0)
 			{
@@ -747,9 +892,10 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 				pchEnd = pwszCopy + lstrlenW(pwszCopy);
 		}
 
-		if (szExe[0] == 0)
+		if (szExe.IsEmpty())
 		{
-			if ((iRc = NextArg(&pwszCopy, szExe)) != 0)
+			CmdArg arg;
+			if (!(pwszCopy = NextArg(pwszCopy, arg)))
 			{
 				//Parsing command line failed
 				#ifdef WARN_NEED_CMD
@@ -757,6 +903,7 @@ bool IsNeedCmd(BOOL bRootCmd, LPCWSTR asCmdLine, CEStr &szExe,
 				#endif
 				lbRc = true; goto wrap;
 			}
+			szExe.Set(arg);
 
 			_ASSERTE(lstrcmpiW(szExe, L"start") != 0);
 
@@ -1197,11 +1344,12 @@ wchar_t* GetParentPath(LPCWSTR asPath)
 	if (pszName <= asPath)
 		return NULL;
 
-	wchar_t* parent = lstrdup(asPath);
+	size_t cch = pszName - asPath;
+	wchar_t* parent = (wchar_t*)malloc((cch + 1) * sizeof(*parent));
 	if (!parent)
 		return NULL;
-	_ASSERTE(wcslen(parent) > size_t(pszName - asPath));
-	parent[(pszName - asPath) - 1] = 0;
+	wcsncpy_s(parent, cch+1, asPath, cch);
+	parent[cch] = 0;
 	return parent;
 }
 

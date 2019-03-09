@@ -450,12 +450,13 @@
     <ClInclude Include="common\DefTermBase.h" />
     <ClInclude Include="common\Dump.h" />
     <ClInclude Include="common\EmergencyShow.h" />
-    <ClInclude Include="common\ExecPty.h" />
+    <ClInclude Include="common\EnvVar.h" />
     <ClInclude Include="common\FarVersion.h" />
     <ClInclude Include="common\GdiPlusLt.h" />
     <ClInclude Include="common\HandleKeeper.h" />
     <ClInclude Include="common\HkFunc.h" />
     <ClInclude Include="common\InQueue.h" />
+    <ClInclude Include="common\Keyboard.h" />
     <ClInclude Include="common\MArray.h" />
     <ClInclude Include="common\MAssert.h" />
     <ClInclude Include="common\MBSTR.h" />
@@ -490,10 +491,8 @@
     <ClInclude Include="common\Memory.h" />
     <ClInclude Include="common\Monitors.h" />
     <ClInclude Include="common\PipeServer.h" />
-    <ClInclude Include="common\ProcList.h" />
     <ClInclude Include="common\ProcessData.h" />
     <ClInclude Include="common\ProcessSetEnv.h" />
-    <ClInclude Include="common\Processes.h" />
     <ClInclude Include="common\RConStartArgs.h" />
     <ClInclude Include="common\RConStartArgsEx.h" />
     <ClInclude Include="common\RgnDetect.h" />
@@ -522,6 +521,7 @@
     <ClInclude Include="common\execute.h" />
     <ClInclude Include="common\md5.h" />
     <ClInclude Include="common\plugin_helper.h" />
+    <ClInclude Include="common\shlobj.h" />
     <ClInclude Include="common\stdint_.h" />
     <ClInclude Include="common\wcchars.h" />
     <ClInclude Include="common\wcwidth.h" />

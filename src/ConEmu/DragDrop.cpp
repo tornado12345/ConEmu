@@ -30,10 +30,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 #define SHOWDEBUGSTR
 
-#pragma warning(disable: 4091)
-#include <shlobj.h>
-#pragma warning(default: 4091)
 #include "Header.h"
+#include "../common/shlobj.h"
 #include "../common/WFiles.h"
 #include "../common/WThreads.h"
 
@@ -1075,10 +1073,10 @@ HRESULT CDragDrop::DropNames(HDROP hDrop, int iQuantity, BOOL abActive)
 		}
 		else if (bCygwinPaths)
 		{
-			wchar_t* pszCygwin = DupCygwinPath(pszText, false, pRCon->GetMntPrefix());
-			if (pszCygwin)
+			CEStr szPosix;
+			if (DupCygwinPath(pszText, false, pRCon->GetMntPrefix(), szPosix))
 			{
-				_wcscpy_c(pszText, MAX_DROP_PATH, pszCygwin);
+				_wcscpy_c(pszText, MAX_DROP_PATH, szPosix);
 				AutoQuote = false;
 			}
 		}

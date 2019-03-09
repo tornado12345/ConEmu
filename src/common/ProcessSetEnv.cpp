@@ -57,8 +57,11 @@ bool ProcessSetEnvCmd(LPCWSTR& asCmdLine, CProcessEnvCmd* pSetEnv /*= NULL*/, CS
 	if (pDoSet)
 		lpSetEnv->Apply(pDoSet);
 
+	// Run simple "cmd" if there were no actual command?
+	_ASSERTE(lsCmdLine && *lsCmdLine);
+
 	// Return naked command
-	asCmdLine = lsCmdLine;
+	asCmdLine = lsCmdLine ? lsCmdLine : L"";
 
 	// Fin, we must have something to execute
 	_ASSERTE(asCmdLine && *asCmdLine);
@@ -133,13 +136,13 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 {
 	bool bNew = false;
 	LPCWSTR lsCmdLine = asCommands;
-	CEStr lsSet, lsAmp, lsCmd;
+	CmdArg lsSet, lsAmp, lsCmd;
 
 	if (ppszEnd)
 		*ppszEnd = asCommands;
 
 	// Example: "set PATH=C:\Program Files;%PATH%" & set abc=def & cmd
-	while (NextArg(&lsCmdLine, lsSet) == 0)
+	while ((lsCmdLine = NextArg(lsCmdLine, lsSet)))
 	{
 		bool bTokenOk = false;
 		wchar_t* lsNameVal = NULL;
@@ -187,7 +190,7 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 			// OK, lets get token like "name=var value"
 			if (!bProcessed)
 			{
-				bProcessed = (NextArg(&lsCmdLine, lsSet) == 0);
+				bProcessed = (lsCmdLine = NextArg(lsCmdLine, lsSet));
 			}
 			if (bProcessed && (wcschr(lsSet, L'=') > lsSet.ms_Val))
 			{
@@ -218,7 +221,7 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 		else if (lstrcmpi(lsSet, L"chcp") == 0)
 		{
 			lsCmd = L"chcp";
-			if (NextArg(&lsCmdLine, lsSet) == 0)
+			if ((lsCmdLine = NextArg(lsCmdLine, lsSet)))
 			{
 				UINT nCP = GetCpFromString(lsSet);
 				if (nCP > 0 && nCP <= 0xFFFF)
@@ -241,7 +244,7 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 		else if (lstrcmpi(lsSet, L"title") == 0)
 		{
 			lsCmd = L"title";
-			if (NextArg(&lsCmdLine, lsSet) == 0)
+			if ((lsCmdLine = NextArg(lsCmdLine, lsSet)))
 			{
 				bTokenOk = true;
 				_ASSERTE(lsNameVal == NULL);
@@ -264,15 +267,15 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 			// echo [-r] [-n] [-x] [-b] "String to echo"
 			// type [-b] [-CP] "Path to text file to echo"
 			CEStr lsSwitches;
-			while (*lsCmdLine == L'-')
+			while (lsCmdLine && *lsCmdLine == L'-')
 			{
-				if (NextArg(&lsCmdLine, lsSet) != 0)
+				if (!(lsCmdLine = NextArg(lsCmdLine, lsSet)))
 					break;
 				lstrmerge(&lsSwitches.ms_Val, lsSwitches.IsEmpty() ? NULL : L" ", lsSet.ms_Val);
 			}
 			// Rest arguments are expected to be processed text or file
-			CEStr lsAdd;
-			while (NextArg(&lsCmdLine, lsSet) == 0)
+			CmdArg lsAdd;
+			while ((lsCmdLine = NextArg(lsCmdLine, lsSet)))
 			{
 				bTokenOk = true;
 				lstrmerge(&lsAdd.ms_Val,
@@ -299,17 +302,17 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 		if (lsNameVal || bTokenOk)
 		{
 			lsAmp.GetPosFrom(lsSet);
-			if (NextArg(&lsCmdLine, lsAmp) != 0)
+			if (!(lsCmdLine = NextArg(lsCmdLine, lsAmp)))
 			{
-				// End of command? Use may call only "set" without following app? Run simple "cmd" in that case
-				_ASSERTE(lsCmdLine!=NULL && *lsCmdLine==0);
+				// End of command? User called only "set" without following app? Run simple "cmd" in that case
+				_ASSERTE(bAlone || (lsCmdLine!=NULL && *lsCmdLine==0));
 				bTokenOk = true; // And process SetEnvironmentVariable
 			}
 			else
 			{
 				if (lstrcmp(lsAmp, L"&") == 0)
 				{
-					// Only simple conveyer is supported!
+					// Only simple conveyor is supported!
 					bTokenOk = true; // And process SetEnvironmentVariable
 				}
 				// Update last pointer (debug and asserts purposes)
@@ -343,7 +346,7 @@ bool CProcessEnvCmd::AddCommands(LPCWSTR asCommands, LPCWSTR* ppszEnd/*= NULL*/,
 		{
 			*ppszEnd = lsCmdLine;
 		}
-	} // end of "while (NextArg(&lsCmdLine, lsSet) == 0)"
+	} // end of "while ((lsCmdLine = NextArg(lsCmdLine, lsSet)))"
 
 	// Fin
 	if (ppszEnd && (!*ppszEnd || !**ppszEnd))
@@ -386,7 +389,7 @@ void CProcessEnvCmd::AddLines(LPCWSTR asLines, bool bPriority)
 	CEStr lsLine;
 	INT_PTR nBefore = bPriority ? 0 : -1;
 
-	while (0 == NextLine(&pszLines, lsLine))
+	while ((pszLines = NextLine(pszLines, lsLine)))
 	{
 		// Skip empty lines
 		LPCWSTR pszLine = SkipNonPrintable(lsLine);

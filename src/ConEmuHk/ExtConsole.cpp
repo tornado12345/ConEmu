@@ -1029,7 +1029,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 
 	// "Working lines" may be defined (Vim and others)
 	LONG  ScrollTop, ScrollBottom;
-	bool  bScrollRegion = ((Info->Flags & ewtf_Region) != 0);
+	bool  bScrollRegion = !!(Info->Flags & ewtf_Region);
 	RECT  rcScrollRegion = Info->Region;
 	COORD crScrollCursor;
 	if (bScrollRegion)
@@ -1123,7 +1123,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 	#endif
 
 	bool bAutoLfNl = ((Info->Flags & ewtf_NoLfNl) == 0);
-	bool bNonAutoLfNl = false;
+	bool bIntCursorOp = false;
 
 	const wchar_t *pCur = pFrom;
 	SHORT x = csbi.dwCursorPosition.X, y = csbi.dwCursorPosition.Y; // 0-based
@@ -1152,6 +1152,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 		bool BSRN = false;
 		bool bForceDumpScroll = false;
 		bool bSkipBELL = false;
+		bool bAdvanceCur = false;
 
 		WARNING("Refactoring required: use an object to cache symbols and write them on request");
 
@@ -1159,38 +1160,35 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 		switch (*pCur)
 		{
 		case L'\t':
-			x2 = ((x2 + 7) >> 3) << 3;
-			// like normal char...
-			if (x2 >= WrapAtCol)
-			{
-				ForceDumpX = std::min(x2, WrapAtCol)-1;
-			}
+			if (x2>x)
+				ForceDumpX = x2;
+			x2 = ((x2 + 8) >> 3) << 3;
+			BSRN = true; bIntCursorOp = true;
 			break;
 		case L'\r':
 			if (x2 > 0)
 				ForceDumpX = x2-1;
 			x2 = 0;
-			bNonAutoLfNl = false;
+			bIntCursorOp = false;
 			BSRN = true;
 			// "\r\n"? Do not break in two physical writes
 			if (((pCur+1) < pEnd) && (*(pCur+1) == L'\n'))
-			{
-				pCur++; y2++;
-				_ASSERTE(bWrap);
-			}
-			break;
+				pCur++; // continue to L'\n' section
+			else
+				break;
 		case L'\n':
 			if (x2 > 0)
 				ForceDumpX = x2-1;
 			if (bAutoLfNl)
 				x2 = 0;
 			else if (x2)
-				bNonAutoLfNl = true;
+				bIntCursorOp = true;
 			y2++;
 			if (y2 >= ScrollBottom)
 				bForceDumpScroll = true;
 			_ASSERTE(bWrap);
 			BSRN = true;
+			CEAnsi::StorePromptReset();
 			break;
 		case 7:
 			//Beep (no spacing)
@@ -1198,20 +1196,23 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 			{
 				LogBeepSkip(L"--- Skipped ExtWriteText(7)\n");
 				bForceDumpScroll = bSkipBELL = true;
-				pCur--;
+				bAdvanceCur = true; --pCur;
 			}
 			else
 			{
 				LogBeepSkip(L"--- ExtWriteText(7)\n");
 			}
 			break;
-		case 8:
+		case 8: // L'\b'
 			//BS
 			if (x2>x)
 				ForceDumpX = x2;
 			if (x2>0)
 				x2--;
 			BSRN = true;
+			bIntCursorOp = true;
+			// Don't pass '\b' to WriteText (problem in Win10 build)
+			bAdvanceCur = true; --pCur;
 			break;
 		default:
 			// Просто буква.
@@ -1235,9 +1236,13 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 						(pTrueColorStart && (nLinePosition >= 0)) ? (pTrueColorStart + nLinePosition) : NULL,
 						(pTrueColorEnd), AIColor, csbi, (WriteConsoleW_t)Info->Private);
 
+			if (bAdvanceCur)
+			{
+				++pCur;
+				bAdvanceCur = false;
+			}
 			if (bSkipBELL)
 			{
-				pCur++;
 				// User may disable flashing in ConEmu settings
 				GuiFlashWindow(eFlashBeep, ghConWnd, FALSE, FLASHW_ALL, 1, 0);
 			}
@@ -1248,6 +1253,12 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 		else
 		{
 			_ASSERTE(!bSkipBELL);
+
+			if (bAdvanceCur)
+			{
+				++pCur;
+				bAdvanceCur = false;
+			}
 		}
 
 		// После BS - сменить "начальную" координату
@@ -1292,7 +1303,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 
 					SetConsoleCursorPosition(Info->ConsoleOutput, crScrollCursor);
 
-					bNonAutoLfNl = false; // already processed
+					bIntCursorOp = false; // already processed
 				}
 				else
 				{
@@ -1308,12 +1319,15 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 			y = y2;
 		}
 
-		// xterm-compatible '\n': just move cursor downward, don't do CR
-		if (bNonAutoLfNl)
+		// xterm-compatible
+		// '\n': just move cursor downward, don't do CR
+		// '\t': move cursor to x8 position, don't erase any cells
+		// '\b': move cursor backward by one cell, don't erase cell, don't move cursor upward
+		if (bIntCursorOp)
 		{
 			_ASSERTE(x2>0);
-			_ASSERTE(pCur < pEnd && *pCur == L'\n' && (pFrom == pCur || pFrom == pCur+1));
-			bNonAutoLfNl = false;
+			_ASSERTE(pCur < pEnd && (*pCur == L'\n' || *pCur == L'\t' || *pCur == L'\b') && (pFrom == pCur || pFrom == pCur+1));
+			bIntCursorOp = false;
 			crScrollCursor.X = x2;
 			crScrollCursor.Y = y2;
 			SetConsoleCursorPosition(Info->ConsoleOutput, crScrollCursor);
@@ -1323,7 +1337,7 @@ BOOL ExtWriteText(ExtWriteTextParm* Info)
 
 	if (pCur > pFrom)
 	{
-		_ASSERTE(!bNonAutoLfNl && "bNonAutoLfNl must be processed already");
+		_ASSERTE(bIntCursorOp==false && "must be processed already");
 
 		// Printing (NOT including pCur) using extended attributes
 		SHORT ForceDumpX = (x2 > x) ? (std::min(x2, WrapAtCol)-1) : -1;
@@ -1485,6 +1499,51 @@ BOOL ExtFillOutput(ExtFillOutputParm* Info)
 	return lbRc;
 }
 
+static void ExtMoveColorData(ssize_t dest, ssize_t from, ssize_t ccCells)
+{
+	if (!gpTrueColor || (ccCells <= 0))
+		return;
+
+	const ssize_t bufferSize = gpTrueColor->bufferSize;
+	if (bufferSize <= 0)
+	{
+		_ASSERTE(bufferSize > 0);
+		return;
+	}
+
+	AnnotationInfo* pTrueColorStart = (AnnotationInfo*)(((LPBYTE)gpTrueColor) + gpTrueColor->struct_size); //-V104
+	AnnotationInfo* pTrueColorEnd = (pTrueColorStart + bufferSize); //-V104
+
+	if (dest < 0 || from < 0)
+	{
+		ssize_t outOfRange = -std::min(dest,from);
+		ccCells -= outOfRange;
+		if (ccCells <= 0)
+			return;
+		dest += outOfRange;
+		from += outOfRange;
+	}
+
+	if ((std::max(dest,from) + ccCells) > bufferSize)
+	{
+		ssize_t outOfRange = ((std::max(dest,from) + ccCells) - bufferSize);
+		ccCells -= outOfRange;
+		if (ccCells <= 0)
+			return;
+	}
+
+	AnnotationInfo* pTrueColorDest = pTrueColorStart + dest;
+	const AnnotationInfo* pTrueColorFrom = pTrueColorStart + from;
+	_ASSERTEX((uint64_t(pTrueColorDest)+ccCells)<uint64_t(pTrueColorEnd) && uint64_t(pTrueColorDest)>=uint64_t(pTrueColorStart));
+	_ASSERTEX((uint64_t(pTrueColorFrom)+ccCells)<uint64_t(pTrueColorEnd) && uint64_t(pTrueColorFrom)>=uint64_t(pTrueColorStart));
+
+	// #OPTIMIZE: Не нужно двигать заполненную нулями память. Нет атрибутов в строке - и не дергаться?
+	if (ccCells > 0)
+	{
+		memmove(pTrueColorDest, pTrueColorFrom, ccCells * sizeof(*pTrueColorDest));
+	}
+}
+
 // From the cursor position!
 BOOL ExtScrollLine(ExtScrollScreenParm* Info)
 {
@@ -1516,8 +1575,6 @@ BOOL ExtScrollLine(ExtScrollScreenParm* Info)
 
 	AnnotationInfo* pTrueColorStart = (AnnotationInfo*)(gpTrueColor ? (((LPBYTE)gpTrueColor) + gpTrueColor->struct_size) : NULL); //-V104
 	AnnotationInfo* pTrueColorEnd = pTrueColorStart ? (pTrueColorStart + gpTrueColor->bufferSize) : NULL; //-V104
-	AnnotationInfo* pTrueColorFrom;
-	AnnotationInfo* pTrueColorDest;
 
 	ORIGINAL_KRNL(ScrollConsoleScreenBufferW);
 
@@ -1554,25 +1611,18 @@ BOOL ExtScrollLine(ExtScrollScreenParm* Info)
 			_ASSERTE((ccCellsTotal > 0) && (ccCellsTotal < 0xFFFF));
 			_ASSERTE((ccCellsMove > 0) && (ccCellsClear > 0));
 
-			pTrueColorFrom = pTrueColorStart + (nY1 * nWindowWidth + csbi.dwCursorPosition.X);
+			ssize_t dest, from = (nY1 * nWindowWidth + csbi.dwCursorPosition.X);
 			if (nDir < 0)
 			{
-				pTrueColorDest = pTrueColorFrom;
-				pTrueColorFrom += -nDir;
+				dest = from;
+				from += -nDir;
 			}
 			else // (nDir > 0)
 			{
-				pTrueColorDest = pTrueColorFrom + nDir;
+				dest = from + nDir;
 			}
 
-			// ccCellsMove
-			{
-				_ASSERTEX((pTrueColorDest+ ccCellsMove)<pTrueColorEnd && pTrueColorDest>=pTrueColorStart);
-				_ASSERTEX((pTrueColorFrom+ ccCellsMove)<pTrueColorEnd && pTrueColorFrom>=pTrueColorStart);
-
-				WARNING("OPTIMIZE: Не нужно двигать заполненную нулями память. Нет атрибутов в строке - и не дергаться?");
-				memmove(pTrueColorDest, pTrueColorFrom, ccCellsMove * sizeof(*pTrueColorDest));
-			}
+			ExtMoveColorData(dest, from, ccCellsMove);
 		}
 
 		// And the real console
@@ -1643,8 +1693,8 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 			RECT rcDest = {};
 			if (!IntersectSmallRect(Info->Region, srWork, &rcDest))
 				return FALSE; // Nothing to scroll
-			// We need relative "working" coordinates here
-			Info->Region = MakeRect(rcDest.left, rcDest.top - srWork.Top, rcDest.right, rcDest.bottom - srWork.Top);
+			// We need absolute coordinates here
+			Info->Region = rcDest;
 		}
 	}
 
@@ -1657,8 +1707,6 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 			SetLastError(E_INVALIDARG);
 			return FALSE;
 		}
-
-		WARNING("ANSI: +srWork.Top ???");
 
 		if (nDir < 0)
 		{
@@ -1689,7 +1737,9 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 		}
 	}
 
-	if (SrcLineBottom < SrcLineTop)
+	if ((Info->Flags & essf_Global)
+		&& (SrcLineBottom < SrcLineTop)
+		&& (SrcLineTop == -Info->Dir))
 	{
 		// We get here if cmd "cls" is called
 		int nLines = csbi.dwSize.Y - cr0.Y;
@@ -1706,8 +1756,6 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 
 	AnnotationInfo* pTrueColorStart = (AnnotationInfo*)(gpTrueColor ? (((LPBYTE)gpTrueColor) + gpTrueColor->struct_size) : NULL); //-V104
 	DEBUGTEST(AnnotationInfo* pTrueColorEnd = pTrueColorStart ? (pTrueColorStart + gpTrueColor->bufferSize) : NULL); //-V104
-	AnnotationInfo* pTrueColorFrom;
-	AnnotationInfo* pTrueColorDest;
 
 	if (Info->Flags & essf_Current)
 	{
@@ -1760,23 +1808,19 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 			{
 				//if (nRows > -nDir)
 				{
-					pTrueColorDest = pTrueColorStart + ((nY1-nShiftRows) * nWindowWidth);
-					pTrueColorFrom = pTrueColorStart + (nY1 * nWindowWidth);
+					ssize_t dest = ((nY1-nShiftRows) * nWindowWidth);
+					ssize_t from = (nY1 * nWindowWidth);
+					_ASSERTEX(dest < from);
+					ssize_t ccCells = nRows * nWindowWidth;
 
-					size_t ccCells = nRows * nWindowWidth;
-					_ASSERTEX((pTrueColorDest+ccCells)<pTrueColorEnd && pTrueColorDest>=pTrueColorStart);
-					_ASSERTEX((pTrueColorFrom+ccCells)<pTrueColorEnd && pTrueColorFrom>=pTrueColorStart);
-					_ASSERTEX(pTrueColorDest < pTrueColorFrom);
-
-					WARNING("OPTIMIZE: Не нужно двигать заполненную нулями память. Нет атрибутов в строке - и не дергаться?");
-					memmove(pTrueColorDest, pTrueColorFrom, ccCells * sizeof(*pTrueColorDest));
+					ExtMoveColorData(dest, from, ccCells);
 				}
 
 				if (Info->Flags & essf_ExtOnly)
 				{
 					#if 1
 					AnnotationInfo AIInfo = {};
-					for (int i = (nWindowHeight-nShiftRows)*nWindowWidth; i < nMaxCell; i++)
+					for (int i = std::max<int>(0,(nWindowHeight-nShiftRows)*nWindowWidth); i < nMaxCell; i++)
 					{
 						pTrueColorStart[i] = AIInfo;
 					}
@@ -1792,19 +1836,23 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 			}
 			else
 			{
-				_ASSERTEX(nRows > 0);
+				//_ASSERTEX(nRows > 0); // may occur when scroll region does not start from screen top and we erase all lines
 			}
 		}
 
 		if (!(Info->Flags & essf_ExtOnly))
 		{
-			SMALL_RECT rcSrc = MakeSmallRect(0, SrcLineTop, csbi.dwSize.X-1, SrcLineBottom);
-			COORD crDst = MakeCoord(0, SrcLineTop + nDir/*<0*/);
-			AnnotationInfo t = {};
 			CHAR_INFO cFill = {{Info->FillChar}};
-			ExtPrepareColor(Info->FillAttr, t, cFill.Attributes);
 
-			F(ScrollConsoleScreenBufferW)(Info->ConsoleOutput, &rcSrc, NULL, crDst, &cFill);
+			if (SrcLineBottom >= SrcLineTop)
+			{
+				SMALL_RECT rcSrc = MakeSmallRect(0, SrcLineTop, csbi.dwSize.X-1, SrcLineBottom);
+				COORD crDst = MakeCoord(0, SrcLineTop + nDir/*<0*/);
+				F(ScrollConsoleScreenBufferW)(Info->ConsoleOutput, &rcSrc, NULL, crDst, &cFill);
+			}
+			//else ?
+			//AnnotationInfo t = {};
+			//ExtPrepareColor(Info->FillAttr, t, cFill.Attributes);
 
 			if (nDir < 0)
 			{
@@ -1834,16 +1882,11 @@ BOOL ExtScrollScreen(ExtScrollScreenParm* Info)
 			{
 				//if (nRows >= nDir)
 				{
-					pTrueColorDest = pTrueColorStart+((nY1 + nDir) * nWindowWidth);
-					pTrueColorFrom = pTrueColorStart + (nY1 * nWindowWidth);
+					ssize_t dest = ((nY1 + nDir) * nWindowWidth);
+					ssize_t from = (nY1 * nWindowWidth);
+					ssize_t ccCells = nRows * nWindowWidth;
 
-					size_t ccCells = nRows * nWindowWidth;
-					_ASSERTEX((pTrueColorDest+ccCells)<pTrueColorEnd && pTrueColorDest>=pTrueColorStart);
-					_ASSERTEX((pTrueColorFrom+ccCells)<pTrueColorEnd && pTrueColorFrom>=pTrueColorStart);
-					_ASSERTEX(pTrueColorDest > pTrueColorFrom);
-
-					WARNING("OPTIMIZE: Не нужно двигать заполненную нулями память. Нет атрибутов в строке - и не дергаться.");
-					memmove(pTrueColorDest, pTrueColorFrom, ccCells * sizeof(*pTrueColorStart));
+					ExtMoveColorData(dest, from, ccCells);
 				}
 
 				if (Info->Flags & essf_ExtOnly)

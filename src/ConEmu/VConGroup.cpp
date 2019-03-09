@@ -2587,6 +2587,10 @@ bool CVConGroup::OnFlashWindow(DWORD nOpt, DWORD nFlags, DWORD nCount, HWND hCon
 {
 	if (!hCon) return false;
 
+	wchar_t szLog[120];
+	swprintf_c(szLog, L"OnFlashWindow: opt=x%02X flags=x%02X count=%u con=x%08X", nOpt, nFlags, nCount, LODWORD(hCon));
+	LogString(szLog);
+
 	const bool abSimple = (nOpt & 1) != 0;
 	const bool abInvert = (nOpt & 2) != 0;
 	const bool abFromMacro = (nOpt & 4) != 0;
@@ -4183,11 +4187,14 @@ bool CVConGroup::ConActivate(CVConGuard& VCon, int nCon)
 	return true; // Success
 }
 
-// nCon - zero-based index of console
+// nCon - zero-based index of console; -1 for last console
 bool CVConGroup::ConActivate(int nCon)
 {
 	FLASHWINFO fl = {sizeof(FLASHWINFO)}; fl.dwFlags = FLASHW_STOP; fl.hwnd = ghWnd;
 	FlashWindowEx(&fl); // При многократных созданиях мигать начинает...
+
+	if (nCon == -1)
+		nCon = GetConCount() - 1;
 
 	if (nCon >= 0 && nCon < (int)countof(gp_VCon))
 	{
@@ -4420,7 +4427,7 @@ CVirtualConsole* CVConGroup::CreateCon(RConStartArgsEx *args, bool abAllowScript
 
 		if (!gp_VCon[i])
 		{
-			bool bTabbar = gpConEmu->mp_TabBar->IsTabsShown();
+			bool bTabbar = gpConEmu->isTabsShown();
 			CVirtualConsole* pOldActive = gp_VActive;
 			gb_CreatingActive = true;
 			pVCon = CVConGroup::CreateVCon(args, gp_VCon[i], (int)i);
@@ -5441,146 +5448,6 @@ void CVConGroup::OnPaintGaps(HDC hDC)
 		{
 			pRoot->OnPaintSplitter(hDC, hBrush);
 		}
-
-		//int iRc = SIMPLEREGION;
-
-		//HRGN h = CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
-
-		//TODO("DoubleView");
-		//if ((iRc != NULLREGION) && gpConEmu->mp_TabBar->GetRebarClientRect(&rc))
-		//{
-		//	HRGN h2 = CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
-		//	iRc = CombineRgn(h, h, h2, RGN_DIFF);
-		//	DeleteObject(h2);
-		//}
-
-		//if ((iRc != NULLREGION) && gpConEmu->mp_Status->GetStatusBarClientRect(&rc))
-		//{
-		//	HRGN h2 = CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
-		//	CombineRgn(h, h, h2, RGN_DIFF);
-		//	DeleteObject(h2);
-		//}
-
-		//// Теперь - VConsole (все видимые!)
-		//if (iRc != NULLREGION)
-		//{
-		//	for (size_t i = 0; i < countof(gp_VCon); i++)
-		//	{
-		//		CVConGuard VCon(gp_VCon[i]);
-		//		if (VCon.VCon() && VCon->isVisible())
-		//		{
-		//			HWND hView = VCon.VCon() ? VCon->GetView() : NULL;
-		//			if (hView && GetWindowRect(hView, &rc))
-		//			{
-		//				MapWindowPoints(NULL, ghWnd, (LPPOINT)&rc, 2);
-		//				HRGN h2 = CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
-		//				iRc = CombineRgn(h, h, h2, RGN_DIFF);
-		//				DeleteObject(h2);
-		//				if (iRc == NULLREGION)
-		//					break;
-		//			}
-		//		}
-		//	}
-		//}
-
-		//if (iRc != NULLREGION)
-		//	FillRgn(hDC, h, hBrush);
-
-		//DeleteObject(h);
-
-		////RECT rcMargins = gpConEmu->CalcMargins(CEM_TAB); // Откусить площадь, занятую строкой табов
-		////AddMargins(rcClient, rcMargins);
-		////// На старте при /max - ghWnd DC еще не изменил свое положение
-		//////RECT offsetRect; Get ClientRect(ghWnd DC, &offsetRect);
-		////RECT rcWndClient; Get ClientRect(ghWnd, &rcWndClient);
-		////RECT rcCalcCon = gpConEmu->CalcRect(CER_BACK, rcWndClient, CER_MAINCLIENT);
-		////RECT rcCon = gpConEmu->CalcRect(CER_CONSOLE, rcCalcCon, CER_BACK);
-		//// -- работает не правильно - не учитывает центрирование в Maximized
-		////RECT offsetRect = gpConEmu->CalcRect(CER_BACK, rcCon, CER_CONSOLE);
-		///*
-		//RECT rcClient = {0};
-		//if (ghWnd DC) {
-		//	Get ClientRect(ghWnd DC, &rcClient);
-		//	MapWindowPoints(ghWnd DC, ghWnd, (LPPOINT)&rcClient, 2);
-		//}
-		//*/
-		//RECT dcSize = CalcRect(CER_DC, rcClient, CER_MAINCLIENT);
-		//RECT client = CalcRect(CER_DC, rcClient, CER_MAINCLIENT, NULL, &dcSize);
-		//WARNING("Вынести в CalcRect");
-		//RECT offsetRect; memset(&offsetRect,0,sizeof(offsetRect));
-
-		//if (gp_VActive && gp_VActive->Width && gp_VActive->Height)
-		//{
-		//	if ((gpSet->isTryToCenter && (isZoomed() || mb_isFullScreen || gpSet->isQuakeStyle))
-		//			|| isNtvdm())
-		//	{
-		//		offsetRect.left = (client.right+client.left-(int)gp_VActive->Width)/2;
-		//		offsetRect.top = (client.bottom+client.top-(int)gp_VActive->Height)/2;
-		//	}
-
-		//	if (offsetRect.left<client.left) offsetRect.left=client.left;
-
-		//	if (offsetRect.top<client.top) offsetRect.top=client.top;
-
-		//	offsetRect.right = offsetRect.left + gp_VActive->Width;
-		//	offsetRect.bottom = offsetRect.top + gp_VActive->Height;
-
-		//	if (offsetRect.right>client.right) offsetRect.right=client.right;
-
-		//	if (offsetRect.bottom>client.bottom) offsetRect.bottom=client.bottom;
-		//}
-		//else
-		//{
-		//	offsetRect = client;
-		//}
-
-		//// paint gaps between console and window client area with first color
-		//RECT rect;
-		////TODO:!!!
-		//// top
-		//rect = rcClient;
-		//rect.bottom = offsetRect.top;
-
-		//if (!IsRectEmpty(&rect))
-		//	FillRect(hDC, &rect, hBrush);
-
-		//#ifdef _DEBUG
-		////GdiFlush();
-		//#endif
-		//// right
-		//rect.left = offsetRect.right;
-		//rect.bottom = rcClient.bottom;
-
-		//if (!IsRectEmpty(&rect))
-		//	FillRect(hDC, &rect, hBrush);
-
-		//#ifdef _DEBUG
-		////GdiFlush();
-		//#endif
-		//// left
-		//rect.left = 0;
-		//rect.right = offsetRect.left;
-		//rect.bottom = rcClient.bottom;
-
-		//if (!IsRectEmpty(&rect))
-		//	FillRect(hDC, &rect, hBrush);
-
-		//#ifdef _DEBUG
-		////GdiFlush();
-		//#endif
-		//// bottom
-		//rect.left = 0;
-		//rect.right = rcClient.right;
-		//rect.top = offsetRect.bottom;
-		//rect.bottom = rcClient.bottom;
-
-		//if (!IsRectEmpty(&rect))
-		//	FillRect(hDC, &rect, hBrush);
-
-		//#ifdef _DEBUG
-		////GdiFlush();
-		//#endif
-
 	}
 
 	if (hBrush)

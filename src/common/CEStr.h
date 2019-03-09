@@ -33,98 +33,48 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // CEStr
 struct CEStr
 {
+// #CEStr Make ms_Val protected
 public:
 	wchar_t *ms_Val = nullptr;
 private:
-	INT_PTR mn_MaxCount = 0; // Including termination \0
-public:
-	// Point to the end dblquot, if we need drop first and last quotation marks
-	LPCWSTR mpsz_Dequoted = nullptr;
-	// true if it's a double-quoted argument from NextArg
-	bool mb_Quoted = false;
-	// if 0 - this is must be first call (first token of command line)
-	// so, we need to test for mpsz_Dequoted
-	int mn_TokenNo = 0;
-	// To bee able corretly parse double quotes in commands like
-	// "C:\Windows\system32\cmd.exe" /C ""C:\Python27\python.EXE""
-	// "reg.exe add "HKEY_CLASSES_ROOT\Directory\Background\shell\Command Prompt\command" /ve /t REG_EXPAND_SZ /d "\"D:\Applications\ConEmu\ConEmuPortable.exe\" /Dir \"%V\" /cmd \"cmd.exe\" \"-new_console:nC:cmd.exe\" \"-cur_console:d:%V\"" /f"
-	enum { cc_Undefined, cc_CmdExeFound, cc_CmdCK, cc_CmdCommand } mn_CmdCall = cc_Undefined;
-
-	#ifdef _DEBUG
-	// Debug, для отлова "не сброшенных" вызовов
-	LPCWSTR ms_LastTokenEnd = nullptr;
-	wchar_t ms_LastTokenSave[32] = L"";
-	#endif
-
-	bool mb_RestoreEnvVar = false; // Если используется для сохранения переменной окружения, восстановить при закрытии объекта
-	wchar_t ms_RestoreVarName[32] = L"";
-
-
-	// *** Not copyable, not implemented, use explicit Set method ***
-	#if defined(__GNUC__)
-	public:
-	CEStr(const CEStr&) = delete;
-	CEStr& operator=(const CEStr &) = delete;
-	#else
-	private:
-	// We may use "=delete" in C++11, but than cl shows only first error
-	CEStr(const CEStr&);
-	CEStr& operator=(const CEStr &);
-	#endif
-	// *** Not copyable, not implemented, use explicit Set method ***
-
-	// *** VC9 can't distinct wchar_t* as lval or rval ***
-	// *** so we prohibit wchar_t assignments in VC14 to find problems ***
-	#if defined(HAS_CPP11)
-	private:
-	CEStr(wchar_t*&);
-	CEStr& operator=(wchar_t*&);
-	#endif
-	// *** VC9 can't distinct wchar_t* as lval or rval ***
-
+	ssize_t mn_MaxCount = 0; // Including termination \0
 
 private:
-	LPCWSTR AttachInt(wchar_t*& asPtr);
-
-	bool CompareSwitch(LPCWSTR asSwitch) const;
+	const wchar_t* AttachInt(wchar_t*& asPtr);
 
 public:
-	operator LPCWSTR() const;
+	operator const wchar_t*() const;
 	operator bool() const;
-	LPCWSTR c_str(LPCWSTR asNullSubstitute = NULL) const;
-	int Compare(LPCWSTR asText, bool abCaseSensitive = false) const;
-	LPCWSTR Right(INT_PTR cchMaxCount) const;
-	LPCWSTR Mid(INT_PTR cchOffset) const;
+	const wchar_t* c_str(const wchar_t* asNullSubstitute = NULL) const;
+	const wchar_t* Right(ssize_t cchMaxCount) const;
+	const wchar_t* Mid(ssize_t cchOffset) const;
+
+	int Compare(const wchar_t* asText, bool abCaseSensitive = false) const;
+	bool operator==(const wchar_t* asStr) const;
+
 	CEStr& operator=(CEStr&& asStr);
+	CEStr& operator=(const CEStr& asStr);
 	CEStr& operator=(wchar_t*&& asPtr);
 	CEStr& operator=(const wchar_t* asPtr);
 
-	INT_PTR GetLen() const;
-	INT_PTR GetMaxCount();
+	void swap(CEStr& asStr);
 
-	wchar_t* GetBuffer(INT_PTR cchMaxLen);
+	ssize_t GetLen() const;
+	ssize_t GetMaxCount();
+
+	wchar_t* GetBuffer(ssize_t cchMaxLen);
 	wchar_t* Detach();
-	LPCWSTR  Attach(wchar_t* RVAL_REF asPtr);
-	LPCWSTR  Append(const wchar_t* asStr1, const wchar_t* asStr2 = NULL, const wchar_t* asStr3 = NULL, const wchar_t* asStr4 = NULL, const wchar_t* asStr5 = NULL, const wchar_t* asStr6 = NULL, const wchar_t* asStr7 = NULL, const wchar_t* asStr8 = NULL);
+	const wchar_t*  Attach(wchar_t* RVAL_REF asPtr);
+	const wchar_t*  Append(const wchar_t* asStr1, const wchar_t* asStr2 = NULL, const wchar_t* asStr3 = NULL, const wchar_t* asStr4 = NULL, const wchar_t* asStr5 = NULL, const wchar_t* asStr6 = NULL, const wchar_t* asStr7 = NULL, const wchar_t* asStr8 = NULL);
 	void Clear();
 	void Empty();
 	bool IsEmpty() const;
-	LPCWSTR Set(LPCWSTR asNewValue, INT_PTR anChars = -1);
-	void SavePathVar(LPCWSTR asCurPath);
-	void SaveEnvVar(LPCWSTR asVarName, LPCWSTR asNewValue);
-	void SetAt(INT_PTR nIdx, wchar_t wc);
-
-	void GetPosFrom(const CEStr& arg);
-
-	// If this may be supported switch like "-run"
-	bool IsPossibleSwitch() const;
-	// For example, compare if ms_Val is "-run"
-	bool IsSwitch(LPCWSTR asSwitch) const;
-	// Stops checking on first NULL
-	bool OneOfSwitches(LPCWSTR asSwitch1, LPCWSTR asSwitch2 = NULL, LPCWSTR asSwitch3 = NULL, LPCWSTR asSwitch4 = NULL, LPCWSTR asSwitch5 = NULL, LPCWSTR asSwitch6 = NULL, LPCWSTR asSwitch7 = NULL, LPCWSTR asSwitch8 = NULL, LPCWSTR asSwitch9 = NULL, LPCWSTR asSwitch10 = NULL) const;
+	const wchar_t* Set(const wchar_t* asNewValue, ssize_t anChars = -1);
+	void SetAt(ssize_t nIdx, wchar_t wc);
 
 	CEStr();
 	CEStr(CEStr&& asStr);
+	CEStr(const CEStr& asStr);
 	CEStr(wchar_t*&& asPtr);
 	CEStr(const wchar_t* asStr1, const wchar_t* asStr2 = NULL, const wchar_t* asStr3 = NULL, const wchar_t* asStr4 = NULL, const wchar_t* asStr5 = NULL, const wchar_t* asStr6 = NULL, const wchar_t* asStr7 = NULL, const wchar_t* asStr8 = NULL, const wchar_t* asStr9 = NULL);
 	~CEStr();
@@ -150,10 +100,10 @@ public:
 	operator const char*() const;
 	operator bool() const;
 	const char* c_str(const char* asNullSubstitute = NULL) const;
-	INT_PTR length() const;
+	ssize_t length() const;
 	void clear();
 
-	char* getbuffer(INT_PTR cchMaxLen);
+	char* getbuffer(ssize_t cchMaxLen);
 	char* release();
 
 public:

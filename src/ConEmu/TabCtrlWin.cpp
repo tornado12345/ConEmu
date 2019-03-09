@@ -210,6 +210,8 @@ LRESULT CTabPanelWin::TabProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 			{
 				LPWINDOWPOS pos = (LPWINDOWPOS)lParam;
 
+				_ASSERTE(mn_TabHeight > 0);
+
 				//if (mp_Owner->mb_ThemingEnabled) {
 				if (gpSetCls->CheckTheming())
 				{
@@ -505,6 +507,7 @@ HWND CTabPanelWin::CreateTabbar()
 
 	// Retrieve created tabbar size (height)
 	int iHeight = QueryTabbarHeight();
+	_ASSERTE(nHeightExpected == iHeight);
 
 	// And log it
 	wchar_t szInfo[100];
@@ -542,6 +545,7 @@ HWND CTabPanelWin::CreateToolbar()
 	// Original size buttons was painted (no other resources yet)
 	const int nOriginalSize = 14;
 	// Preferred size of button?
+	_ASSERTE(mn_TabHeight > 0);
 	int nPrefSize = mn_TabHeight - 10;
 	// Use it but not less than 14 pix
 	int nBtnSize = std::max(nOriginalSize, nPrefSize);
@@ -629,7 +633,7 @@ HWND CTabPanelWin::CreateToolbar()
 // Прямоугольник в клиентских координатах ghWnd!
 bool CTabPanelWin::GetRebarClientRect(RECT* rc)
 {
-	if (!mp_Owner->IsTabsShown())
+	if (!mp_Owner->IsTabsActive())
 		return false;
 
 	HWND hWnd = mh_Rebar ? mh_Rebar : mh_Tabbar;
@@ -667,10 +671,10 @@ void CTabPanelWin::SetTabbarFont(HFONT hFont)
 // Screen-coordinates!
 bool CTabPanelWin::GetTabRect(int nTabIdx, RECT* rcTab)
 {
-	if (!IsTabbarCreated() || !mp_Owner->IsTabsShown())
+	if (!IsTabbarCreated() || !mp_Owner->IsTabsActive())
 	{
 		_ASSERTE(IsTabbarCreated());
-		_ASSERTE(mp_Owner->IsTabsShown());
+		_ASSERTE(mp_Owner->IsTabsActive());
 		return false;
 	}
 
@@ -747,7 +751,7 @@ int CTabPanelWin::GetTabFromPoint(POINT ptCur, bool bScreen /*= true*/, bool bOv
 // Screen(!) coordinates!
 bool CTabPanelWin::GetToolBtnRect(int nCmd, RECT* rcBtnRect)
 {
-	if (!mp_Owner->IsTabsShown())
+	if (!mp_Owner->IsTabsActive())
 	{
 		return false;
 	}
@@ -914,6 +918,7 @@ void CTabPanelWin::RepositionInt()
 			{
 			case rbi_TabBar:
 				Panes[i].hChild = mh_Tabbar;
+				_ASSERTE(mn_TabHeight > 0);
 				Panes[i].iPaneMinWidth = std::max(150,mn_TabHeight*5);
 				break;
 			case rbi_FindBar:
@@ -1255,6 +1260,8 @@ void CTabPanelWin::ShowTabsPane(bool bShow)
 			rbBand.clrBack = RGB(0,0,0);
 			#endif
 
+			_ASSERTE(mn_TabHeight > 0);
+
 			rbBand.wID        = rbi_TabBar;
 			rbBand.hwndChild  = mh_Tabbar;
 			rbBand.cxMinChild = 100;
@@ -1304,6 +1311,7 @@ bool CTabPanelWin::ShowSearchPane(bool bShow, bool bCtrlOnly /*= false*/)
 
 			int iPaneHeight;
 			SIZE sz = {0,0};
+			_ASSERTE(mn_TabHeight > 0);
 			if (mn_TabHeight > 0)
 			{
 				iPaneHeight = mn_TabHeight;
@@ -1421,54 +1429,22 @@ void CTabPanelWin::ShowToolsPane(bool bShow)
 	}
 }
 
+// #SIZE_TODO Eliminate the function? Or rename to GetDefaultTabbarHeight?
 int CTabPanelWin::QueryTabbarHeight()
 {
 	if (!this) return 0;
 
-	// Нужно пересчитать высоту таба
-
-	//bool bDummyCreate = (hTabs == NULL);
-	//
-	//if (bDummyCreate)
-	//{
-	//	hTabs = CreateTabbar(true);
-	//}
-
-	// #DPI while jumping from high-dpi to low-dpi mon mh_Tabbar is re-created during jump (window was not moved yet?) and we have incorrect rcClient
-	/*
-	if (mh_Tabbar && IsWindow(mh_Tabbar) && !IsWin10())
+	// Размеры таба через TabCtrl_AdjustRect считаются криво при прыжках по мониторам
+	//_ASSERTE((hTabs!=NULL) && "Creating of a dummy tab control failed");
+	int newHeight = gpConEmu->GetDefaultTabbarHeight();
+	if (mn_TabHeight != newHeight)
 	{
-		// нас интересует смещение клиентской области. Т.е. начало - из 0. Остальное не важно
-		RECT rcClient = MakeRect(600, 400);
-		//rcClient = gpConEmu->GetGuiClientRect();
-		TabCtrl_AdjustRect(mh_Tabbar, FALSE, &rcClient);
-		mn_TabHeight = rcClient.top - (gpConEmu->IsThemed() ? 0 : 2) - (gpSet->FontUseUnits ? 1 : 0);
+		wchar_t szInfo[100];
+		msprintf(szInfo, countof(szInfo), L"CTabPanelWin::mn_TabHeight changed from %i to %i", mn_TabHeight, newHeight);
+		LogString(szInfo);
+		DEBUGSTRSIZE(szInfo);
+		mn_TabHeight = newHeight;
 	}
-	else
-	*/
-	{
-		// Размеры таба через TabCtrl_AdjustRect считаются криво при прыжках по мониторам
-		//_ASSERTE((hTabs!=NULL) && "Creating of a dummy tab control failed");
-		RECT rcTab = gpConEmu->RebarRect();
-		// #SIZE_TODO Use RebarRect() instead of calculation
-		int lfHeight = gpSetCls->EvalSize(gpSet->nTabFontHeight, esf_Vertical|esf_CanUseDpi|esf_CanUseUnits);
-		int newHeight = gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, lfHeight, gpSet->nTabFontCharSet)
-			+ gpSetCls->EvalSize((lfHeight < 0) ? 8 : 9, esf_Vertical);
-		if (mn_TabHeight != newHeight)
-		{
-			wchar_t szInfo[100];
-			msprintf(szInfo, countof(szInfo), L"CTabPanelWin::mn_TabHeight changed from %i to %i", mn_TabHeight, newHeight);
-			LogString(szInfo);
-			DEBUGSTRSIZE(szInfo);
-			mn_TabHeight = newHeight;
-		}
-	}
-
-	//if (bDummyCreate && hTabs)
-	//{
-	//	DestroyWindow(hTabs);
-	//	mh_Tabbar = NULL;
-	//}
 
 	return mn_TabHeight;
 }
@@ -1518,7 +1494,7 @@ LRESULT CTabPanelWin::TabHitTest(bool abForce /*= false*/, int* pnOverTabHit /*=
 
 	if (gpSet->isTabs && (abForce || gpConEmu->isCaptionHidden()))
 	{
-		if (mp_Owner->IsTabsShown())
+		if (mp_Owner->IsTabsActive())
 		{
 			POINT ptCur = {}; GetCursorPos(&ptCur);
 			int nTabIdx = GetTabFromPoint(ptCur);

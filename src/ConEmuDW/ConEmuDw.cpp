@@ -90,7 +90,8 @@ HWND    ghVConWnd = NULL;   // VirtualCon. инициализируется в C
 HWND    ghRConWnd = NULL;
 
 HMODULE ghPluginModule = NULL;
-HookItemPreCallback_t PreWriteCallBack = NULL;
+HookItemCallback_t PreWriteCallBack = NULL; // before actual WriteConsoleOutputW call
+HookItemCallback_t PostWriteCallBack = NULL; // in commit
 
 /* extern для MAssert, Здесь НЕ используется */
 /* */       HWND ghConEmuWnd = NULL;      /* */
@@ -211,20 +212,31 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved
 	return TRUE;
 }
 
-bool __stdcall SetHookCallbacksExt(const char* ProcName, const wchar_t* DllName, HMODULE hCallbackModule,
-                                HookItemPreCallback_t PreCallBack, HookItemPostCallback_t PostCallBack,
-                                HookItemExceptCallback_t ExceptCallBack)
+bool WINAPI SetConsoleCallbacks(HMODULE hCallbackModule, DWORD nCallbackCount, HookItemCallback_t *ppfnCallbacks)
 {
-	if (!ProcName || lstrcmpA(ProcName, "WriteConsoleOutputW") != 0 || !DllName || lstrcmp(DllName, L"kernel32.dll") != 0)
+	// Check hCallbackModule to be ConEmu.dll or ConEmu.x64.dll?
+	if (!hCallbackModule)
 	{
-		_ASSERTE(ProcName!=NULL && DllName!=NULL);
-		_ASSERTE(lstrcmpA(ProcName, "WriteConsoleOutputW") != 0);
-		_ASSERTE(lstrcmp(DllName, L"kernel32.dll") != 0);
+		_ASSERTE(hCallbackModule != NULL);
 		return false;
 	}
 
-	ghPluginModule = hCallbackModule;
-	PreWriteCallBack = PreCallBack;
+	if (nCallbackCount == 2 && ppfnCallbacks)
+	{
+		ghPluginModule = hCallbackModule;
+		PreWriteCallBack = ppfnCallbacks[0];
+		PostWriteCallBack = ppfnCallbacks[1];
+	}
+	else if (ghPluginModule == hCallbackModule || ghPluginModule == nullptr)
+	{
+		_ASSERTE(nCallbackCount == 0);
+		PreWriteCallBack = nullptr;
+		PostWriteCallBack = nullptr;
+	}
+	else
+	{
+		_ASSERTE(ghPluginModule == hCallbackModule || ghPluginModule == nullptr);
+	}
 
 	return true;
 }
@@ -389,7 +401,7 @@ BOOL CheckBuffers(bool abWrite /*= false*/)
 		{
 			wchar_t szMapName[128];
 			_ASSERTE(sizeof(AnnotationInfo) == 8*sizeof(int)/*sizeof(AnnotationInfo::raw)*/);
-			wsprintf(szMapName, AnnotationShareName, (DWORD)sizeof(AnnotationInfo), (DWORD)hCon); //-V205
+			wsprintf(szMapName, AnnotationShareName, (DWORD)sizeof(AnnotationInfo), LODWORD(hCon)); //-V205
 			// AnnotationShareName is CREATED in ConEmu.exe
 			// May be it would be better, to avoid hooking and cycling (minhook),
 			// call CreateFileMapping instead of OpenFileMapping...
@@ -1428,6 +1440,12 @@ BOOL WINAPI Commit()
 		SetEvent(ghFarCommitUpdateSrv);
 	}
 	
+	if (PostWriteCallBack)
+	{
+		SETARGS(nullptr);
+		PostWriteCallBack(&args);
+	}
+
 	#ifdef USE_COMMIT_EVENT
 	// "Отпустить" сервер
 	if (ghBatchEvent)
@@ -1724,6 +1742,7 @@ INT_PTR CALLBACK ColorDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
 					hwndDlg, NULL,
 					(wParam == IDC_FORE) ? P->crForeColor : P->crBackColor,
 					gcrCustomColors,
+					(DWORD)
 					((P->bTrueColorEnabled || !(wParam==IDC_FORE?P->b4bitfore:P->b4bitback)) ? (CC_FULLOPEN|CC_ANYCOLOR) : CC_SOLIDCOLOR)
 					|CC_RGBINIT,
 				};
@@ -1912,7 +1931,7 @@ int  WINAPI GetColorDialog(FarColor* Color, BOOL Centered, BOOL AddTransparent)
 	
 	// Найти HWND GUI
 	wchar_t szMapName[128];
-	wsprintf(szMapName, CECONMAPNAME, (DWORD)Parm.hConsole); //-V205
+	wsprintf(szMapName, CECONMAPNAME, LODWORD(Parm.hConsole)); //-V205
 	HANDLE hMap = OpenFileMapping(FILE_MAP_READ, FALSE, szMapName);
 	if (hMap != NULL)
 	{

@@ -67,6 +67,11 @@ CEStr::CEStr(CEStr&& asStr)
 	std::swap(mn_MaxCount, asStr.mn_MaxCount);
 }
 
+CEStr::CEStr(const CEStr& asStr)
+{
+	Set(asStr.ms_Val);
+}
+
 CEStr::CEStr(wchar_t*&& asPtr)
 {
 	CESTRLOG1("CEStr::CEStr(wchar_t* RVAL_REF x%p)", asPtr);
@@ -80,22 +85,11 @@ void CEStr::Empty()
 	{
 		*ms_Val = 0;
 	}
-
-	mn_TokenNo = 0;
-	mn_CmdCall = cc_Undefined;
-	mpsz_Dequoted = NULL;
-	mb_Quoted = false;
-	#ifdef _DEBUG
-	ms_LastTokenEnd = NULL;
-	ms_LastTokenSave[0] = 0;
-	#endif
-	mb_RestoreEnvVar = false;
-	ms_RestoreVarName[0] = 0;
 }
 
-CEStr::operator LPCWSTR() const
+CEStr::operator const wchar_t*() const
 {
-	CESTRLOG0("CEStr::LPCWSTR()");
+	CESTRLOG0("CEStr::const wchar_t*()");
 	return ms_Val;
 }
 
@@ -104,14 +98,14 @@ CEStr::operator bool() const
 	return (!IsEmpty());
 }
 
-LPCWSTR CEStr::c_str(LPCWSTR asNullSubstitute /*= NULL*/) const
+const wchar_t* CEStr::c_str(const wchar_t* asNullSubstitute /*= NULL*/) const
 {
 	CESTRLOG0("CEStr::c_str()");
 	return ms_Val ? ms_Val : asNullSubstitute;
 }
 
 // cchMaxCount - including terminating \0
-LPCWSTR CEStr::Right(INT_PTR cchMaxCount) const
+const wchar_t* CEStr::Right(ssize_t cchMaxCount) const
 {
 	CESTRLOG1("CEStr::Right(%i)", (int)cchMaxCount);
 	if (cchMaxCount <= 0)
@@ -123,13 +117,13 @@ LPCWSTR CEStr::Right(INT_PTR cchMaxCount) const
 	if (!ms_Val || !*ms_Val)
 		return ms_Val;
 
-	INT_PTR iLen = GetLen();
+	ssize_t iLen = GetLen();
 	if (iLen >= cchMaxCount)
 		return (ms_Val + (iLen - cchMaxCount + 1));
 	return ms_Val;
 }
 
-LPCWSTR CEStr::Mid(INT_PTR cchOffset) const
+const wchar_t* CEStr::Mid(ssize_t cchOffset) const
 {
 	CESTRLOG1("CEStr::Mid(%i)", cchOffset);
 
@@ -139,7 +133,7 @@ LPCWSTR CEStr::Mid(INT_PTR cchOffset) const
 		return NULL;
 	}
 
-	INT_PTR iLen = GetLen();
+	ssize_t iLen = GetLen();
 	if (iLen < cchOffset)
 	{
 		_ASSERTE(iLen >= cchOffset);
@@ -156,6 +150,15 @@ CEStr& CEStr::operator=(CEStr&& asStr)
 	Clear();
 	std::swap(ms_Val, asStr.ms_Val);
 	std::swap(mn_MaxCount, asStr.mn_MaxCount);
+	return *this;
+}
+
+CEStr& CEStr::operator=(const CEStr& asStr)
+{
+	if (ms_Val == asStr.ms_Val)
+		return *this;
+	Clear();
+	Set(asStr.ms_Val);
 	return *this;
 }
 
@@ -177,35 +180,40 @@ CEStr::~CEStr()
 {
 	CESTRLOG1("CEStr::~CEStr(x%p)", ms_Val);
 
-	if (mb_RestoreEnvVar && *ms_RestoreVarName && !IsEmpty())
-	{
-		SetEnvironmentVariable(ms_RestoreVarName, ms_Val);
-	}
-
+	#ifdef _DEBUG
+	if (ms_Val)
+		*ms_Val = 0;
+	#endif
 	SafeFree(ms_Val);
 }
 
-INT_PTR CEStr::GetLen() const
+void CEStr::swap(CEStr& asStr)
+{
+	std::swap(ms_Val, asStr.ms_Val);
+	std::swap(mn_MaxCount, asStr.mn_MaxCount);
+}
+
+ssize_t CEStr::GetLen() const
 {
 	if (!ms_Val || !*ms_Val)
 		return 0;
 	size_t iLen = wcslen(ms_Val);
-	if ((INT_PTR)iLen < 0)
+	if ((ssize_t)iLen < 0)
 	{
-		_ASSERTE((INT_PTR)iLen >= 0);
+		_ASSERTE((ssize_t)iLen >= 0);
 		return 0;
 	}
-	return (INT_PTR)iLen;
+	return (ssize_t)iLen;
 }
 
-INT_PTR CEStr::GetMaxCount()
+ssize_t CEStr::GetMaxCount()
 {
 	if (ms_Val && (mn_MaxCount <= 0))
 		mn_MaxCount = GetLen() + 1;
 	return mn_MaxCount;
 }
 
-wchar_t* CEStr::GetBuffer(INT_PTR cchMaxLen)
+wchar_t* CEStr::GetBuffer(ssize_t cchMaxLen)
 {
 	CESTRLOG1("CEStr::GetBuffer(%i)", (int)cchMaxLen);
 
@@ -217,11 +225,11 @@ wchar_t* CEStr::GetBuffer(INT_PTR cchMaxLen)
 
 	// if ms_Val was used externally (by lstrmerge for example),
 	// than GetMaxCount() will update mn_MaxCount
-	INT_PTR nOldLen = (ms_Val && (GetMaxCount() > 0)) ? (mn_MaxCount-1) : 0;
+	ssize_t nOldLen = (ms_Val && (GetMaxCount() > 0)) ? (mn_MaxCount-1) : 0;
 
 	if (!ms_Val || (cchMaxLen >= mn_MaxCount))
 	{
-		INT_PTR nNewMaxLen = std::max(mn_MaxCount,cchMaxLen+1);
+		ssize_t nNewMaxLen = std::max(mn_MaxCount,cchMaxLen+1);
 		if (ms_Val)
 		{
 			ms_Val = (wchar_t*)realloc(ms_Val, nNewMaxLen*sizeof(*ms_Val));
@@ -262,19 +270,19 @@ void CEStr::Clear()
 	SafeFree(ptr);
 }
 
-LPCWSTR CEStr::Append(const wchar_t* asStr1, const wchar_t* asStr2 /*= NULL*/, const wchar_t* asStr3 /*= NULL*/, const wchar_t* asStr4 /*= NULL*/, const wchar_t* asStr5 /*= NULL*/, const wchar_t* asStr6 /*= NULL*/, const wchar_t* asStr7 /*= NULL*/, const wchar_t* asStr8 /*= NULL*/)
+const wchar_t* CEStr::Append(const wchar_t* asStr1, const wchar_t* asStr2 /*= NULL*/, const wchar_t* asStr3 /*= NULL*/, const wchar_t* asStr4 /*= NULL*/, const wchar_t* asStr5 /*= NULL*/, const wchar_t* asStr6 /*= NULL*/, const wchar_t* asStr7 /*= NULL*/, const wchar_t* asStr8 /*= NULL*/)
 {
 	lstrmerge(&ms_Val, asStr1, asStr2, asStr3, asStr4, asStr5, asStr6, asStr7, asStr8);
 	return ms_Val;
 }
 
-LPCWSTR CEStr::Attach(wchar_t* RVAL_REF asPtr)
+const wchar_t* CEStr::Attach(wchar_t* RVAL_REF asPtr)
 {
 	CESTRLOG1("CEStr::Attach(wchar_t* RVAL_REF x%p)", ms_Val);
 	return AttachInt(asPtr);
 }
 
-LPCWSTR CEStr::AttachInt(wchar_t*& asPtr)
+const wchar_t* CEStr::AttachInt(wchar_t*& asPtr)
 {
 	if (ms_Val == asPtr)
 	{
@@ -288,15 +296,15 @@ LPCWSTR CEStr::AttachInt(wchar_t*& asPtr)
 	if (asPtr)
 	{
 		size_t len = wcslen(asPtr);
-		if ((INT_PTR)len < 0)
+		if ((ssize_t)len < 0)
 		{
-			_ASSERTE((INT_PTR)len >= 0);
+			_ASSERTE((ssize_t)len >= 0);
 			return ms_Val;
 		}
 
 		ms_Val = asPtr;
 		asPtr = NULL;
-		mn_MaxCount = 1 + (INT_PTR)len;
+		mn_MaxCount = 1 + (ssize_t)len;
 	}
 
 	CESTRLOG1("  ms_Val=x%p", ms_Val);
@@ -305,7 +313,7 @@ LPCWSTR CEStr::AttachInt(wchar_t*& asPtr)
 }
 
 // Safe comparing function
-int CEStr::Compare(LPCWSTR asText, bool abCaseSensitive /*= false*/) const
+int CEStr::Compare(const wchar_t* asText, bool abCaseSensitive /*= false*/) const
 {
 	if (!ms_Val && asText)
 		return -1;
@@ -322,115 +330,9 @@ int CEStr::Compare(LPCWSTR asText, bool abCaseSensitive /*= false*/) const
 	return iCmp;
 }
 
-bool CEStr::IsPossibleSwitch() const
+bool CEStr::operator==(const wchar_t* asStr) const
 {
-	// Nothing to compare?
-	if (IsEmpty())
-		return false;
-	if ((ms_Val[0] != L'-') && (ms_Val[0] != L'/'))
-		return false;
-
-	// We do not care here about "-new_console:..." or "-cur_console:..."
-	// They are processed by RConStartArgsEx
-
-	// But ':' removed from checks, because otherwise ConEmu will not warn
-	// on invalid usage of "-new_console:a" for example
-
-	// Also, support smth like "-inside=\eCD /d %1"
-	LPCWSTR pszDelim = wcspbrk(ms_Val+1, L"=:");
-	LPCWSTR pszInvalids = wcspbrk(ms_Val+1, L"\\/|.&<>^");
-
-	if (pszInvalids && (!pszDelim || (pszInvalids < pszDelim)))
-		return false;
-
-	// Well, looks like a switch (`-run` for example)
-	return true;
-}
-
-bool CEStr::CompareSwitch(LPCWSTR asSwitch) const
-{
-	if ((asSwitch[0] == L'-') || (asSwitch[0] == L'/'))
-	{
-		asSwitch++;
-	}
-	else
-	{
-		_ASSERTE((asSwitch[0] == L'-') || (asSwitch[0] == L'/'));
-	}
-
-	int iCmp = lstrcmpi(ms_Val+1, asSwitch);
-	if (iCmp == 0)
-		return true;
-
-	// Support partial comparison for L"-inside=..." when (asSwitch == L"-inside=")
-	int len = lstrlen(asSwitch);
-	if ((len > 1) && ((asSwitch[len-1] == L'=') || (asSwitch[len-1] == L':')))
-	{
-		iCmp = lstrcmpni(ms_Val+1, asSwitch, (len - 1));
-		if ((iCmp == 0) && ((ms_Val[len] == L'=') || (ms_Val[len] == L':')))
-			return true;
-	}
-
-	return false;
-}
-
-bool CEStr::IsSwitch(LPCWSTR asSwitch) const
-{
-	// Not a switch?
-	if (!IsPossibleSwitch())
-	{
-		return false;
-	}
-
-	if (!asSwitch || !*asSwitch)
-	{
-		_ASSERTE(asSwitch && *asSwitch);
-		return false;
-	}
-
-	return CompareSwitch(asSwitch);
-}
-
-// Stops on first NULL
-bool CEStr::OneOfSwitches(LPCWSTR asSwitch1, LPCWSTR asSwitch2, LPCWSTR asSwitch3, LPCWSTR asSwitch4, LPCWSTR asSwitch5, LPCWSTR asSwitch6, LPCWSTR asSwitch7, LPCWSTR asSwitch8, LPCWSTR asSwitch9, LPCWSTR asSwitch10) const
-{
-	// Not a switch?
-	if (!IsPossibleSwitch())
-	{
-		return false;
-	}
-
-	LPCWSTR switches[] = {asSwitch1, asSwitch2, asSwitch3, asSwitch4, asSwitch5, asSwitch6, asSwitch7, asSwitch8, asSwitch9, asSwitch10};
-
-	for (size_t i = 0; (i < countof(switches)) && switches[i]; i++)
-	{
-		if (CompareSwitch(switches[i]))
-			return true;
-	}
-
-	return false;
-
-#if 0
-	// Variable argument list is not so safe...
-
-	bool bMatch = false;
-	va_list argptr;
-	va_start(argptr, asSwitch1);
-
-	LPCWSTR pszSwitch = va_arg( argptr, LPCWSTR );
-	while (pszSwitch)
-	{
-		if (CompareSwitch(pszSwitch))
-		{
-			bMatch = true; break;
-		}
-		pszSwitch = va_arg( argptr, LPCWSTR );
-	}
-
-	va_end(argptr);
-
-	return bMatch;
-#endif
+	return Compare(asStr) == 0;
 }
 
 bool CEStr::IsEmpty() const
@@ -438,7 +340,7 @@ bool CEStr::IsEmpty() const
 	return (!ms_Val || !*ms_Val);
 }
 
-LPCWSTR CEStr::Set(LPCWSTR asNewValue, INT_PTR anChars /*= -1*/)
+const wchar_t* CEStr::Set(const wchar_t* asNewValue, ssize_t anChars /*= -1*/)
 {
 	CESTRLOG2("CEStr::Set(x%p,%i)", asNewValue, (int)anChars);
 
@@ -483,32 +385,7 @@ LPCWSTR CEStr::Set(LPCWSTR asNewValue, INT_PTR anChars /*= -1*/)
 	return ms_Val;
 }
 
-void CEStr::SavePathVar(LPCWSTR asCurPath)
-{
-	// Will restore environment variable "PATH" in destructor
-	if (Set(asCurPath))
-	{
-		mb_RestoreEnvVar = true;
-		lstrcpyn(ms_RestoreVarName, L"PATH", countof(ms_RestoreVarName));
-	}
-}
-
-void CEStr::SaveEnvVar(LPCWSTR asVarName, LPCWSTR asNewValue)
-{
-	if (!asVarName || !*asVarName)
-		return;
-
-	_ASSERTE(!mb_RestoreEnvVar);
-	Empty();
-	SafeFree(ms_Val);
-	Attach(GetEnvVar(asVarName));
-
-	mb_RestoreEnvVar = true;
-	lstrcpyn(ms_RestoreVarName, asVarName, countof(ms_RestoreVarName));
-	SetEnvironmentVariable(asVarName, asNewValue);
-}
-
-void CEStr::SetAt(INT_PTR nIdx, wchar_t wc)
+void CEStr::SetAt(ssize_t nIdx, wchar_t wc)
 {
 	if (ms_Val && (nIdx < mn_MaxCount))
 	{
@@ -516,17 +393,6 @@ void CEStr::SetAt(INT_PTR nIdx, wchar_t wc)
 	}
 }
 
-void CEStr::GetPosFrom(const CEStr& arg)
-{
-	mpsz_Dequoted = arg.mpsz_Dequoted;
-	mb_Quoted = arg.mb_Quoted;
-	mn_TokenNo = arg.mn_TokenNo;
-	mn_CmdCall = arg.mn_CmdCall;
-	#ifdef _DEBUG
-	ms_LastTokenEnd = arg.ms_LastTokenEnd;
-	lstrcpyn(ms_LastTokenSave, arg.ms_LastTokenSave, countof(ms_LastTokenSave));
-	#endif
-}
 
 
 
@@ -601,7 +467,7 @@ const char* CEStrA::c_str(const char* asNullSubstitute /*= NULL*/) const
 	return ms_Val ? ms_Val : asNullSubstitute;
 }
 
-INT_PTR CEStrA::length() const
+ssize_t CEStrA::length() const
 {
 	return ms_Val ? strlen(ms_Val) : 0;
 }
@@ -612,7 +478,7 @@ void CEStrA::clear()
 }
 
 // Reset the buffer to new empty data of required size
-char* CEStrA::getbuffer(INT_PTR cchMaxLen)
+char* CEStrA::getbuffer(ssize_t cchMaxLen)
 {
 	clear();
 	if (cchMaxLen >= 0)

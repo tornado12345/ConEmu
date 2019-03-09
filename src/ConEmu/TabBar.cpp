@@ -100,24 +100,6 @@ WARNING("TB_GETIDEALSIZE - awailable on XP only, use insted TB_GETMAXSIZE");
 
 CTabBarClass::CTabBarClass()
 {
-	_active = false;
-	_visible = false;
-	_tabHeight = 0;
-	mn_CurSelTab = 0;
-	mb_ForceRecalcHeight = false;
-	mb_DisableRedraw = FALSE;
-	//memset(&m_Margins, 0, sizeof(m_Margins));
-	//m_Margins = gpSet->rcTabMargins; // !! Значения отступов
-	//_titleShouldChange = false;
-	//mb_Enabled = TRUE;
-	mb_PostUpdateCalled = FALSE;
-	mb_PostUpdateRequested = FALSE;
-	mn_PostUpdateTick = 0;
-	//mn_MsgUpdateTabs = RegisterWindowMessage(CONEMUMSG_UPDATETABS);
-	memset(&m_Tab4Tip, 0, sizeof(m_Tab4Tip));
-	mb_InKeySwitching = false;
-	ms_TmpTabText[0] = 0;
-	mn_InUpdate = 0;
 	mp_DummyTab = new CTabID(NULL, NULL, fwt_Panels|fwt_CurrentFarWnd, 0, 0, 0);
 	_ASSERTE(mp_DummyTab->RefCount()==1);
 
@@ -466,16 +448,25 @@ bool CTabBarClass::OnTimer(WPARAM wParam)
 	return false;
 }
 
-bool CTabBarClass::IsTabsActive()
+bool CTabBarClass::IsTabsActive() const
 {
 	if (!this)
 	{
 		_ASSERTE(this!=NULL);
 		return false;
 	}
+	_ASSERTE(!_active || inActivate.load()>0 || IsTabsCreated());
 	return _active;
 }
 
+#ifdef _DEBUG
+bool CTabBarClass::IsTabsCreated() const
+{
+	return this && mp_Rebar && mp_Rebar->IsTabbarCreated();
+}
+#endif
+
+#if 0
 bool CTabBarClass::IsTabsShown()
 {
 	if (!this)
@@ -491,6 +482,7 @@ bool CTabBarClass::IsTabsShown()
 	// #SIZE_TODO May be not precise
 	return _active && mp_Rebar->IsTabbarCreated();
 }
+#endif
 
 bool CTabBarClass::IsSearchShown(bool bFilled)
 {
@@ -501,6 +493,8 @@ bool CTabBarClass::IsSearchShown(bool bFilled)
 
 void CTabBarClass::Activate(BOOL abPreSyncConsole/*=FALSE*/)
 {
+	MSetter setInActivate(inActivate);
+
 	const bool wasActive = _active;
 	_active = true; // Required to proper size calculation
 	if (!wasActive)
@@ -539,7 +533,7 @@ bool CTabBarClass::ShowSearchPane(bool bShow, bool bCtrlOnly /*= false*/)
 
 void CTabBarClass::Recreate()
 {
-	bool bWasVisible = IsTabsShown();
+	bool bWasVisible = IsTabsActive();
 
 	if (mp_Rebar)
 	{
@@ -589,8 +583,8 @@ void CTabBarClass::CheckRebarCreated()
 	// Создать
 	mp_Rebar->CreateRebar();
 
-	// Узнать высоту созданного
-	_tabHeight = mp_Rebar->QueryTabbarHeight();
+	//// Узнать высоту созданного
+	//_tabHeight = mp_Rebar->QueryTabbarHeight();
 
 	// Передернуть
 	OnCaptionHidden();
@@ -602,6 +596,9 @@ void CTabBarClass::Deactivate(BOOL abPreSyncConsole/*=FALSE*/)
 		return;
 
 	_active = false;
+	// Required to proper size calculation
+	gpConEmu->RequestRecalc();
+
 	bool bAutoShowHide = true;
 	gpConEmu->OnTabbarActivated(false, bAutoShowHide);
 	UpdatePosition();
@@ -1012,46 +1009,6 @@ void CTabBarClass::Update(BOOL abPosted/*=FALSE*/)
 	return; // Just for clearness
 }
 
-// #SIZE_TODO Eliminate the function
-RECT CTabBarClass::GetMargins(bool bIgnoreVisibility /*= false*/)
-{
-	RECT rcNewMargins = {0,0};
-
-	if (!this)
-	{
-		_ASSERTE(this);
-		return rcNewMargins;
-	}
-
-	if (bIgnoreVisibility || (_active || (gpSet->isTabs == 1)))
-	{
-		if (!_tabHeight)
-		{
-			// Вычислить высоту
-			GetTabbarHeight();
-		}
-
-		if (_tabHeight /*&& IsTabsShown()*/)
-		{
-			_ASSERTE(_tabHeight!=0 && "Height must be evaluated already!");
-
-			if (gpSet->nTabsLocation == 1)
-				rcNewMargins = MakeRect(0,0,0,_tabHeight);
-			else
-				rcNewMargins = MakeRect(0,_tabHeight,0,0);
-
-			//if (memcmp(&rcNewMargins, &m_Margins, sizeof(m_Margins)) != 0)
-			//{
-			//	m_Margins = rcNewMargins;
-			//	gpSet->UpdateMargins(m_Margins);
-			//}
-		}
-	}
-	//return m_Margins;
-
-	return rcNewMargins;
-}
-
 void CTabBarClass::UpdatePosition()
 {
 	if (!mp_Rebar->IsCreated())
@@ -1401,22 +1358,6 @@ void CTabBarClass::OnShowButtonsChanged()
 	mp_Rebar->ShowSearchPane(gpSet->isMultiShowSearch);
 
 	Reposition();
-}
-
-// #SIZE_TODO Eliminate the function
-int CTabBarClass::GetTabbarHeight()
-{
-	if (!this) return 0;
-
-	_ASSERTE(gpSet->isTabs!=0);
-
-	if (mb_ForceRecalcHeight || (_tabHeight == 0))
-	{
-		// Узнать высоту созданного
-		_tabHeight = mp_Rebar->QueryTabbarHeight();
-	}
-
-	return _tabHeight;
 }
 
 int CTabBarClass::PrepareTab(CTab& pTab, CVirtualConsole *apVCon)
@@ -2145,7 +2086,7 @@ bool CTabBarClass::OnKeyboard(UINT messg, WPARAM wParam, LPARAM lParam)
 	return false;
 }
 
-void CTabBarClass::SetRedraw(BOOL abEnableRedraw)
+void CTabBarClass::SetRedraw(bool abEnableRedraw)
 {
 	mb_DisableRedraw = !abEnableRedraw;
 }
@@ -2267,9 +2208,9 @@ bool CTabBarClass::GetActiveTabRect(RECT* rcTab)
 {
 	bool bSet = false;
 
-	if (!IsTabsShown())
+	if (!IsTabsActive())
 	{
-		_ASSERTE(IsTabsShown());
+		_ASSERTE(IsTabsActive());
 		memset(rcTab, 0, sizeof(*rcTab));
 	}
 	else
@@ -2283,7 +2224,7 @@ bool CTabBarClass::GetActiveTabRect(RECT* rcTab)
 // -2 - out of control, -1 - out of tab-labels, 0+ - tab index 0-based
 int CTabBarClass::GetTabFromPoint(LPPOINT pptCur, bool bScreen /*= true*/, bool bOverTabHitTest /*= true*/)
 {
-	if (!IsTabsShown())
+	if (!IsTabsActive())
 		return -1;
 
 	POINT ptCur = {};
@@ -2303,7 +2244,7 @@ int CTabBarClass::GetTabFromPoint(LPPOINT pptCur, bool bScreen /*= true*/, bool 
 
 bool CTabBarClass::Toolbar_GetBtnRect(int nCmd, RECT* rcBtnRect)
 {
-	if (!IsTabsShown())
+	if (!IsTabsActive())
 	{
 		return false;
 	}

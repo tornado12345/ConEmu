@@ -29,9 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 #include "Header.h"
 #include <Wininet.h>
-#pragma warning(disable: 4091)
-#include <shlobj.h>
-#pragma warning(default: 4091)
+#include "../common/shlobj.h"
 #include "Update.h"
 #include "UpdateConst.h"
 #include "UpdateSet.h"
@@ -1816,8 +1814,8 @@ bool CConEmuUpdate::Check7zipInstalled()
 		return true; // Инсталлер, архиватор не требуется!
 
 	LPCWSTR pszCmd = mp_Set->UpdateArcCmdLine();
-	CEStr sz7zip; sz7zip.GetBuffer(MAX_PATH);
-	if (NextArg(&pszCmd, sz7zip) != 0)
+	CmdArg sz7zip;
+	if (!NextArg(pszCmd, sz7zip))
 	{
 		ReportError(L"Invalid update command\nGoto 'Update' page and check 7-zip command", 0);
 		return false;

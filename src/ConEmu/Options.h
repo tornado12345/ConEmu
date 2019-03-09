@@ -580,6 +580,8 @@ struct Settings
 		BYTE isCTSColorIndex;
 		//reg->Load(L"ClipboardConfirmEnter", isPasteConfirmEnter);
 		bool isPasteConfirmEnter;
+		//reg->Load(L"AutoTrimSingleLine", isAutoTrimSingleLine);
+		bool isAutoTrimSingleLine;
 		//reg->Load(L"ClipboardConfirmLonger", nPasteConfirmLonger);
 		UINT nPasteConfirmLonger;
 		//reg->Load(L"FarGotoEditorOpt", isFarGotoEditor);
@@ -1133,7 +1135,8 @@ struct Settings
 		void SaveConsoleFont();
 		void SaveFindOptions(SettingsBase* reg = NULL);
 		void OnAutoSaveTimer();
-		void AutoSaveSettings(SettingsBase* reg = NULL);
+		void AutoSaveSettings(SettingsBase* reg = NULL, bool saveAll = false);
+		bool IsAutoSaveSettings(bool saveAll);
 		void SaveSettingsOnExit();
 		void SaveStopBuzzingDate();
 		//void UpdateMargins(RECT arcMargins);

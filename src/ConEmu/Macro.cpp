@@ -210,7 +210,9 @@ namespace ConEmuMacro
 	LPWSTR SetDpi(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// SetOption("<Name>",<Value>)
 	LPWSTR SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
-	// Диалог Settings
+	// SetParentHWND(<NewParentHWND>)
+	LPWSTR SetParentHWND(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
+	// Open Settings dialog
 	LPWSTR Settings(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// Shell (ShellExecute)
 	LPWSTR Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
@@ -306,6 +308,7 @@ namespace ConEmuMacro
 		{Select, {L"Select"}},
 		{SetDpi, {L"SetDpi"}, gmf_MainThread},
 		{SetOption, {L"SetOption"}, gmf_MainThread},
+		{SetParentHWND, {L"SetParentHWND"}, gmf_MainThread},
 		{Settings, {L"Settings"}, gmf_MainThread},
 		{Shell, {L"Shell", L"ShellExecute"}, gmf_MainThread},
 		{Sleep, {L"Sleep"}},
@@ -1210,10 +1213,17 @@ LPWSTR ConEmuMacro::GetNextInt(LPWSTR& rsArguments, GuiMacroArg& rnValue)
 	if (*pszTestEnd == L'-' || *pszTestEnd == L'+')
 		pszTestEnd++;
 	if (pszTestEnd[0] == L'0' && (pszTestEnd[1] == L'x' || pszTestEnd[1] == L'X'))
-		pszTestEnd+=2;
-	while (isDigit(*pszTestEnd))
-		pszTestEnd++;
+	{
+		pszTestEnd += 2;
+		while (isHexDigit(*pszTestEnd))
+			pszTestEnd++;
+	} else {
+		while (isDigit(*pszTestEnd))
+			pszTestEnd++;
+	}
 	#endif
+
+	// TODO: Support 64-bit integers?
 
 	// Hex value?
 	if (pszArg[0] == L'0' && (pszArg[1] == L'x' || pszArg[1] == L'X'))
@@ -2858,7 +2868,7 @@ LPWSTR ConEmuMacro::Select(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 		// ref gh-1299
 		if (!apRCon->isSelectionPresent())
 			return lstrdup(L"Selection was not started");
-		apRCon->DoSelectionStop();
+		apRCon->DoSelectionFinalize();
 		return lstrdup(L"OK");
 	}
 
@@ -2920,8 +2930,17 @@ LPWSTR ConEmuMacro::Select(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	}
 	else if (nType == 0)
 	{
-		if (nHomeEnd)
-			apRCon->ChangeSelectionByKey(((nHomeEnd < 0) ? VK_HOME : VK_END), false, true);
+		switch (nHomeEnd)
+		{
+		case -1:
+			apRCon->ChangeSelectionByKey(VK_HOME, false, true); break;
+		case +1:
+			apRCon->ChangeSelectionByKey(VK_END, false, true); break;
+		case -2:
+			apRCon->ChangeSelectionByKey(VK_LEFT, true, true); break;
+		case +2:
+			apRCon->ChangeSelectionByKey(VK_RIGHT, true, true); break;
+		}
 	}
 
 	return lstrdup(L"OK");
@@ -3165,6 +3184,25 @@ LPWSTR ConEmuMacro::SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 	}
 
 	return pszResult ? pszResult : lstrdup(L"UnknownOption");
+}
+
+// SetParentHWND(<NewParentHWND>)
+LPWSTR ConEmuMacro::SetParentHWND(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
+{
+	if (!gpConEmu->isInside())
+		return lstrdup(L"InsideModeRequired");
+
+	HWND2 hNewParent{0};
+	if (p->IsIntArg(0))
+	{
+		int hwnd_int = 0;
+		p->GetIntArg(0, hwnd_int);
+		hNewParent.u = static_cast<DWORD>(hwnd_int);
+	}
+
+	// TODO: Call here smth. like gpConEmu->SetInsideParent((HWND)hNewParent);
+
+	return lstrdup(L"OK");
 }
 
 // Диалог Settings

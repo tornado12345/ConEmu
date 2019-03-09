@@ -74,12 +74,12 @@ BOOL CALLBACK FindTopGuiOrConsole(HWND hWnd, LPARAM lParam)
 int GuiMacroCommandLine(LPCWSTR asCmdLine)
 {
 	int iRc = CERR_CMDLINEEMPTY;
-	CEStr szArg;
+	CmdArg szArg;
 	LPCWSTR pszArgStarts = NULL;
 	LPCWSTR lsCmdLine = asCmdLine;
 	MacroInstance MacroInst = {}; // Special ConEmu instance for GUIMACRO and other options
 
-	while ((iRc = NextArg(&lsCmdLine, szArg, &pszArgStarts)) == 0)
+	while ((lsCmdLine = NextArg(lsCmdLine, szArg, &pszArgStarts)))
 	{
 		// Following code wants '/'style arguments
 		// Change '-'style to '/'style

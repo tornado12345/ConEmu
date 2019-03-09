@@ -41,6 +41,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "../common/ConEmuCheck.h"
 #include "../common/ConsoleMixAttr.h"
+#include "../common/EnvVar.h"
 #include "../common/Execute.h"
 #include "../common/MGlobal.h"
 #include "../common/MSetter.h"
@@ -632,9 +633,11 @@ bool CRealBuffer::LoadAlternativeConsole(LoadAltMode iMode /*= lam_Default*/)
 	}
 	else if (iMode == lam_FullBuffer)
 	{
-		CESERVER_REQ *pIn = ExecuteNewCmd(CECMD_CONSOLEFULL, sizeof(CESERVER_REQ_HDR));
+		CESERVER_REQ *pIn = ExecuteNewCmd(CECMD_CONSOLEFULL, sizeof(CESERVER_REQ_HDR)+sizeof(DWORD));
 		if (pIn)
 		{
+			int dynHeight = mp_RCon->mp_RBuf->GetDynamicHeight();
+			pIn->dwData[0] = (dynHeight > 0) ? dynHeight : 0;
 			CESERVER_REQ *pOut = ExecuteSrvCmd(mp_RCon->GetServerPID(), pIn, ghWnd);
 			if (pOut && (pOut->hdr.cbSize > sizeof(CESERVER_CONSAVE_MAP)))
 			{
@@ -1475,7 +1478,7 @@ bool CRealBuffer::PreInit()
 bool CRealBuffer::GetData(CRConDataGuard& data)
 {
 	// m_ConData is not expected to be used in other buffer types
-	_ASSERTE(m_Type == rbt_Primary);
+	_ASSERTE(m_Type == rbt_Primary || m_Type == rbt_DumpScreen);
 
 	MSectionLockSimple cs; cs.Lock(&mcs_Data);
 	if (m_ConData.isValid())
@@ -3161,8 +3164,8 @@ bool CRealBuffer::ProcessFarHyperlink(UINT messg, COORD crFrom, bool bUpdateScre
 							// Если явно указан другой внешний редактор - всегда использовать его
 							bool bUseExtEditor = false;
 							LPCWSTR pszTemp = gpSet->sFarGotoEditor;
-							CEStr szExe;
-							if (NextArg(&pszTemp, szExe) == 0)
+							CmdArg szExe;
+							if ((pszTemp = NextArg(pszTemp, szExe)))
 							{
 								if (!IsFarExe(PointToName(szExe)))
 									bUseExtEditor = true;
@@ -3192,7 +3195,7 @@ bool CRealBuffer::ProcessFarHyperlink(UINT messg, COORD crFrom, bool bUpdateScre
 									//%3’ - C:\\Path\\File, ‘%4’ - C:/Path/File, ‘%5’ - /C/Path/File
 
 									CEStr szSlashed; szSlashed.Attach(MakeStraightSlashPath(pszWinPath));
-									CEStr szCygwin;  szCygwin.Attach(DupCygwinPath(pszWinPath, false, mp_RCon->GetMntPrefix()));
+									CEStr szCygwin;  DupCygwinPath(pszWinPath, false, mp_RCon->GetMntPrefix(), szCygwin);
 									LPCWSTR pszVal[] = {szRow, szCol, pszWinPath, (LPCWSTR)szSlashed, (LPCWSTR)szCygwin};
 									//_ASSERTE(countof(pszVar)==countof(pszVal));
 									wchar_t* pszCmd = ExpandMacroValues(gpSet->sFarGotoEditor, pszVal, countof(pszVal));
@@ -3229,9 +3232,10 @@ bool CRealBuffer::ProcessFarHyperlink(UINT messg, COORD crFrom, bool bUpdateScre
 										{
 											// Need to check registry for 'App Paths' and set up '%PATH%'
 											LPCWSTR pszTemp = args.pszSpecialCmd;
-											CEStr szExe, szPrevPath;
+											CmdArg szExe;
+											CEnvRestorer szPrevPath;
 											wchar_t* pszPrevPath = NULL;
-											if (NextArg(&pszTemp, szExe) == 0)
+											if ((pszTemp = NextArg(pszTemp, szExe)))
 											{
 												if (SearchAppPaths((LPCWSTR)szExe, szExe, true, &szPrevPath))
 												{
@@ -5553,6 +5557,17 @@ const ConEmuHotKey* CRealBuffer::ProcessSelectionHotKey(const ConEmuChord& VkSta
 		return ConEmuSkipHotKey;
 	}
 
+	// Let Far process Paste by Ctrl+V / Shift+Ins
+	if (mp_RCon->isFar()
+		&& (VkState.IsEqual('V', cvk_Ctrl) || VkState.IsEqual(VK_INSERT, cvk_Shift)))
+	{
+		if (bKeyDown)
+		{
+			mp_RCon->DoSelectionFinalize();
+		}
+		return NULL;
+	}
+
 	// Del/Shift-Del/BS/Ctrl-X - try to "edit" prompt
 	bool bDel = false, bShiftDel = false, bBS = false, bCtrlX = false;
 	if (gpSet->isCTSEraseBeforeReset &&
@@ -6090,16 +6105,15 @@ void CRealBuffer::GetConsoleData(wchar_t* pChar, CharAttr* pAttr, int nWidth, in
 			bool lbStreamMode = (con.m_sel.dwFlags & CONSOLE_TEXT_SELECTION) == CONSOLE_TEXT_SELECTION;
 			// srSelection in Absolute coordinates now!
 			// Поскольку здесь нас интересует только отображение - можно поступить просто
-			COORD crStart = BufferToScreen(MakeCoord(con.m_sel.srSelection.Left, con.m_sel.srSelection.Top));
-			COORD crEnd = BufferToScreen(MakeCoord(con.m_sel.srSelection.Right, con.m_sel.srSelection.Bottom));
+			COORD crStart = BufferToScreen(MakeCoord(con.m_sel.srSelection.Left, con.m_sel.srSelection.Top), false);
+			COORD crEnd = BufferToScreen(MakeCoord(con.m_sel.srSelection.Right, con.m_sel.srSelection.Bottom), false);
 
 			bool bAboveScreen = (con.m_sel.srSelection.Top < con.m_sbi.srWindow.Top);
 			bool bBelowScreen = (con.m_sel.srSelection.Bottom > con.m_sbi.srWindow.Bottom);
 
 			SMALL_RECT rc = {crStart.X, crStart.Y, crEnd.X, crEnd.Y};
-			// Коррекция по видимой области
+			_ASSERTE(rc.Left >= 0 && rc.Right < nWidth);
 			MinMax(rc.Left, 0, nWidth-1); MinMax(rc.Right, 0, nWidth-1);
-			MinMax(rc.Top, 0, nHeight-1); MinMax(rc.Bottom, 0, nHeight-1);
 
 			// для прямоугольника выделения сбрасываем прозрачность и ставим стандартный цвет выделения (lcaSel)
 			//CharAttr lcaSel = lcaTable[gpSet->isCTSColorIndex]; // Black on LtGray
@@ -6112,7 +6126,7 @@ void CRealBuffer::GetConsoleData(wchar_t* pChar, CharAttr* pAttr, int nWidth, in
 			int nX1, nX2;
 
 
-			for (nY = rc.Top; nY <= rc.Bottom; nY++)
+			for (nY = std::max<int>(rc.Top, 0); nY <= std::min<int>(rc.Bottom, nHeight-1); nY++)
 			{
 				if (!lbStreamMode)
 				{
@@ -6322,7 +6336,8 @@ void CRealBuffer::PrepareTransparent(wchar_t* pChar, CharAttr* pAttr, int nWidth
 	m_Rgn.SetNeedTransparency(gpSet->isUserScreenTransparent);
 	m_Rgn.SetFarRect(&rcFarRect);
 	TODO("При загрузке дампа хорошо бы из него и палитру фара доставать/отдавать");
-	m_Rgn.PrepareTransparent(pFI, mp_RCon->mp_VCon->GetColors(), pSbi, pChar, pAttr, nWidth, nHeight);
+	bool bFarUserscreen = mp_RCon->isFar() && (isPressed(VK_CONTROL) && isPressed(VK_SHIFT) && isPressed(VK_MENU));
+	m_Rgn.PrepareTransparent(pFI, mp_RCon->mp_VCon->GetColors(), pSbi, pChar, pAttr, nWidth, nHeight, bFarUserscreen);
 
 	free(pFI);
 

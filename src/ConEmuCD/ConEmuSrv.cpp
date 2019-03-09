@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/ConsoleAnnotation.h"
 #include "../common/ConsoleRead.h"
 #include "../common/EmergencyShow.h"
+#include "../common/EnvVar.h"
 #include "../common/execute.h"
 #include "../common/MProcess.h"
 #include "../common/MProcessBits.h"
@@ -1273,7 +1274,7 @@ int ServerInit()
 	swprintf_c(gpSrv->szDataReadyEvent, CEDATAREADYEVENT, gnSelfPID);
 	MCHKHEAP;
 
-	if (gpSrv->processes->pnProcesses == NULL || gpSrv->processes->pnProcessesGet == NULL || gpSrv->processes->pnProcessesCopy == NULL)
+	if (gpSrv->processes->pnProcesses.empty() || gpSrv->processes->pnProcessesGet.empty() || gpSrv->processes->pnProcessesCopy.empty())
 	{
 		_printf("Can't allocate %i DWORDS!\n", gpSrv->processes->nMaxProcesses);
 		iRc = CERR_NOTENOUGHMEM1; goto wrap;
@@ -1623,9 +1624,9 @@ void ServerDone(int aiRc, bool abReportShutdown /*= false*/)
 		}
 
 		#ifdef _DEBUG
-		int nCurProcCount = gpSrv->processes->nProcessCount;
+		UINT nCurProcCount = std::min<UINT>(gpSrv->processes->nProcessCount, gpSrv->processes->pnProcesses.size());
 		DWORD nCurProcs[20];
-		memmove(nCurProcs, gpSrv->processes->pnProcesses, std::min<DWORD>(nCurProcCount, 20) * sizeof(DWORD));
+		memmove(nCurProcs, &gpSrv->processes->pnProcesses[0], std::min<DWORD>(nCurProcCount, 20) * sizeof(DWORD));
 		_ASSERTE(nCurProcCount <= 1);
 		#endif
 
@@ -2920,8 +2921,8 @@ HWND Attach2Gui(DWORD nTimeout)
 		{
 			// `-cmd`, `-cmdlist`, `-run` or `-runlist` must be in the "ConEmuArgs2" only!
 			#ifdef _DEBUG
-			CEStr lsFirst;
-			_ASSERTE(QueryNextArg(cfgSwitches,lsFirst) && !lsFirst.OneOfSwitches(L"-cmd",L"-cmdlist",L"-run",L"-runlist"));
+			CmdArg lsFirst; LPCWSTR pszCfgSwitches = cfgSwitches.c_str();
+			_ASSERTE(NextArg(pszCfgSwitches,lsFirst) && !lsFirst.OneOfSwitches(L"-cmd",L"-cmdlist",L"-run",L"-runlist"));
 			#endif
 
 			lstrmerge(&lsGuiCmd.ms_Val, L" ", cfgSwitches);
@@ -4123,7 +4124,7 @@ static int ReadConsoleInfo()
 	//CheckProcessCount(); -- уже должно быть вызвано !!!
 	//2010-05-26 Изменения в списке процессов не приходили в GUI до любого чиха в консоль.
 	#ifdef _DEBUG
-	_ASSERTE(gpSrv->processes->pnProcesses!=NULL);
+	_ASSERTE(gpSrv->processes->pnProcesses.size() > 0);
 	if (!gpSrv->processes->nProcessCount)
 	{
 		_ASSERTE(gpSrv->processes->nProcessCount); //CheckProcessCount(); -- must be already initialized !!!

@@ -30,9 +30,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 
 #include "Header.h"
-#pragma warning(disable: 4091)
-#include <shlobj.h>
-#pragma warning(default: 4091)
+#include "../common/shlobj.h"
 #ifdef __GNUC__
 #include "ShObjIdl_Part.h"
 #endif // __GNUC__
@@ -725,6 +723,9 @@ bool CSetDlgButtons::ProcessButtonClick(HWND hDlg, WORD CB, BYTE uCheck)
 			break;
 		case cbClipConfirmEnter:
 			CSetPgPaste::OnBtn_ClipConfirmEnter(hDlg, CB, uCheck);
+			break;
+		case cbAutoTrimSingleLine:
+			CSetPgPaste::OnBtn_AutoTrimSingleLine(hDlg, CB, uCheck);
 			break;
 		case cbClipConfirmLimit:
 			CSetPgPaste::OnBtn_ClipConfirmLimit(hDlg, CB, uCheck);
@@ -3517,7 +3518,7 @@ void CSetDlgButtons::OnBtn_DosBox(HWND hDlg, WORD CB, BYTE uCheck)
 {
 	_ASSERTE(CB==cbDosBox);
 
-	if (gpConEmu->mb_DosBoxExists)
+	if (gpConEmu->CheckDosBoxExists())
 	{
 		checkDlgButton(hDlg, cbDosBox, BST_CHECKED);
 		EnableWindow(GetDlgItem(hDlg, cbDosBox), FALSE); // изменение пока запрещено
@@ -3525,16 +3526,15 @@ void CSetDlgButtons::OnBtn_DosBox(HWND hDlg, WORD CB, BYTE uCheck)
 	else
 	{
 		checkDlgButton(hDlg, cbDosBox, BST_UNCHECKED);
-		size_t nMaxCCH = MAX_PATH*3;
-		wchar_t* pszErrInfo = (wchar_t*)malloc(nMaxCCH*sizeof(wchar_t));
-		swprintf_c(pszErrInfo, nMaxCCH/*#SECURELEN*/, L"DosBox is not installed!\n"
-				L"\n"
-				L"DosBox files must be located here:"
-				L"%s\\DosBox\\"
+		CEStr lsErrInfo(
+				L"DosBox files must be located here:\n",
+				gpConEmu->ms_ConEmuBaseDir, L"\\DosBox\\"
 				L"\n"
 				L"1. Copy files DOSBox.exe, SDL.dll, SDL_net.dll\n"
-				L"2. Create of modify configuration file DOSBox.conf",
-				gpConEmu->ms_ConEmuBaseDir);
+				L"2. Create of modify configuration file DOSBox.conf"
+				);
+		// gh-1637 Show information to user!
+		MsgBox(lsErrInfo, MB_OK|MB_ICONINFORMATION, NULL, ghOpWnd);
 	}
 } // cbDosBox
 
@@ -4425,8 +4425,8 @@ void CSetDlgButtons::OnBtn_GotoEditorCmd(HWND hDlg, WORD CB, BYTE uCheck)
 	wchar_t szInitialDir[MAX_PATH+1]; GetCurrentDirectory(countof(szInitialDir), szInitialDir);
 
 	LPCWSTR pszTemp = gpSet->sFarGotoEditor;
-	CEStr szExe;
-	if (NextArg(&pszTemp, szExe) == 0)
+	CmdArg szExe;
+	if ((pszTemp = NextArg(pszTemp, szExe)))
 	{
 		lstrcpyn(szPath, szExe, countof(szPath));
 	}

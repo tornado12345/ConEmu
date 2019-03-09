@@ -59,11 +59,19 @@ function target_dir(folder)
 end
 
 function postbuild_module_(dllname, cfg, ext)
-  postbuildcommands {
-    "copy \"$(TargetPath)\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext.."\"",
-    "copy \"$(TargetDir)$(TargetName).map\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".map\"",
-    "copy \"$(TargetDir)$(TargetName).pdb\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".pdb\"",
-  }
+  if cfg == "Release" or cfg == "Debug" then
+    postbuildcommands {
+      "copy \"$(TargetPath)\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext.."\"",
+      "copy \"$(TargetDir)$(TargetName).map\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".map\"",
+      "copy \"$(TargetDir)$(TargetName).pdb\" \"../"..cfg.."/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".pdb\"",
+    }
+  else
+    postbuildcommands {
+      "copy \"$(TargetPath)\" \"Z:/plugins/ConEmu/Thumbs/"..dllname.."."..ext.."\"",
+      "copy \"$(TargetDir)$(TargetName).map\" \"Z:/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".map\"",
+      "copy \"$(TargetDir)$(TargetName).pdb\" \"Z:/plugins/ConEmu/Thumbs/"..dllname.."."..ext..".pdb\"",
+    }
+  end
 end
 
 function postbuild_module(dllname)
@@ -110,10 +118,12 @@ local common_kernel = {
   "src/common/ConEmuCheck.*",
   "src/common/ConsoleMixAttr.*",
   "src/common/ConsoleRead.*",
+  "src/common/EnvVar.*",
   "src/common/Execute.*",
   "src/common/HandleKeeper.*",
   "src/common/HkFunc.*",
   "src/common/InQueue.*",
+  "src/common/Keyboard.*",
   "src/common/MAssert.*",
   "src/common/MConHandle.*",
   "src/common/Memory.*",
@@ -253,6 +263,8 @@ project "ConEmu"
     "**/!*.*",
   }
 
+  removefiles (common_remove)
+
   vpaths {
     { ["Common"]    = {"src/common/*.h"} },
     { ["Resources"] = {"**/*.rc", "**/*.rc2", "**/*.manifest", "**/*.bmp", "**/*.cur", "**/*.ico"} },
@@ -361,6 +373,7 @@ project "ConEmuCD"
   vpaths {
     { ["Interface"] = {"**/Common.h", "**/SrvCommands.*", "**/Queue.*", "**/SrvPipes.*"} },
     { ["Automation"] = {"**/Actions.*", "**/GuiMacro.*"} },
+    { ["Console"] = {"**/ConAnsi.*", "**/ConAnsiImpl.*", "**/ConData.*"} },
     { ["Headers"] = {"**.h"} },
     { ["Sources"] = {"**.cpp"} },
     { ["Resources"] = {"**.rc", "**.rc2", "**.manifest"} },

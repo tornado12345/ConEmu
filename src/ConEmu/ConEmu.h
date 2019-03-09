@@ -166,7 +166,8 @@ class CConEmuMain
 		void SetWindowIcon(LPCWSTR asNewIcon);
 		void SetTaskbarIcon(HICON ahNewIcon);
 		CPushInfo *mp_PushInfo = nullptr;
-		BOOL mb_DosBoxExists = FALSE;
+		bool mb_DosBoxExists = false;
+		bool CheckDosBoxExists();
 		ConEmuInstallMode m_InstallMode = cm_Normal;
 		bool isMingwMode();
 		bool isMSysStartup();
@@ -181,8 +182,6 @@ class CConEmuMain
 		} m_DbgInfo;
 	private:
 		bool CheckBaseDir();
-		BOOL CheckDosBoxExists();
-		void FinalizePortableReg();
 		bool mb_ForceUseRegistry = false;
 		bool mb_SpecialConfigPath = false;
 		wchar_t ms_ConEmuXml[MAX_PATH+1] = L"";       // полный путь к портабельным настройкам
@@ -621,7 +620,7 @@ class CConEmuMain
 		void DebugStep(LPCWSTR asMsg, BOOL abErrorSeverity=FALSE);
 		void ForceShowTabs(BOOL abShow);
 		DWORD_PTR GetActiveKeyboardLayout();
-		bool isTabsShown();
+		bool isTabsShown() const;
 
 	public:
 		void Destroy(bool abForce = false);

@@ -36,6 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //#define SHOW_INJECT_MSGBOX
 
+#include "../common/defines.h"
 #include "ConEmuSrv.h"
 #include "../common/CmdLine.h"
 #include "../common/ConsoleAnnotation.h"
@@ -61,6 +62,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../ConEmu/version.h"
 #include "../ConEmuHk/Injects.h"
 #include "Actions.h"
+#include "ConAnsi.h"
 #include "ConProcess.h"
 #include "ConsoleHelp.h"
 #include "GuiMacro.h"
@@ -1771,6 +1773,12 @@ BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
 		//SafeFree(gpStoredOutput);
 		return FALSE; // Не смогли получить информацию о консоли...
 	}
+	// Support dynamic height - do not load all 32K lines
+	if (in.DataSize() >= sizeof(DWORD))
+	{
+		if (static_cast<WORD>(lsbi.dwSize.Y) > in.dwData[0])
+			lsbi.dwSize.Y = LOWORD(in.dwData[0]);
+	}
 
 	CESERVER_CONSAVE_MAP* pData = NULL;
 	size_t cbReplySize = sizeof(CESERVER_CONSAVE_MAP) + (lsbi.dwSize.X * lsbi.dwSize.Y * sizeof(pData->Data[0]));
@@ -2491,7 +2499,7 @@ BOOL cmd_WriteText(CESERVER_REQ& in, CESERVER_REQ** out)
 
 		if (nLen > 0)
 		{
-			WriteOutput(pszText, nLen, nWritten, true/*bProcessed*/, false/*bAsciiPrint*/, false/*bStreamBy1*/, false/*bToBottom*/);
+			WriteOutput(pszText, nLen, &nWritten, true/*bProcessed*/, false/*bAsciiPrint*/, false/*bStreamBy1*/, false/*bToBottom*/);
 		}
 
 		(*out)->dwData[0] = nWritten;
@@ -2558,6 +2566,12 @@ BOOL cmd_StartXTerm(CESERVER_REQ& in, CESERVER_REQ** out)
 	if (in.DataSize() >= 3*sizeof(DWORD))
 	{
 		gpSrv->processes->StartStopXTermMode((TermModeCommand)in.dwData[0], in.dwData[1], in.dwData[2]);
+
+		if (in.DataSize() >= 4*sizeof(DWORD))
+		{
+			gpSrv->pConsole->hdr.stdConBlockingPID = in.dwData[3];
+			UpdateConsoleMapHeader(L"CECMD_STARTXTERM");
+		}
 	}
 
 	// Inform the GUI
@@ -2565,6 +2579,30 @@ BOOL cmd_StartXTerm(CESERVER_REQ& in, CESERVER_REQ** out)
 	ExecuteFreeResult(pGuiOut);
 
 	*out = ExecuteNewCmd(CECMD_STARTXTERM, sizeof(CESERVER_REQ_HDR));
+	lbRc = ((*out) != NULL);
+	return lbRc;
+}
+
+BOOL cmd_StartPtySrv(CESERVER_REQ& in, CESERVER_REQ** out)
+{
+	BOOL lbRc = TRUE;
+
+	LogString("CECMD_STARTPTYSRV");
+
+	if (in.DataSize() >= sizeof(CESERVER_REQ::Data[0]) && in.Data[0] == TRUE)
+	{
+		auto handles = SrvAnsi::Object()->GetClientHandles(in.hdr.nSrcPID);
+		if ((*out = ExecuteNewCmd(CECMD_STARTPTYSRV, sizeof(CESERVER_REQ_HDR) + 2*sizeof(CESERVER_REQ::qwData[0]))))
+		{
+			(*out)->qwData[0] = uint64_t(handles.first);
+			(*out)->qwData[1] = uint64_t(handles.second);
+		}
+	}
+	else
+	{
+		*out = ExecuteNewCmd(CECMD_STARTPTYSRV, sizeof(CESERVER_REQ_HDR));
+	}
+
 	lbRc = ((*out) != NULL);
 	return lbRc;
 }
@@ -2777,6 +2815,10 @@ BOOL ProcessSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out)
 		case CECMD_FINDNEXTROWID:
 		{
 			lbRc = cmd_FindNextRowId(in, out);
+		} break;
+		case CECMD_STARTPTYSRV:
+		{
+			lbRc = cmd_StartPtySrv(in, out);
 		} break;
 		default:
 		{

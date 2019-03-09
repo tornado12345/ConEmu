@@ -39,6 +39,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "WObjects.h"
 #include "CmdLine.h"
 
+#ifdef _DEBUG
+// for tests only
+#include "EnvVar.h"
+#endif
+
 #define DEBUGSTRPARSE(s) DEBUGSTR(s)
 
 #if defined(__GNUC__) && !defined(__MINGW64_VERSION_MAJOR)
@@ -47,13 +52,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef _DEBUG
 
+#include "EnvVar.h"
+
 // На этом - ассерт возникает в NextArg
 // L"C:\\Windows\\system32\\cmd.exe /c echo moving \"\"..\\_VCBUILD\\final.ConEmuCD.32W.vc9\\ConEmuCD.pdb\"\" to \"..\\..\\Release\\ConEmu\\ConEmuCD.pdb\""
 // L"\"C:\\Program Files\\Microsoft SDKs\\Windows\\v7.0\\bin\\rc.EXE\" /D__GNUC__ /l 0x409 /fo\"\"..\\_VCBUILD\\final.ConEmu.32W.vc9\\obj\\ConEmu.res\"\" /d NDEBUG ConEmu.rc"
 
 void RConStartArgsEx::RunArgTests()
 {
-	CEStr s;
+	CmdArg s;
 	s.Set(L"Abcdef", 3);
 	int nDbg = lstrcmp(s, L"Abc");
 	_ASSERTE(nDbg==0);
@@ -101,7 +108,7 @@ void RConStartArgsEx::RunArgTests()
 		int j = -1;
 		while (lsArgTest[i].pszCmp[++j])
 		{
-			if (NextArg(&pszTestCmd, s) != 0)
+			if (!(pszTestCmd = NextArg(pszTestCmd, s)))
 			{
 				_ASSERTE(FALSE && "Fails on token!");
 			}
@@ -126,6 +133,21 @@ void RConStartArgsEx::RunArgTests()
 
 		switch (i)
 		{
+		case 26:
+			// conemu-old-issues#1710: The un-eaten double quote
+			pszCmp = LR"(powershell -new_console:t:"PoSh":d:"%USERPROFILE%")";
+			arg.pszSpecialCmd = lstrdup(pszCmp);
+			arg.ProcessNewConArg();
+			_ASSERTE(arg.pszRenameTab && lstrcmp(arg.pszRenameTab, L"PoSh")==0);
+			_ASSERTE(arg.pszStartupDir && CEStr(ExpandEnvStr(L"%USERPROFILE%")).Compare(arg.pszStartupDir)==0);
+			break;
+		case 25:
+			pszCmp = LR"(cmd -new_console:u:"john:pass^"word^"")";
+			arg.pszSpecialCmd = lstrdup(pszCmp);
+			arg.ProcessNewConArg();
+			_ASSERTE(arg.pszUserName && lstrcmp(arg.pszUserName, L"john")==0);
+			_ASSERTE(arg.szUserPassword && lstrcmp(arg.szUserPassword, L"pass\"word\"")==0);
+			break;
 		case 24:
 			pszCmp = L"/C \"-new_console test.cmd bla\"";
 			arg.pszSpecialCmd = lstrdup(pszCmp);

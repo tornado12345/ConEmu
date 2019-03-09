@@ -7,7 +7,7 @@ if exist "%~dp0*.obj" del /Q "%~dp0*.obj" > nul
 if exist "%~dp0tests.fail" del /Q "%~dp0tests.fail" > nul
 
 set commons=../common/CEStr.cpp ../common/Memory.cpp ../common/WObjects.cpp ../common/WUser.cpp ../common/CmdLine.cpp ^
-            ../common/MStrSafe.cpp ../common/MStrDup.cpp ../common/MAssert.cpp ../common/WThreads.cpp ^
+            ../common/MStrSafe.cpp ../common/MStrDup.cpp ../common/MAssert.cpp ../common/WThreads.cpp ../common/EnvVar.cpp ^
             ../common/MProcess.cpp ../common/RConStartArgs.cpp ../common/RConStartArgsEx.cpp ../common/MModule.cpp
 
 set colorcmn=../ConEmu/ColorFix.cpp
@@ -21,12 +21,12 @@ if NOT "%~1" == "" (
   goto :end_of_tests
 )
 
-call cecho /blue "Following files must NOT be compiled without errors"
-call :fail1
-call :fail2
-call :fail3
-call :fail4
-call :fail5
+rem call cecho /blue "Following files must NOT be compiled without errors"
+rem call :fail1
+rem call :fail2
+rem call :fail3
+rem call :fail4
+rem call :fail5
 
 call cecho /blue "Following files must BE compiled/executed without errors"
 call :test1
@@ -101,6 +101,7 @@ call cecho /yellow "  VC15 cl test %~1"
 setlocal
 call "%~dp0..\vc.build.set.x32.cmd" 15 > nul
 if errorlevel 1 goto vars_err
+cd /d "%~dp0"
 set VS_VERSION > "build-out.log"
 call :build_std /Fe"vc-test-15.exe" %*
 if errorlevel 1 (

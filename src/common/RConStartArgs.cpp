@@ -30,14 +30,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 
 #include "defines.h"
+#include "CmdLine.h"
+#include "Common.h"
+#include "EnvVar.h"
 #include "MAssert.h"
-#include "Memory.h"
 #include "MStrDup.h"
 #include "MStrSafe.h"
+#include "Memory.h"
 #include "RConStartArgs.h"
-#include "Common.h"
 #include "WObjects.h"
-#include "CmdLine.h"
 
 #define DEBUGSTRPARSE(s) DEBUGSTR(s)
 
@@ -149,14 +150,14 @@ int RConStartArgs::ProcessNewConArg(bool bForceCurConsole /*= false*/)
 		LPCWSTR pszTemp = pszSpecialCmd;
 		LPCWSTR pszSave = pszSpecialCmd;
 		LPCWSTR pszName;
-		CEStr szExe;
+		CmdArg szExe;
 		LPCWSTR pszWords[] = {
 			L"ConEmu", L"ConEmu.exe", L"ConEmu64", L"ConEmu64.exe",
 			L"ConEmuC", L"ConEmuC.exe", L"ConEmuC64", L"ConEmuC64.exe",
 			L"ConEmuPortable.exe", L"ConEmuPortable",
 			L"DosKey", L"DosKey.exe",
 			NULL};
-		while (!pszStopAt && (0 == NextArg(&pszTemp, szExe)))
+		while (!pszStopAt && (pszTemp = NextArg(pszTemp, szExe)))
 		{
 			if (szExe.ms_Val[0] != L'-')
 			{
@@ -704,10 +705,6 @@ int RConStartArgs::ProcessNewConArg(bool bForceCurConsole /*= false*/)
 									// Terminate with '\0'
 									_ASSERTE(pD <= ((*pptr)+cchLen));
 									*pD = 0;
-									// Issue 1711: Supposing there can't be ending quotes
-									INT_PTR iLen = (pD - *pptr);
-									while (((iLen--) > 0) && (*(--pD) == L'"'))
-										*pD = 0;
 								}
 								// Additional processing
 								switch (cOpt)

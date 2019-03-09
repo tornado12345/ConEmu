@@ -519,7 +519,7 @@
     <ClInclude Include="common\EmergencyShow.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="common\ExecPty.h">
+    <ClInclude Include="common\EnvVar.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\FarVersion.h">
@@ -535,6 +535,9 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\InQueue.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="common\Keyboard.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\MArray.h">
@@ -639,16 +642,10 @@
     <ClInclude Include="common\PipeServer.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="common\ProcList.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="common\ProcessData.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\ProcessSetEnv.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="common\Processes.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\RConStartArgs.h">
@@ -733,6 +730,9 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\plugin_helper.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="common\shlobj.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="common\stdint_.h">

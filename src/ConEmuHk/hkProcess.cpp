@@ -62,10 +62,10 @@ HRESULT OurShellExecCmdLine(HWND hwnd, LPCWSTR pwszCommand, LPCWSTR pwszStartDir
 	DefTermLogString(lsLog);
 
 	// Bad thing, ShellExecuteEx needs File&Parm, but we get both in pwszCommand
-	CEStr szExe;
+	CmdArg szExe;
 	LPCWSTR pszFile = pwszCommand;
 	LPCWSTR pszParm = pwszCommand;
-	if (NextArg(&pszParm, szExe) == 0)
+	if ((pszParm = NextArg(pszParm, szExe)))
 	{
 		pszFile = szExe; pszParm = SkipNonPrintable(pszParm);
 	}

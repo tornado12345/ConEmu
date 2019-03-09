@@ -390,8 +390,8 @@ int DoDumpStruct(LPCWSTR asCmdLine)
 	int iRc = 0;
 	if (!asCmdLine || !*asCmdLine)
 		return CERR_UNKNOWN_MAP_NAME;
-	CEStr lsName;
-	while (0 == NextArg(&asCmdLine, lsName))
+	CmdArg lsName;
+	while ((asCmdLine = NextArg(asCmdLine, lsName)))
 	{
 		iRc = DumpStructData(lsName);
 	}

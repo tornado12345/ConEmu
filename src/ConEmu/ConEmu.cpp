@@ -51,6 +51,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#include "../common/ConEmuCheck.h"
 
 #include "../common/execute.h"
+#include "../common/EnvVar.h"
 #include "../common/md5.h"
 #include "../common/MArray.h"
 #include "../common/MFileLogEx.h"
@@ -619,7 +620,7 @@ CConEmuMain::CConEmuMain()
 
 
 	// DosBox (the only available way to run legacy Dos-applications in 64-bit OS)
-	mb_DosBoxExists = CheckDosBoxExists();
+	CheckDosBoxExists();
 
 	CFrameHolder::InitFrameHolder();
 }
@@ -1302,12 +1303,12 @@ LPCWSTR CConEmuMain::ConEmuCExeFull(LPCWSTR asCmdLine/*=NULL*/)
 
 		// Проверить битность asCmdLine во избежание лишних запусков серверов для Inject
 		// и корректной битности запускаемого процессора по настройке
-		CEStr szTemp;
+		CmdArg szTemp;
 		wchar_t* pszExpand = NULL;
 		if (!FileExists(asCmdLine))
 		{
 			const wchar_t *psz = asCmdLine;
-			if (NextArg(&psz, szTemp) == 0)
+			if ((psz = NextArg(psz, szTemp)))
 				asCmdLine = szTemp;
 		}
 		else
@@ -1646,14 +1647,11 @@ void CConEmuMain::OnUseDwm(bool abEnableDwm)
 	//CheckMenuItem(GetSysMenu(false), ID_ISDWM, MF_BYCOMMAND | (abEnableDwm ? MF_CHECKED : MF_UNCHECKED));
 }
 
-bool CConEmuMain::isTabsShown()
+bool CConEmuMain::isTabsShown() const
 {
 	if (gpSet->isTabs == 1)
 		return true;
-	// #SIZE_TODO May be not precise
-	if (mp_TabBar && mp_TabBar->IsTabsShown())
-		return true;
-	return false;
+	return (mp_TabBar && mp_TabBar->IsTabsActive());
 }
 
 void CConEmuMain::SetWindowStyle(DWORD anStyle)
@@ -2147,21 +2145,21 @@ void CConEmuMain::FillConEmuMainFont(ConEmuMainFont* pFont)
 }
 
 
-BOOL CConEmuMain::CheckDosBoxExists()
+bool CConEmuMain::CheckDosBoxExists()
 {
-	BOOL lbExists = FALSE;
-	wchar_t szDosBoxPath[MAX_PATH+32];
-	wcscpy_c(szDosBoxPath, ms_ConEmuBaseDir);
-	wchar_t* pszName = szDosBoxPath+_tcslen(szDosBoxPath);
+	bool absent = false;
 
-	wcscpy_add(pszName, szDosBoxPath, L"\\DosBox\\DosBox.exe");
-	if (FileExists(szDosBoxPath))
+	const wchar_t* reqFiles[] = { L"DosBox.exe", L"DosBox.conf" };
+	for (size_t i = 0; i < countof(reqFiles); ++i)
 	{
-		wcscpy_add(pszName, szDosBoxPath, L"\\DosBox\\DosBox.conf");
-		lbExists = FileExists(szDosBoxPath);
+		CEStr file(ms_ConEmuBaseDir, L"\\DosBox\\", reqFiles[i]);
+		if (!FileExists(file))
+		{
+			absent = true; break;
+		}
 	}
 
-	return lbExists;
+	return (mb_DosBoxExists = !absent);
 }
 
 void CConEmuMain::GetComSpecCopy(ConEmuComspec& ComSpec)
@@ -2236,8 +2234,7 @@ void CConEmuMain::UpdateGuiInfoMapping()
 	// m_GuiInfo.Flags[CECF_SleepInBackg], m_GuiInfo.hActiveCons, m_GuiInfo.dwActiveTick, m_GuiInfo.bGuiActive
 	UpdateGuiInfoMappingActive(isMeForeground(true, true), false);
 
-	mb_DosBoxExists = CheckDosBoxExists();
-	SetConEmuFlags(m_GuiInfo.Flags,CECF_DosBox,(mb_DosBoxExists ? CECF_DosBox : 0));
+	SetConEmuFlags(m_GuiInfo.Flags,CECF_DosBox,(CheckDosBoxExists() ? CECF_DosBox : 0));
 
 	wcscpy_c(m_GuiInfo.sConEmuExe, ms_ConEmuExe);
 	//-- переехали в m_GuiInfo.ComSpec
@@ -2816,7 +2813,7 @@ void CConEmuMain::ForceShowTabs(BOOL abShow)
 	//2009-05-20 Раз это Force - значит на возможность получить табы из фара забиваем! Для консоли показывается "Console"
 	BOOL lbTabsAllowed = abShow /*&& this->mp_TabBar->IsAllowed()*/;
 
-	if (abShow && !this->mp_TabBar->IsTabsShown() && gpSet->isTabs && lbTabsAllowed)
+	if (abShow && gpSet->isTabs && lbTabsAllowed)
 	{
 		this->mp_TabBar->Activate(TRUE);
 		this->mp_TabBar->Update();
@@ -3106,7 +3103,7 @@ bool CConEmuMain::ConActivateNext(bool abNext)
 	return CVConGroup::ConActivateNext(abNext);
 }
 
-// nCon - zero-based index of console
+// nCon - zero-based index of console; -1 for last console
 bool CConEmuMain::ConActivate(int nCon)
 {
 	return CVConGroup::ConActivate(nCon);
@@ -3299,9 +3296,9 @@ LPCWSTR CConEmuMain::ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive
 	if (apszLine && *apszLine)
 	{
 		LPCWSTR pcszCmd = apszLine;
-		CEStr szArg;
+		CmdArg szArg;
 		const int iNewConLen = lstrlen(L"-new_console");
-		while (NextArg(&pcszCmd, szArg) == 0)
+		while ((pcszCmd = NextArg(pcszCmd, szArg)))
 		{
 			// On first "-new_console" or "-cur_console" stop processing "specials"
 			if (wcsncmp(szArg, L"-new_console", iNewConLen) == 0 || wcsncmp(szArg, L"-cur_console", iNewConLen) == 0)
@@ -3313,7 +3310,7 @@ LPCWSTR CConEmuMain::ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive
 
 			if (lstrcmpi(szArg, L"/bufferheight") == 0)
 			{
-				if (NextArg(&pcszCmd, szArg) == 0)
+				if ((pcszCmd = NextArg(pcszCmd, szArg)))
 				{
 					wchar_t* pszEnd = NULL;
 					if (pArgs)
@@ -3327,7 +3324,7 @@ LPCWSTR CConEmuMain::ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive
 			}
 			else if (lstrcmpi(szArg, L"/dir") == 0)
 			{
-				if (NextArg(&pcszCmd, szArg) == 0)
+				if ((pcszCmd = NextArg(pcszCmd, szArg)))
 				{
 					if (pArgs)
 					{
@@ -3340,7 +3337,7 @@ LPCWSTR CConEmuMain::ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive
 			}
 			else if (lstrcmpi(szArg, L"/icon") == 0)
 			{
-				if (NextArg(&pcszCmd, szArg) == 0)
+				if ((pcszCmd = NextArg(pcszCmd, szArg)))
 				{
 					if (pArgs)
 					{
@@ -3353,7 +3350,7 @@ LPCWSTR CConEmuMain::ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive
 			}
 			else if (lstrcmpi(szArg, L"/tab") == 0)
 			{
-				if (NextArg(&pcszCmd, szArg) == 0)
+				if ((pcszCmd = NextArg(pcszCmd, szArg)))
 				{
 					if (pArgs)
 					{
@@ -3392,7 +3389,7 @@ CVirtualConsole* CConEmuMain::CreateConGroup(LPCWSTR apszScript, bool abForceAsA
 
 	CVConGroup::OnCreateGroupBegin();
 
-	while (0 == NextLine(&pszCursor, szLine, NLF_SKIP_EMPTY_LINES| NLF_TRIM_SPACES))
+	while ((pszCursor = NextLine(pszCursor, szLine, NLF_SKIP_EMPTY_LINES| NLF_TRIM_SPACES)))
 	{
 		lbSetActive = false;
 
@@ -3433,8 +3430,8 @@ CVirtualConsole* CConEmuMain::CreateConGroup(LPCWSTR apszScript, bool abForceAsA
 			lsTempTask = LoadConsoleBatch(pszLine, &args);
 			if (lsTempTask.IsEmpty())
 				break;
-			LPCWSTR pszTempPtr = lsTempTask.ms_Val;
-			if (0 != NextLine(&pszTempPtr, lsTempLine))
+			// We need only first line from nested task
+			if (!NextLine(lsTempTask, lsTempLine))
 				break;
 			pszLine = ParseScriptLineOptions(lsTempLine.ms_Val, NULL, &args);
 		}
@@ -5430,7 +5427,7 @@ void CConEmuMain::UpdateProgress()
 			swprintf_c(MultiTitle+nCurTtlLen, countof(MultiTitle)-nCurTtlLen/*#SECURELEN*/, L"{*%i%%} ", mn_Progress);
 	}
 
-	if (gpSetCls->IsMulti() && (gpSet->isNumberInCaption || !mp_TabBar->IsTabsShown()))
+	if (gpSetCls->IsMulti() && (gpSet->isNumberInCaption || !isTabsShown()))
 	{
 		int nCur = 1, nCount = 0;
 
@@ -6694,13 +6691,12 @@ wchar_t CConEmuMain::IsConsoleBatchOrTask(LPCWSTR asSource)
 	wchar_t Supported = 0;
 
 	// If task name is quoted
-	CEStr lsTemp;
+	CmdArg lsTemp;
 	if (asSource && (*asSource == L'"'))
 	{
-		LPCWSTR pszTemp = asSource;
-		if (NextArg(&pszTemp, lsTemp) == 0)
+		if (NextArg(asSource, lsTemp))
 		{
-			asSource = lsTemp.ms_Val;
+			asSource = lsTemp.c_str();
 		}
 	}
 
@@ -6736,18 +6732,20 @@ wchar_t* CConEmuMain::LoadConsoleBatch(LPCWSTR asSource, RConStartArgsEx* pArgs 
 	}
 
 	// If task name is quoted
-	CEStr lsTemp;
+	CmdArg lsTemp;
 	if (asSource && (*asSource == L'"'))
 	{
-		LPCWSTR pszTemp = asSource;
-		if (NextArg(&pszTemp, lsTemp) == 0)
+		LPCWSTR pszTemp;
+		if ((pszTemp = NextArg(asSource, lsTemp)))
 		{
-			asSource = lsTemp.ms_Val;
+			asSource = lsTemp.c_str();
 
-			#ifdef _DEBUG
 			pszTemp = SkipNonPrintable(pszTemp);
-			_ASSERTE((!pszTemp || !*pszTemp) && "Task arguments are not supported yet");
-			#endif
+			if (pszTemp && *pszTemp)
+			{
+				// #Tasks Is it still true?
+				_ASSERTE((!pszTemp || !*pszTemp) && "Task arguments are not supported yet");
+			}
 		}
 	}
 
@@ -6851,7 +6849,7 @@ wchar_t* CConEmuMain::LoadConsoleBatch_Drops(LPCWSTR asSource)
 
 		// Считаем, что один файл (*.exe, *.cmd, ...) или ярлык (*.lnk)
 		// это одна запускаемая консоль в ConEmu.
-		CEStr szPart;
+		CmdArg szPart;
 		wchar_t szExe[MAX_PATH+1], szDir[MAX_PATH+1];
 		HRESULT hr = S_OK;
 		IShellLinkW* pShellLink = NULL;
@@ -6885,7 +6883,7 @@ wchar_t* CConEmuMain::LoadConsoleBatch_Drops(LPCWSTR asSource)
 		// Поехали
 		LPWSTR pszConsoles[MAX_CONSOLE_COUNT] = {};
 		size_t cchLen, cchAllLen = 0, iCount = 0;
-		while ((iCount < MAX_CONSOLE_COUNT) && (0 == NextArg(&asSource, szPart)))
+		while ((iCount < MAX_CONSOLE_COUNT) && (asSource = NextArg(asSource, szPart)))
 		{
 			if (lstrcmpi(PointToExt(szPart), L".lnk") == 0)
 			{
@@ -7177,7 +7175,7 @@ void CConEmuMain::OnMainCreateFinished()
 		m_StartDetached = crb_Off;  // действует только на первую консоль
 	}
 
-	if (isWindowNormal() && (gpSet->isTabs == 2) && mp_TabBar->IsTabsShown())
+	if (isWindowNormal() && (gpSet->isTabs == 2) && isTabsShown())
 	{
 		SizeInfo::RequestRecalc();
 
@@ -9462,10 +9460,12 @@ void CConEmuMain::CheckActiveLayoutName()
 	{
 		// Startup keyboard layout must be detected
 		wcscat_c(szInfo, L"\niUnused==-1");
-		AssertMsg(szInfo);
+		//AssertMsg(szInfo); -- gh-1606
+		LogString(szInfo);
 	}
 }
 
+/// Called from CheckActiveLayoutName, OnLangChange, OnLangeChangeConsole
 void CConEmuMain::StoreLayoutName(int iIdx, DWORD dwLayout, HKL hkl)
 {
 	_ASSERTE(iIdx>=0 && iIdx<countof(m_LayoutNames) && !m_LayoutNames[iIdx].bUsed);
@@ -11830,7 +11830,7 @@ LRESULT CConEmuMain::OnSetCursor(WPARAM wParam/*=-1*/, LPARAM lParam/*=-1*/)
 				}
 			}
 			else if (ht == HTCAPTION && gpSet->isHideCaptionAlways()
-				&& (!mp_TabBar || !mp_TabBar->IsTabsShown()
+				&& (!isTabsShown()
 					|| (IsWin10() && gpSet->nTabsLocation))
 				)
 			{
@@ -11965,7 +11965,7 @@ LRESULT CConEmuMain::OnSetCursor(WPARAM wParam/*=-1*/, LPARAM lParam/*=-1*/)
 		}
 		else if (pRCon->isSelectionPresent())
 		{
-			if (gpSet->isCTSIBeam)
+			if (gpSet->isCTSIBeam && (pVCon && !pVCon->CheckMouseOverScroll()))
 				hCur = mh_CursorIBeam; // LoadCursor(NULL, IDC_IBEAM);
 		}
 		else if ((etr = pRCon->GetLastTextRangeType()) != etr_None)
@@ -12643,21 +12643,33 @@ void CConEmuMain::OnTimer_ActivateSplit()
 	if (!PTDIFFTEST(mouse.ptLastSplitOverCheck, SPLITOVERCHECK_DELTA))
 	{
 		mouse.ptLastSplitOverCheck = ptCur;
+		bool isChildGui = false;
 		if (!isIconic()
 			&& (hForeWnd == ghWnd
 				|| (mp_Inside && mp_Inside->isParentProcess(hForeWnd))
-				|| CVConGroup::isOurGuiChildWindow(hForeWnd)
+				|| (isChildGui = CVConGroup::isOurGuiChildWindow(hForeWnd))
 			))
 		{
 			// Курсор над ConEmu?
-			RECT rcClient = CalcRect(CER_MAIN);
+			RECT rcClient = SizeInfo::WindowRect();
 			// Проверяем, в какой из VCon попадает курсор?
 			if (PtInRect(&rcClient, ptCur))
 			{
 				if (CVConGroup::GetVConFromPoint(ptCur, &VConFromPoint))
 				{
-					bool bActive = VConFromPoint->isActive(false);
-					if (!bActive)
+					bool needActivate = !VConFromPoint->isActive(false);
+					if (isChildGui)
+					{
+						HWND hCursorWnd = WindowFromPoint(ptCur);
+						if (hCursorWnd && CVConGroup::isOurGuiChildWindow(hCursorWnd))
+						{
+							RECT rcFore{};
+							GetWindowRect(hCursorWnd, &rcFore);
+							if (PtInRect(&rcFore, ptCur))
+								needActivate = false;
+						}
+					}
+					if (needActivate)
 					{
 						CVConGuard VCon;
 						// Если был активирован GUI CHILD - то фокус нужно сначала поставить в ConEmu
@@ -13449,11 +13461,16 @@ LRESULT CConEmuMain::OnActivateByMouse(HWND hWnd, UINT messg, WPARAM wParam, LPA
 	{
 		RECT rcWork = WorkspaceRect();
 		POINT ptCur = {}; GetCursorPos(&ptCur);
-		MapWindowPoints(NULL, ghWnd, &ptCur, 1);
+		MapWindowPoints(ghWnd, NULL, (LPPOINT)&rcWork, 2);
 		if (PtInRect(&rcWork, ptCur))
 		{
 			bSkipActivation = true;
-			mp_TabBar->ActivateSearchPane(false);
+			CVConGuard VCon;
+			if (CVConGroup::GetVConFromPoint(ptCur, &VCon)
+				&& !VCon->CheckMouseOverScroll())
+			{
+				mp_TabBar->ActivateSearchPane(false);
+			}
 		}
 	}
 
@@ -13708,7 +13725,7 @@ LRESULT CConEmuMain::WndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam
 			if (wParam == SPI_SETWORKAREA)
 			{
 				auto wm = GetWindowMode();
-				if (wm != wmNormal)
+				if (wm != wmNormal && !isIconic() && isMeForeground())
 					SetWindowMode(wm);
 			}
 		} break;
@@ -13719,7 +13736,7 @@ LRESULT CConEmuMain::WndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam
 			OnDisplayChanged(LOWORD(wParam), LOWORD(lParam), HIWORD(lParam));
 			result = ::DefWindowProc(hWnd, messg, wParam, lParam);
 			auto wm = GetWindowMode();
-			if (wm != wmNormal)
+			if (wm != wmNormal && !isIconic() && isMeForeground())
 				SetWindowMode(wm);
 		} break;
 		case /*0x02E0*/ WM_DPICHANGED:

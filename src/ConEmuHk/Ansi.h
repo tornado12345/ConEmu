@@ -129,6 +129,9 @@ public:
 	static MSectionSimple* gcsAnsiLogFile;
 
 	static bool gbWasXTermOutput;
+	static struct TermModeSet {
+		DWORD value, pid;
+	} gWasXTermModeSet[tmc_Last];
 
 protected:
 	static int NextNumber(LPCWSTR& asMS);
@@ -136,7 +139,9 @@ protected:
 public:
 	static void ChangeTermMode(TermModeCommand mode, DWORD value, DWORD nPID = 0);
 	static void StartXTermMode(bool bStart);
+	static void RefreshXTermModes();
 	static void StorePromptBegin();
+	static void StorePromptReset();
 
 public:
 	struct AnsiEscCode
@@ -169,6 +174,7 @@ public:
 	BOOL WriteAnsiCodes(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, LPCWSTR lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten);
 protected:
 	CpCvt* mp_Cvt;
+	wchar_t m_LastWrittenChar = L' ';
 protected:
 	void WriteAnsiCode_CSI(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, AnsiEscCode& Code, BOOL& lbApply);
 	void WriteAnsiCode_OSC(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, AnsiEscCode& Code, BOOL& lbApply);
@@ -176,6 +182,8 @@ protected:
 	BOOL ReportString(LPCWSTR asRet);
 	void ReportConsoleTitle();
 	void ReportTerminalPixelSize();
+	void ReportTerminalCharSize(HANDLE hConsoleOutput, int code);
+	void ReportCursorPosition(HANDLE hConsoleOutput);
 	static BOOL WriteAnsiLogUtf8(const char* lpBuffer, DWORD nChars);
 public:
 	static UINT GetCodePage();
@@ -196,12 +204,12 @@ public:
 	BOOL WriteText(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, LPCWSTR lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten, BOOL abCommit = FALSE, EXTREADWRITEFLAGS AddFlags = ewtf_None);
 	BOOL ScrollLine(HANDLE hConsoleOutput, int nDir);
 	BOOL ScrollScreen(HANDLE hConsoleOutput, int nDir);
-	BOOL PadAndScroll(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO& csbi);
+	//BOOL PadAndScroll(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO& csbi);
 	BOOL FullReset(HANDLE hConsoleOutput);
 	BOOL ForwardLF(HANDLE hConsoleOutput, BOOL& bApply);
 	BOOL ReverseLF(HANDLE hConsoleOutput, BOOL& bApply);
-	BOOL LinesInsert(HANDLE hConsoleOutput, const int LinesCount);
-	BOOL LinesDelete(HANDLE hConsoleOutput, const int LinesCount);
+	BOOL LinesInsert(HANDLE hConsoleOutput, const unsigned LinesCount);
+	BOOL LinesDelete(HANDLE hConsoleOutput, const unsigned LinesCount);
 	void DoSleep(LPCWSTR asMS);
 	void EscCopyCtrlString(wchar_t* pszDst, LPCWSTR asMsg, INT_PTR cchMaxLen);
 	void DoMessage(LPCWSTR asMsg, INT_PTR cchLen);
@@ -283,6 +291,8 @@ protected:
 	static DisplayOpt gDisplayOpt;
 	// Store absolute coords by relative ANSI values
 	void SetScrollRegion(bool bRegion, bool bRelative = true, int nStart = 0, int nEnd = 0, HANDLE hConsoleOutput = NULL);
+	// Return absolute coordinates of our working area
+	SMALL_RECT GetWorkingRegion(HANDLE hConsoleOutput, bool viewPort);
 
 	wchar_t gsPrevAnsiPart[CEAnsi_MaxPrevPart]; // = {};
 	INT_PTR gnPrevAnsiPart; // = 0;

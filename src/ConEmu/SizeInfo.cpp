@@ -1,6 +1,6 @@
 ﻿
 /*
-Copyright (c) 2017 Maximus5
+Copyright (c) 2017-present Maximus5
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -234,6 +234,14 @@ const SizeInfo::WindowRectangles& SizeInfo::GetRectState() const
 	return m_size.rr;
 }
 
+int SizeInfo::GetDefaultTabbarHeight() const
+{
+	DpiValue dpi; dpi.SetDpi(m_opt.dpi, m_opt.dpi);
+	int lfHeight = gpSetCls->EvalSize(gpSet->nTabFontHeight, esf_Vertical|esf_CanUseDpi|esf_CanUseUnits, &dpi);
+	return gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, lfHeight, gpSet->nTabFontCharSet)
+		+ gpSetCls->EvalSize((lfHeight < 0) ? 8 : 9, esf_Vertical, &dpi);
+}
+
 // The Frame with Caption (if visible)
 RECT SizeInfo::FrameMargins()
 {
@@ -298,7 +306,6 @@ void SizeInfo::DoCalculate()
 
 	new_rr.window = m_size.source_window;
 
-	DpiValue dpi; dpi.SetDpi(m_opt.dpi, m_opt.dpi);
 	bool caption_hidden = mp_ConEmu->isCaptionHidden();
 
 	new_rr.visible = new_rr.window;
@@ -322,7 +329,7 @@ void SizeInfo::DoCalculate()
 		const auto mi = mp_ConEmu->NearestMonitorInfo(new_rr.window);
 		const auto wm = mp_ConEmu->GetWindowMode();
 		const bool selfFrame = mp_ConEmu->isSelfFrame();
-		const unsigned frameWidth = selfFrame ? mp_ConEmu->GetSelfFrameWidth() : 0;
+		const int frameWidth = selfFrame ? int(mp_ConEmu->GetSelfFrameWidth()) : 0;
 		const RECT rcFrame =
 			(selfFrame && frameWidth == 0) ? RECT{}
 			: (wm == wmFullScreen) ? RECT{}
@@ -339,12 +346,17 @@ void SizeInfo::DoCalculate()
 		else
 		{
 			if (frameWidth < rcFrame.left)
-				new_rr.frame = RECT{int(frameWidth), int(frameWidth), int(frameWidth), int(frameWidth)};
+				new_rr.frame = RECT{frameWidth, frameWidth, frameWidth, frameWidth};
 			else
 				new_rr.frame = rcFrame;
 			new_rr.real_client = RECT{0, 0, RectWidth(new_rr.window), RectHeight(new_rr.window)};
 			new_rr.client = RECT{new_rr.frame.left, new_rr.frame.top, RectWidth(new_rr.window) - new_rr.frame.right, RectHeight(new_rr.window) - new_rr.frame.bottom};
 		}
+
+		// Workaround for Windows TaskBar problem when it obscures portion
+		// of maximized window client area when TaskBar is autohidden
+		if (!selfFrame && wm == wmMaximized && mi.isTaskbarHidden)
+			CConEmuSize::AddMargins(new_rr.client, mi.rcTaskbarExcess);
 	}
 
 	new_rr.workspace = new_rr.client;
@@ -364,11 +376,9 @@ void SizeInfo::DoCalculate()
 	}
 
 	int newTabHeight = 0;
-	if ((gpSet->isTabs == 1) || (gpSet->isTabs == 2 && gpConEmu->mp_TabBar->IsTabsActive()))
+	if ((gpSet->isTabs == 1) || (gpSet->isTabs == 2 && gpConEmu->isTabsShown()))
 	{
-		int lfHeight = gpSetCls->EvalSize(gpSet->nTabFontHeight, esf_Vertical|esf_CanUseDpi|esf_CanUseUnits, &dpi);
-		newTabHeight = gpFontMgr->EvalFontHeight(gpSet->sTabFontFace, lfHeight, gpSet->nTabFontCharSet)
-			+ gpSetCls->EvalSize((lfHeight < 0) ? 8 : 9, esf_Vertical, &dpi);
+		newTabHeight = GetDefaultTabbarHeight();
 	}
 	if (newTabHeight > 0)
 	{
@@ -384,6 +394,7 @@ void SizeInfo::DoCalculate()
 			new_rr.workspace.bottom -= newTabHeight;
 			break;
 		default:
+			_ASSERTE(FALSE && "Unsupported location of TabBar!");
 			new_rr.rebar = RECT{};
 		}
 	}

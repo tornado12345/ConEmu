@@ -950,11 +950,11 @@ bool CConEmuCtrl::key_ConsoleNum(const ConEmuChord& VkState, bool TestOnly, cons
 	if (TestOnly)
 		return true;
 
-	int nNewIdx = -1;
+	int nNewIdx = std::numeric_limits<int>::min();
 
+	// If there are more than 9 consoles, use two-digit activation
 	if (CVConGroup::isVConExists(10))
 	{
-		// цифровая двухкнопочная активация, если уже больше 9-и консолей открыто
 		if (gpConEmu->mn_DoubleKeyConsoleNum)
 		{
 			if ((VkState.Vk >= '0') && (VkState.Vk <= '9'))
@@ -966,8 +966,14 @@ bool CConEmuCtrl::key_ConsoleNum(const ConEmuChord& VkState, bool TestOnly, cons
 		}
 		else
 		{
+			// Activate Last console at once
+			if (VkState.Vk == '0')
+			{
+				nNewIdx = -1;
+				_ASSERTE(gpConEmu->mn_DoubleKeyConsoleNum == 0);
+			}
 			// Store first digit for 2-digit 0-based console number
-			if ((VkState.Vk >= '0') && (VkState.Vk <='9' ))
+			else if ((VkState.Vk > '0') && (VkState.Vk <='9' ))
 			{
 				gpConEmu->mn_DoubleKeyConsoleNum = VkState.Vk;
 			}
@@ -980,16 +986,20 @@ bool CConEmuCtrl::key_ConsoleNum(const ConEmuChord& VkState, bool TestOnly, cons
 	else
 	{
 		// Let get 0-based index
-
 		if ((VkState.Vk >= '1') && (VkState.Vk <= '9'))
+		{
 			nNewIdx = VkState.Vk - '1';
+		}
+		// Activate Last console at once
 		else if (VkState.Vk == '0')
-			nNewIdx = 9;
+		{
+			nNewIdx = -1;
+		}
 
 		gpConEmu->ResetDoubleKeyConsoleNum(pRCon);
 	}
 
-	if (nNewIdx >= 0)
+	if (nNewIdx >= -1)
 		gpConEmu->ConActivate(nNewIdx);
 
 	return true;
@@ -1243,16 +1253,11 @@ bool CConEmuCtrl::key_AlwaysOnTop(const ConEmuChord& VkState, bool TestOnly, con
 
 bool CConEmuCtrl::key_PasteText(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
 {
-	if (!pRCon || pRCon->isFar())
-		return false;
-
-	return key_PasteTextAllApp(VkState, TestOnly, hk, pRCon);
-}
-
-bool CConEmuCtrl::key_PasteTextAllApp(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
-{
 	// Если это GUI App in Tab - пусть само
 	if (!pRCon || pRCon->GuiWnd())
+		return false;
+	// Let Far Manager process Ctrl+V himself too
+	if (pRCon->isFar())
 		return false;
 
 	const AppSettings* pApp = gpSet->GetAppSettings(pRCon->GetActiveAppSettingsId());
@@ -1283,16 +1288,11 @@ bool CConEmuCtrl::key_PasteTextAllApp(const ConEmuChord& VkState, bool TestOnly,
 
 bool CConEmuCtrl::key_PasteFirstLine(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
 {
-	if (!pRCon || pRCon->isFar())
-		return false;
-
-	return key_PasteFirstLineAllApp(VkState, TestOnly, hk, pRCon);
-}
-
-bool CConEmuCtrl::key_PasteFirstLineAllApp(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon)
-{
 	// Если это GUI App in Tab - пусть само
 	if (!pRCon || pRCon->GuiWnd())
+		return false;
+	// Let Far Manager process Ctrl+V himself too
+	if (pRCon->isFar())
 		return false;
 
 	const AppSettings* pApp = gpSet->GetAppSettings(pRCon->GetActiveAppSettingsId());
@@ -1379,7 +1379,7 @@ void CConEmuCtrl::TabCommand(ConEmuTabCommand nTabCmd)
 	{
 		case ctc_ShowHide:
 		{
-			if (gpConEmu->mp_TabBar->IsTabsShown())
+			if (gpConEmu->isTabsShown())
 				gpSet->isTabs = 0;
 			else
 				gpSet->isTabs = 1;

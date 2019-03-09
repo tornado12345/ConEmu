@@ -26,10 +26,13 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+// #ANSI This file is expected to be moved almost completely to ConEmuCD
+
 #include "../common/defines.h"
 #include <WinError.h>
 #include <WinNT.h>
 #include <TCHAR.h>
+#include <limits>
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/CmdLine.h"
@@ -112,6 +115,8 @@ MSectionSimple* CEAnsi::gcsAnsiLogFile = NULL;
 
 // VIM, etc. Some programs waiting control keys as xterm sequences. Need to inform ConEmu GUI.
 bool CEAnsi::gbWasXTermOutput = false;
+// Let RefreshXTermModes() know what to restore
+CEAnsi::TermModeSet CEAnsi::gWasXTermModeSet[tmc_Last] = {};
 
 /* ************ Export ANSI printings ************ */
 LONG gnWriteProcessed = 0;
@@ -718,10 +723,10 @@ void CEAnsi::ReSetDisplayParm(HANDLE hConsoleOutput, BOOL bReset, BOOL bApply)
 		else
 		{
 			attr.Attributes.ForegroundColor |= ClrMap[TextColor&0x7]
-				| ((gDisplayParm.getBrightFore() | (gDisplayParm.getBrightOrBold() && !gDisplayParm.getBrightBack())) ? 0x08 : 0);
+				| ((gDisplayParm.getBrightFore() || (gDisplayParm.getBrightOrBold() && !gDisplayParm.getBrightBack())) ? 0x08 : 0);
 		}
 
-		if (gDisplayParm.getBrightOrBold() && (Text256 | gDisplayParm.getBrightFore() | gDisplayParm.getBrightBack()))
+		if (gDisplayParm.getBrightOrBold() && (Text256 || gDisplayParm.getBrightFore() || gDisplayParm.getBrightBack()))
 			attr.Attributes.Flags |= CECF_FG_BOLD;
 		if (gDisplayParm.getItalic())
 			attr.Attributes.Flags |= CECF_FG_ITALIC;
@@ -1016,6 +1021,9 @@ BOOL CEAnsi::WriteText(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, 
 	_ASSERTE(((_WriteConsoleW == pfnDbgWriteConsoleW) || !HooksWereSet) && "It must point to CallPointer for 'unhooked' call");
 	#endif
 
+	if (lpBuffer && nNumberOfCharsToWrite)
+		m_LastWrittenChar = lpBuffer[nNumberOfCharsToWrite-1];
+
 	ExtWriteTextParm write = {sizeof(write), ewtf_Current|AddFlags, hConsoleOutput};
 	write.Private = (void*)(FARPROC)_WriteConsoleW;
 
@@ -1138,6 +1146,7 @@ BOOL CEAnsi::WriteText(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, 
 		}
 		#endif
 
+		// for debug purposes insert "\x1B]9;10\x1B\" at the beginning of connector-*-out.log
 		if (gbWasXTermOutput)
 		{
 			// On Win10 we may utilize DISABLE_NEWLINE_AUTO_RETURN flag, but it would
@@ -1583,6 +1592,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 					case L'M': // Reverse LF
 					case L'E': // CR-LF
 					case L'D': // LF
+					// #ANSI gh-1827: support 'H' to set tab stops
 						// xterm?
 						lpStart = lpEscStart;
 						Code.First = 27;
@@ -1628,6 +1638,63 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 					// Теперь идут параметры.
 					++lpBuffer; // переместим указатель на первый символ ЗА CSI (после '[')
 
+					auto parseNumArgs = [&Code, lpSaveStart](const wchar_t* &lpBuffer, const wchar_t* lpSeqEnd, bool saveAction) -> bool
+					{
+						wchar_t wc;
+						int nValue = 0, nDigits = 0;
+						Code.ArgC = 0;
+
+						while (lpBuffer < lpSeqEnd)
+						{
+							switch (*lpBuffer)
+							{
+							case L'0': case L'1': case L'2': case L'3': case L'4':
+							case L'5': case L'6': case L'7': case L'8': case L'9':
+								nValue = (nValue * 10) + (((int)*lpBuffer) - L'0');
+								++nDigits;
+								break;
+
+							case L';':
+								// Даже если цифр не было - default "0"
+								if (Code.ArgC < (int)countof(Code.ArgV))
+									Code.ArgV[Code.ArgC++] = nValue; // save argument
+								nDigits = nValue = 0;
+								break;
+
+							default:
+								if (Code.Second == L']')
+								{
+									// OSC specific, stop on first non-digit/non-semicolon
+									if (nDigits && (Code.ArgC < (int)countof(Code.ArgV)))
+										Code.ArgV[Code.ArgC++] = nValue;
+									return (Code.ArgC > 0);
+								}
+								else if (((wc = *lpBuffer) >= 64) && (wc <= 126))
+								{
+									// Fin
+									if (saveAction)
+										Code.Action = wc;
+									if (nDigits && (Code.ArgC < (int)countof(Code.ArgV)))
+										Code.ArgV[Code.ArgC++] = nValue;
+									return true;
+								}
+								else if (!nDigits && !Code.ArgC)
+								{
+									if ((Code.PvtLen+1) < (int)countof(Code.Pvt))
+									{
+										Code.Pvt[Code.PvtLen++] = wc; // Skip private symbols
+										Code.Pvt[Code.PvtLen] = 0;
+									}
+								}
+							}
+							++lpBuffer;
+						}
+
+						if (nDigits && (Code.ArgC < (int)countof(Code.ArgV)))
+							Code.ArgV[Code.ArgC++] = nValue;
+						return (Code.Second == L']');
+					};
+
 					switch (Code.Second)
 					{
 					case L'(':
@@ -1656,52 +1723,16 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 						Code.ArgSZ = NULL;
 						Code.cchArgSZ = 0;
 						{
-							int nValue = 0, nDigits = 0;
 							#ifdef _DEBUG
 							LPCWSTR pszSaveStart = lpBuffer;
 							#endif
 
-							while (lpBuffer < lpEnd)
+							if (parseNumArgs(lpBuffer, lpEnd, true))
 							{
-								switch (*lpBuffer)
-								{
-								case L'0': case L'1': case L'2': case L'3': case L'4':
-								case L'5': case L'6': case L'7': case L'8': case L'9':
-									nValue = (nValue * 10) + (((int)*lpBuffer) - L'0');
-									++nDigits;
-									break;
-
-								case L';':
-									// Даже если цифр не было - default "0"
-									if (Code.ArgC < (int)countof(Code.ArgV))
-										Code.ArgV[Code.ArgC++] = nValue; // save argument
-									nDigits = nValue = 0;
-									break;
-
-								default:
-									if (((wc = *lpBuffer) >= 64) && (wc <= 126))
-									{
-										// Fin
-										Code.Action = wc;
-										if (nDigits && (Code.ArgC < (int)countof(Code.ArgV)))
-										{
-											Code.ArgV[Code.ArgC++] = nValue;
-										}
-										lpStart = lpSaveStart;
-										lpEnd = lpBuffer+1;
-										iRc = 1;
-										goto wrap;
-									}
-									else
-									{
-										if ((Code.PvtLen+1) < (int)countof(Code.Pvt))
-										{
-											Code.Pvt[Code.PvtLen++] = wc; // Skip private symbols
-											Code.Pvt[Code.PvtLen] = 0;
-										}
-									}
-								}
-								++lpBuffer;
+								lpStart = lpSaveStart;
+								lpEnd = lpBuffer+1;
+								iRc = 1;
+								goto wrap;
 							}
 						}
 						// В данном запросе (на запись) конца последовательности нет,
@@ -1749,6 +1780,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 								Code.Action = *Code.ArgSZ; // первый символ последовательности
 								Code.cchArgSZ = (lpBuffer - Code.ArgSZ);
 								lpStart = lpSaveStart;
+								const wchar_t* lpBufferPtr = Code.ArgSZ;
 								if (lpBuffer[0] == 27)
 								{
 									if ((lpBuffer + 1) >= lpEnd)
@@ -1773,6 +1805,7 @@ int CEAnsi::NextEscCode(LPCWSTR lpBuffer, LPCWSTR lpEnd, wchar_t (&szPreDump)[CE
 								{
 									lpEnd = lpBuffer + 1;
 								}
+								parseNumArgs(lpBufferPtr, lpBuffer, false);
 								iRc = 1;
 								goto wrap;
 							}
@@ -1874,33 +1907,33 @@ BOOL CEAnsi::ScrollScreen(HANDLE hConsoleOutput, int nDir)
 	return lbRc;
 }
 
-BOOL CEAnsi::PadAndScroll(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO& csbi)
-{
-	BOOL lbRc = FALSE;
-	COORD crFrom = {csbi.dwCursorPosition.X, csbi.dwCursorPosition.Y};
-	DEBUGTEST(DWORD nCount = csbi.dwSize.X - csbi.dwCursorPosition.X);
-
-	/*
-	lbRc = FillConsoleOutputAttribute(hConsoleOutput, GetDefaultTextAttr(), nCount, crFrom, &nWritten)
-		&& FillConsoleOutputCharacter(hConsoleOutput, L' ', nCount, crFrom, &nWritten);
-	*/
-
-	if ((csbi.dwCursorPosition.Y + 1) >= csbi.dwSize.Y)
-	{
-		lbRc = ScrollScreen(hConsoleOutput, -1);
-		crFrom.X = 0;
-	}
-	else
-	{
-		crFrom.X = 0; crFrom.Y++;
-		lbRc = TRUE;
-	}
-
-	csbi.dwCursorPosition = crFrom;
-	SetConsoleCursorPosition(hConsoleOutput, crFrom);
-
-	return lbRc;
-}
+//BOOL CEAnsi::PadAndScroll(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO& csbi)
+//{
+//	BOOL lbRc = FALSE;
+//	COORD crFrom = {csbi.dwCursorPosition.X, csbi.dwCursorPosition.Y};
+//	DEBUGTEST(DWORD nCount = csbi.dwSize.X - csbi.dwCursorPosition.X);
+//
+//	/*
+//	lbRc = FillConsoleOutputAttribute(hConsoleOutput, GetDefaultTextAttr(), nCount, crFrom, &nWritten)
+//		&& FillConsoleOutputCharacter(hConsoleOutput, L' ', nCount, crFrom, &nWritten);
+//	*/
+//
+//	if ((csbi.dwCursorPosition.Y + 1) >= csbi.dwSize.Y)
+//	{
+//		lbRc = ScrollScreen(hConsoleOutput, -1);
+//		crFrom.X = 0;
+//	}
+//	else
+//	{
+//		crFrom.X = 0; crFrom.Y++;
+//		lbRc = TRUE;
+//	}
+//
+//	csbi.dwCursorPosition = crFrom;
+//	SetConsoleCursorPosition(hConsoleOutput, crFrom);
+//
+//	return lbRc;
+//}
 
 BOOL CEAnsi::FullReset(HANDLE hConsoleOutput)
 {
@@ -1990,7 +2023,7 @@ BOOL CEAnsi::ReverseLF(HANDLE hConsoleOutput, BOOL& bApply)
 	return TRUE;
 }
 
-BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const int LinesCount)
+BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const unsigned LinesCount)
 {
 	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
 	if (!GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
@@ -1999,12 +2032,36 @@ BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const int LinesCount)
 		return FALSE;
 	}
 
+	// Apply default color before scrolling!
+	ReSetDisplayParm(hConsoleOutput, FALSE, TRUE);
+
+	BOOL lbRc = FALSE;
+
 	int TopLine, BottomLine;
 	if (gDisplayOpt.ScrollRegion)
 	{
 		_ASSERTEX(gDisplayOpt.ScrollStart>=0 && gDisplayOpt.ScrollEnd>=gDisplayOpt.ScrollStart);
-		TopLine = std::max<int>(gDisplayOpt.ScrollStart, 0);
+		if (csbi.dwCursorPosition.Y < gDisplayOpt.ScrollStart || csbi.dwCursorPosition.Y > gDisplayOpt.ScrollEnd)
+			return TRUE;
+		TopLine = csbi.dwCursorPosition.Y;
 		BottomLine = std::max<int>(gDisplayOpt.ScrollEnd, 0);
+
+		if ((TopLine + LinesCount) <= BottomLine)
+		{
+			ExtScrollScreenParm scrl = {
+				sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
+				LinesCount, {}, L' ',
+				// region to be scrolled (that is not a clipping region)
+				{0, TopLine, csbi.dwSize.X - 1, BottomLine}};
+			lbRc |= ExtScrollScreen(&scrl);
+		}
+		else
+		{
+			ExtFillOutputParm fill = {
+				sizeof(fill), efof_Attribute|efof_Character, hConsoleOutput,
+				{}, L' ', {0, TopLine}, csbi.dwSize.X * LinesCount};
+			lbRc |= ExtFillOutput(&fill);
+		}
 	}
 	else
 	{
@@ -2013,19 +2070,17 @@ BOOL CEAnsi::LinesInsert(HANDLE hConsoleOutput, const int LinesCount)
 		BottomLine = (csbi.dwCursorPosition.Y <= csbi.srWindow.Bottom)
 			? csbi.srWindow.Bottom
 			: csbi.dwSize.Y - 1;
+
+		ExtScrollScreenParm scrl = {
+			sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
+			LinesCount, {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
+		lbRc |= ExtScrollScreen(&scrl);
 	}
 
-	// Apply default color before scrolling!
-	ReSetDisplayParm(hConsoleOutput, FALSE, TRUE);
-
-	ExtScrollScreenParm scrl = {
-		sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
-		LinesCount, {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
-	BOOL lbRc = ExtScrollScreen(&scrl);
 	return lbRc;
 }
 
-BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
+BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const unsigned LinesCount)
 {
 	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
 	if (!GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
@@ -2033,6 +2088,11 @@ BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
 		_ASSERTEX(FALSE && "GetConsoleScreenBufferInfoCached failed");
 		return FALSE;
 	}
+
+	// Apply default color before scrolling!
+	ReSetDisplayParm(hConsoleOutput, FALSE, TRUE);
+
+	BOOL lbRc = FALSE;
 
 	int TopLine, BottomLine;
 	if (gDisplayOpt.ScrollRegion)
@@ -2040,8 +2100,24 @@ BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
 		_ASSERTEX(gDisplayOpt.ScrollStart>=0 && gDisplayOpt.ScrollEnd>gDisplayOpt.ScrollStart);
 		// ScrollStart & ScrollEnd are 0-based absolute line indexes
 		// relative to VISIBLE area, these are not absolute buffer coords
-		TopLine = gDisplayOpt.ScrollStart;
+		if (((csbi.dwCursorPosition.Y + LinesCount) <= gDisplayOpt.ScrollStart)
+			|| (csbi.dwCursorPosition.Y > gDisplayOpt.ScrollEnd))
+			return TRUE; // Nothing to scroll
+		TopLine = csbi.dwCursorPosition.Y;
 		BottomLine = gDisplayOpt.ScrollEnd;
+
+		ExtScrollScreenParm scrl = {
+			sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
+			-int(LinesCount), {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
+		if (scrl.Region.top < gDisplayOpt.ScrollStart)
+		{
+			scrl.Region.top = gDisplayOpt.ScrollStart;
+			scrl.Dir += (gDisplayOpt.ScrollStart - TopLine);
+		}
+		if ((scrl.Dir < 0) && (scrl.Region.top <= scrl.Region.bottom))
+		{
+			lbRc |= ExtScrollScreen(&scrl);
+		}
 	}
 	else
 	{
@@ -2050,21 +2126,19 @@ BOOL CEAnsi::LinesDelete(HANDLE hConsoleOutput, const int LinesCount)
 		BottomLine = (csbi.dwCursorPosition.Y <= csbi.srWindow.Bottom)
 			? csbi.srWindow.Bottom
 			: csbi.dwSize.Y - 1;
+
+		if (BottomLine < TopLine)
+		{
+			_ASSERTEX(FALSE && "Invalid (empty) scroll region");
+			return FALSE;
+		}
+
+		ExtScrollScreenParm scrl = {
+			sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
+			-int(LinesCount), {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
+		lbRc |= ExtScrollScreen(&scrl);
 	}
 
-	if (BottomLine < TopLine)
-	{
-		_ASSERTEX(FALSE && "Invalid (empty) scroll region");
-		return FALSE;
-	}
-
-	// Apply default color before scrolling!
-	ReSetDisplayParm(hConsoleOutput, FALSE, TRUE);
-
-	ExtScrollScreenParm scrl = {
-		sizeof(scrl), essf_Current|essf_Commit|essf_Region, hConsoleOutput,
-		-LinesCount, {}, L' ', {0, TopLine, csbi.dwSize.X-1, BottomLine}};
-	BOOL lbRc = ExtScrollScreen(&scrl);
 	return lbRc;
 }
 
@@ -2402,6 +2476,33 @@ void CEAnsi::ReportTerminalPixelSize()
 	}
 }
 
+void CEAnsi::ReportTerminalCharSize(HANDLE hConsoleOutput, int code)
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	if (GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
+	{
+		wchar_t sCurInfo[64];
+		msprintf(sCurInfo, countof(sCurInfo),
+			L"\x1B[%u;%u;%ut",
+			code == 18 ? 8 : 9,
+			csbi.srWindow.Bottom-csbi.srWindow.Top+1, csbi.srWindow.Right-csbi.srWindow.Left+1);
+		ReportString(sCurInfo);
+	}
+}
+
+void CEAnsi::ReportCursorPosition(HANDLE hConsoleOutput)
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	if (GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
+	{
+		wchar_t sCurInfo[32];
+		msprintf(sCurInfo, countof(sCurInfo),
+			L"\x1B[%u;%uR",
+			csbi.dwCursorPosition.Y-csbi.srWindow.Top+1, csbi.dwCursorPosition.X-csbi.srWindow.Left+1);
+		ReportString(sCurInfo);
+	}
+}
+
 BOOL CEAnsi::WriteAnsiCodes(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsoleOutput, LPCWSTR lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten)
 {
 	BOOL lbRc = TRUE, lbApply = FALSE;
@@ -2650,7 +2751,7 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 	case L'H': // Set cursor position (1-based)
 	case L'f': // Same as 'H'
 	case L'A': // Cursor up by N rows
-	case L'B': // Cursor right by N cols
+	case L'B': // Cursor down by N rows
 	case L'C': // Cursor right by N cols
 	case L'D': // Cursor left by N cols
 	case L'E': // Moves cursor to beginning of the line n (default 1) lines down.
@@ -2660,49 +2761,103 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 		// Change cursor position
 		if (GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
 		{
-			COORD crNewPos = csbi.dwCursorPosition;
+			struct PointXY {int X,Y;};
+			auto get_scroll_region = [&csbi]()
+			{
+				const auto& srw = csbi.srWindow;
+				SMALL_RECT clipRgn = {0, 0, srw.Right - srw.Left, srw.Bottom - srw.Top};
+				if (gDisplayOpt.ScrollRegion)
+				{
+					clipRgn.Top = std::max<SHORT>(0, std::min<SHORT>(gDisplayOpt.ScrollStart, csbi.dwSize.Y-1));
+					clipRgn.Bottom = std::max<SHORT>(0, std::min<SHORT>(gDisplayOpt.ScrollEnd, csbi.dwSize.Y-1));
+				}
+				return clipRgn;
+			};
+			auto get_cursor = [&csbi]()
+			{
+				const auto& srw = csbi.srWindow;
+				int visible_rows = srw.Bottom - srw.Top;
+				return PointXY{
+					csbi.dwCursorPosition.X,
+					std::max(0, std::min(visible_rows, csbi.dwCursorPosition.Y - srw.Top))
+				};
+			};
+			const struct {int left, top, right, bottom;} workRgn = {0, 0, csbi.dwSize.X - 1, csbi.dwSize.Y - 1};
+			_ASSERTEX(workRgn.left <= workRgn.right && workRgn.top <= workRgn.bottom);
+			const auto& clipRgn = get_scroll_region();
+			const auto cur = get_cursor();
+			PointXY crNewPos = cur;
+
+			enum class Direction { kAbsolute, kCompatible, kRelative };
+
+			auto set_y = [&crNewPos, &workRgn, &clipRgn, &cur](Direction direction, int value)
+			{
+				const int kLegacyY = 9999;
+				if (direction == Direction::kCompatible && value >= std::min(kLegacyY, workRgn.bottom))
+					// #XTERM_256 Allow to put cursor into the legacy true-color area
+					crNewPos.Y = workRgn.bottom;
+				else if (direction == Direction::kAbsolute || direction == Direction::kCompatible)
+					crNewPos.Y = std::max(workRgn.top, std::min(workRgn.bottom, value));
+				else if (value < 0 && cur.Y >= clipRgn.Top)
+					crNewPos.Y = std::max<int>(clipRgn.Top, std::min(workRgn.bottom, cur.Y + value));
+				else if (value > 0 && cur.Y <= clipRgn.Bottom)
+					crNewPos.Y = std::max(workRgn.top, std::min<int>(clipRgn.Bottom, cur.Y + value));
+				else
+					crNewPos.Y = std::max(workRgn.top, std::min(workRgn.bottom, cur.Y + value));
+			};
+			auto set_x = [&crNewPos, &workRgn, &clipRgn, &cur](Direction direction, int value)
+			{
+				if (direction == Direction::kAbsolute || direction == Direction::kCompatible)
+					crNewPos.X = std::max(workRgn.left, std::min(workRgn.right, value));
+				else
+					crNewPos.X = std::max(workRgn.left, std::min(workRgn.right, cur.X + value));
+			};
 
 			switch (Code.Action)
 			{
 			case L'H':
+				// Set cursor position (ANSI values are 1-based)
+				set_y(Direction::kCompatible, (Code.ArgC > 0 && Code.ArgV[0]) ? (Code.ArgV[0] - 1) : 0);
+				set_x(Direction::kAbsolute, (Code.ArgC > 1 && Code.ArgV[1]) ? (Code.ArgV[1] - 1) : 0);
+				break;
 			case L'f':
-				// Set cursor position (1-based)
-				crNewPos.Y = csbi.srWindow.Top + ((Code.ArgC > 0 && Code.ArgV[0]) ? (Code.ArgV[0] - 1) : 0);
-				crNewPos.X = ((Code.ArgC > 1 && Code.ArgV[1]) ? (Code.ArgV[1] - 1) : 0);
+				// Set cursor position (ANSI values are 1-based)
+				set_y(Direction::kAbsolute, (Code.ArgC > 0 && Code.ArgV[0]) ? (Code.ArgV[0] - 1) : 0);
+				set_x(Direction::kAbsolute, (Code.ArgC > 1 && Code.ArgV[1]) ? (Code.ArgV[1] - 1) : 0);
 				break;
 			case L'A':
 				// Cursor up by N rows
-				crNewPos.Y -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
+				set_y(Direction::kRelative, -((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
 				break;
 			case L'B':
 				// Cursor down by N rows
-				crNewPos.Y += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
+				set_y(Direction::kRelative, +((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
 				break;
 			case L'C':
 				// Cursor right by N cols
-				crNewPos.X += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
+				set_x(Direction::kRelative, +((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
 				break;
 			case L'D':
 				// Cursor left by N cols
-				crNewPos.X -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
+				set_x(Direction::kRelative, -((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
 				break;
 			case L'E':
 				// Moves cursor to beginning of the line n (default 1) lines down.
-				crNewPos.Y += ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
-				crNewPos.X = 0;
+				set_y(Direction::kRelative, +((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
+				set_x(Direction::kAbsolute, 0);
 				break;
 			case L'F':
 				// Moves cursor to beginning of the line n (default 1) lines up.
-				crNewPos.Y -= ((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1);
-				crNewPos.X = 0;
+				set_y(Direction::kRelative, -((Code.ArgC > 0 && Code.ArgV[0]) ? Code.ArgV[0] : 1));
+				set_x(Direction::kAbsolute, 0);
 				break;
 			case L'G':
 				// Moves the cursor to column n.
-				crNewPos.X = ((Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
+				set_x(Direction::kAbsolute, (Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
 				break;
 			case L'd':
-				// Moves the cursor to line n.
-				crNewPos.Y = csbi.srWindow.Top + ((Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
+				// Moves the cursor to line n (almost the same as 'H', but leave X unchanged).
+				set_y(Direction::kAbsolute, (Code.ArgC > 0) ? (Code.ArgV[0] - 1) : 0);
 				break;
 			#ifdef _DEBUG
 			default:
@@ -2710,23 +2865,21 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 			#endif
 			}
 
-			// Check Row
-			if (crNewPos.Y < 0)
-				crNewPos.Y = 0;
-			else if (crNewPos.Y >= csbi.dwSize.Y)
-				crNewPos.Y = csbi.dwSize.Y - 1;
-			// Check Col
-			if (crNewPos.X < 0)
-				crNewPos.X = 0;
-			else if (crNewPos.X >= csbi.dwSize.X)
-				crNewPos.X = csbi.dwSize.X - 1;
 			// Goto
 			ORIGINAL_KRNL(SetConsoleCursorPosition);
-			F(SetConsoleCursorPosition)(hConsoleOutput, crNewPos);
+			{
+			const auto& srw = csbi.srWindow;
+			COORD crNewPosAPI = {
+				(SHORT)crNewPos.X,
+				(SHORT)std::min<int>(csbi.dwSize.Y - 1, srw.Top + crNewPos.Y)
+			};
+			_ASSERTE(crNewPosAPI.X == crNewPos.X);
+			F(SetConsoleCursorPosition)(hConsoleOutput, crNewPosAPI);
+			}
 
 			if (gbIsVimProcess)
 				gbIsVimAnsi = true;
-		} // case L'H': case L'f': case 'A': case L'B': case L'C': case L'D':
+		} // case 'H', 'f', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'd'
 		break;
 
 	case L'J': // Clears part of the screen
@@ -2799,6 +2952,25 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 		} // case L'J':
 		break;
 
+	case L'b':
+		if (!Code.PvtLen)
+		{
+			int repeat = (Code.ArgC > 0) ? Code.ArgV[0] : 1;
+			if (m_LastWrittenChar && repeat > 0)
+			{
+				CEStr buffer;
+				if (wchar_t* ptr = buffer.GetBuffer(repeat))
+				{
+					for (int i = 0; i < repeat; ++i)
+						ptr[i] = m_LastWrittenChar;
+					WriteText(_WriteConsoleW, hConsoleOutput, ptr, repeat, nullptr);
+				}
+			}
+		}
+		else
+			DumpUnknownEscape(Code.pszEscStart,Code.nTotalLen);
+		break; // case L'b'
+
 	case L'K': // Erases part of the line
 		// Clears all characters from the cursor position to the end of the line
 		// (including the character at the cursor position).
@@ -2855,7 +3027,7 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 		//(The default for Pt is line 1, the default for Pb is the end
 		// of the screen)
 		//
-		if ((Code.ArgC >= 2) && (Code.ArgV[0] >= 1) && (Code.ArgV[1] >= Code.ArgV[0]))
+		if ((Code.ArgC >= 2) && (Code.ArgV[0] >= 0) && (Code.ArgV[1] >= Code.ArgV[0]))
 		{
 			// Values are 1-based
 			SetScrollRegion(true, true, Code.ArgV[0], Code.ArgV[1], hConsoleOutput);
@@ -3198,14 +3370,7 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 				//ESC [ 6 n
 				//      Cursor position report (CPR): Answer is ESC [ y ; x R, where x,y is the
 				//      cursor location.
-				if (GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
-				{
-					wchar_t sCurInfo[32];
-					msprintf(sCurInfo, countof(sCurInfo),
-						L"\x1B[%u;%uR",
-						csbi.dwCursorPosition.Y+1, csbi.dwCursorPosition.X+1);
-					ReportString(sCurInfo);
-				}
+				ReportCursorPosition(hConsoleOutput);
 				break;
 			default:
 				DumpUnknownEscape(Code.pszEscStart,Code.nTotalLen);
@@ -3395,7 +3560,6 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 	case L't':
 		if (Code.ArgC > 0 && Code.ArgC <= 3)
 		{
-			wchar_t sCurInfo[32];
 			for (int i = 0; i < Code.ArgC; i++)
 			{
 				switch (Code.ArgV[i])
@@ -3419,17 +3583,25 @@ CSI P s @			Insert P s (Blank) Character(s) (default = 1) (ICH)
 				case 19:
 					// `ESC [ 1 8 t` --> Report the size of the text area in characters as `CSI 8 ; height ; width t`
 					// `ESC [ 1 9 t` --> Report the size of the screen in characters as `CSI 9 ; height ; width t`
-					if (GetConsoleScreenBufferInfoCached(hConsoleOutput, &csbi))
-					{
-						msprintf(sCurInfo, countof(sCurInfo),
-							L"\x1B[8;%u;%ut",
-							csbi.srWindow.Bottom-csbi.srWindow.Top+1, csbi.srWindow.Right-csbi.srWindow.Left+1);
-						ReportString(sCurInfo);
-					}
+					ReportTerminalCharSize(hConsoleOutput, Code.ArgV[i]);
 					break;
 				case 21:
 					// `ESC [ 2 1 t` --> Report terminal window title as `OSC l title ST`
 					ReportConsoleTitle();
+					break;
+				case 22:
+				case 23:
+					// `ESC [ 2 2 ; 0 t` --> Save xterm icon and window title on stack.
+					// `ESC [ 2 2 ; 1 t` --> Save xterm icon title on stack.
+					// `ESC [ 2 2 ; 2 t` --> Save xterm window title on stack.
+					// `ESC [ 2 3 ; 0 t` --> Restore xterm icon and window title from stack.
+					// `ESC [ 2 3 ; 1 t` --> Restore xterm icon title from stack.
+					// `ESC [ 2 3 ; 2 t` --> Restore xterm window title from stack.
+					if (i < Code.ArgC)
+						++i; // subcommand
+					if (i < Code.ArgC && !Code.ArgV[i])
+						++i; // strange sequence 22;0;0t
+					DumpKnownEscape(Code.pszEscStart, Code.nTotalLen, de_Ignored);
 					break;
 				default:
 					TODO("ANSI: xterm window manipulation");
@@ -3581,11 +3753,13 @@ void CEAnsi::WriteAnsiCode_OSC(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsole
 					// ESC ] 9 ; 1 ; ms ST
 					DoSleep(Code.ArgSZ+4);
 				}
-				else if (Code.ArgSZ[3] == L'0')
+				else if (Code.ArgC >= 2 && Code.ArgV[1] == 10)
 				{
 					// ESC ] 9 ; 10 ST
-					if (!gbWasXTermOutput)
+					if (!gbWasXTermOutput && (Code.ArgC == 2 || Code.ArgV[2] != 0))
 						CEAnsi::StartXTermMode(true);
+					else if (Code.ArgC >= 3 || Code.ArgV[2] == 0)
+						CEAnsi::StartXTermMode(false);
 				}
 				else if (Code.ArgSZ[3] == L'1' && Code.ArgSZ[4] == L';')
 				{
@@ -3758,24 +3932,63 @@ void CEAnsi::WriteAnsiCode_VIM(OnWriteConsoleW_t _WriteConsoleW, HANDLE hConsole
 	}
 }
 
+/// Returns coordinates of either working area (viewPort) or full backscroll buffer
+/// @param hConsoleOutput   if NULL we process STD_OUTPUT_HANDLE
+/// @param viewPort         if true - returns srWindow, false - full backscroll buffer
+/// @result valid SMALL_RECT
+SMALL_RECT CEAnsi::GetWorkingRegion(HANDLE hConsoleOutput, bool viewPort)
+{
+	const short kFallback = 9999;
+	SMALL_RECT region = {0, 0, kFallback, kFallback};
+	HANDLE hConOut = hConsoleOutput ? hConsoleOutput : GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
+	// If function fails, we return {kFallback, kFallback}
+	if (GetConsoleScreenBufferInfoCached(hConOut, &csbi, TRUE))
+	{
+		if (viewPort)
+		{
+			// Trick to avoid overflow of SHORT
+			region = {
+				(SHORT)std::min<WORD>(WORD(csbi.srWindow.Left), std::numeric_limits<SHORT>::max()),
+				(SHORT)std::min<WORD>(WORD(csbi.srWindow.Top), std::numeric_limits<SHORT>::max()),
+				(SHORT)std::min<WORD>(WORD(csbi.srWindow.Right), std::numeric_limits<SHORT>::max()),
+				(SHORT)std::min<WORD>(WORD(csbi.srWindow.Bottom), std::numeric_limits<SHORT>::max())
+			};
+		}
+		else
+		{
+			region = {
+				0,
+				0,
+				(SHORT)std::min<WORD>(WORD(csbi.dwSize.X - 1), std::numeric_limits<SHORT>::max()),
+				(SHORT)std::min<WORD>(WORD(csbi.dwSize.Y - 1), std::numeric_limits<SHORT>::max())
+			};
+		}
+		// Last checks
+		if (region.Right < region.Left)
+			region.Right = region.Left;
+		if (region.Bottom < region.Top)
+			region.Bottom = region.Top;
+	}
+	return region;
+}
+
 void CEAnsi::SetScrollRegion(bool bRegion, bool bRelative, int nStart, int nEnd, HANDLE hConsoleOutput)
 {
-	if (bRegion)
+	if (bRegion && (nStart >= 0) && (nStart <= nEnd))
 	{
+		// note: the '\e[0;35r' shall be treated as '\e[1;35r'
+		_ASSERTE(nStart >= 0 && nEnd >= nStart);
+		SMALL_RECT working = GetWorkingRegion(hConsoleOutput, bRelative);
+		_ASSERTE(working.Top>=0 && working.Left>=0 && working.Bottom>=working.Top && working.Right>=working.Left);
 		if (bRelative)
 		{
-			HANDLE hConOut = hConsoleOutput ? hConsoleOutput : GetStdHandle(STD_OUTPUT_HANDLE);
-			CONSOLE_SCREEN_BUFFER_INFO csbi = {};
-			TODO("Determine the lowest dirty line of console?");
-			if (GetConsoleScreenBufferInfoCached(hConOut, &csbi, TRUE))
-			{
-				nStart += csbi.srWindow.Top;
-				nEnd += csbi.srWindow.Top;
-			}
+			nStart += working.Top;
+			nEnd += working.Top;
 		}
 		// We need 0-based absolute values
-		gDisplayOpt.ScrollStart = nStart - 1;
-		gDisplayOpt.ScrollEnd = nEnd - 1;
+		gDisplayOpt.ScrollStart = std::max<int>(working.Top, std::min<int>(nStart - 1, working.Bottom));
+		gDisplayOpt.ScrollEnd = std::max<int>(working.Top, std::min<int>(nEnd - 1, working.Bottom));
 		// Validate
 		if (!(gDisplayOpt.ScrollRegion = (gDisplayOpt.ScrollStart>=0 && gDisplayOpt.ScrollEnd>=gDisplayOpt.ScrollStart)))
 		{
@@ -3947,10 +4160,10 @@ void CEAnsi::StartVimTerm(bool bFromDllStart)
 
 	// For native vim - don't handle "--help" and "--version" switches
 	// Has no sense for cygwin/msys, but they are skipped above
-	CEStr lsArg;
+	CmdArg lsArg;
 	LPCWSTR pszCmdLine = GetCommandLineW();
 	LPCWSTR pszCompare[] = {L"--help", L"-h", L"--version", NULL};
-	while (0 == NextArg(&pszCmdLine, lsArg))
+	while ((pszCmdLine = NextArg(pszCmdLine, lsArg)))
 	{
 		for (INT_PTR i = 0; pszCompare[i]; i++)
 		{
@@ -3984,6 +4197,9 @@ void CEAnsi::ChangeTermMode(TermModeCommand mode, DWORD value, DWORD nPID /*= 0*
 		ExecuteFreeResult(pIn);
 		ExecuteFreeResult(pOut);
 	}
+
+	if (mode < countof(gWasXTermModeSet))
+		gWasXTermModeSet[mode] = {value, nPID ? nPID : GetCurrentProcessId()};
 }
 
 void CEAnsi::StartXTermMode(bool bStart)
@@ -3997,6 +4213,19 @@ void CEAnsi::StartXTermMode(bool bStart)
 	ChangeTermMode(tmc_TerminalType, bStart ? te_xterm : te_win32);
 }
 
+void CEAnsi::RefreshXTermModes()
+{
+	if (!gbWasXTermOutput)
+		return;
+	for (int i = 0; i < (int)countof(gWasXTermModeSet); ++i)
+	{
+		if (!gWasXTermModeSet[i].pid)
+			continue;
+		_ASSERTE(i != tmc_ConInMode);
+		ChangeTermMode((TermModeCommand)i, gWasXTermModeSet[i].value, gWasXTermModeSet[i].pid);
+	}
+}
+
 // This is useful when user press Shift+Home,
 // we'll select only "typed command" part, without "prompt"
 void CEAnsi::StorePromptBegin()
@@ -4006,6 +4235,15 @@ void CEAnsi::StorePromptBegin()
 	if (GetConsoleScreenBufferInfo(hConOut, &csbi))
 	{
 		OnReadConsoleBefore(hConOut, csbi);
+	}
+}
+
+void CEAnsi::StorePromptReset()
+{
+	CESERVER_CONSOLE_APP_MAPPING* pAppMap = gpAppMap ? gpAppMap->Ptr() : NULL;
+	if (pAppMap)
+	{
+		pAppMap->csbiPreRead.dwCursorPosition = COORD{0, 0};
 	}
 }
 

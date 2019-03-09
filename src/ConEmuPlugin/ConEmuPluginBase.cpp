@@ -52,6 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "PluginBackground.h"
 #include "../common/ConEmuCheckEx.h"
 #include "../common/EmergencyShow.h"
+#include "../common/EnvVar.h"
 #include "../common/FarVersion.h"
 #include "../common/HkFunc.h"
 #include "../common/MFileMapping.h"
@@ -59,11 +60,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/MSection.h"
 #include "../common/MSetter.h"
 #include "../common/MWow64Disable.h"
+#include "../common/SetEnvVar.h"
 #include "../common/WFiles.h"
 #include "../common/WConsoleEx.h"
 #include "../common/WModuleCheck.h"
 #include "../common/WThreads.h"
-#include "../common/SetEnvVar.h"
 #include "../ConEmuHk/ConEmuHooks.h"
 #include "../ConEmu/version.h"
 
@@ -146,10 +147,10 @@ BOOL gbNeedPostTabSend = FALSE;
 BOOL gbNeedPostEditCheck = FALSE; // проверить, может в активном редакторе изменился статус
 int lastModifiedStateW = -1;
 BOOL gbNeedPostReloadFarInfo = FALSE;
+BOOL gbNeedReloadFarDir = FALSE;
 DWORD gnNeedPostTabSendTick = 0;
 #define NEEDPOSTTABSENDDELTA 100
 #define MONITORENVVARDELTA 1000
-BOOL StartupHooks();
 MFileMapping<CESERVER_CONSOLE_MAPPING_HDR> *gpConMap;
 const CESERVER_CONSOLE_MAPPING_HDR *gpConMapInfo = NULL;
 //AnnotationInfo *gpColorerInfo = NULL;
@@ -767,6 +768,7 @@ void CPluginBase::UpdatePanelDirs()
 
 		if (szMacro[0])
 		{
+			DEBUGSTRCURDIR(szMacro);
 			// Issue 1777: Хоть глюки фара и нужно лечить в фаре, но пока ошибки просто пропустим
 			PostMacro(szMacro, NULL, false);
 			return; // Async
@@ -1525,16 +1527,16 @@ bool CPluginBase::StartDebugger()
 		// Откроем дебаггер в новой вкладке ConEmu. При желании юзеру проще сделать Detach
 		// "/DEBUGPID=" обязательно должен быть первым аргументом
 
-		swprintf_c(szExe, L"\"%s\" /ATTACH /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
-		          szConEmuC, szConEmuC, dwSelfPID, w, h);
-		//swprintf_c(szExe, L"\"%s\" /ATTACH /GID=%u /GHWND=%08X /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
-		//          szConEmuC, nGuiPID, (DWORD)(DWORD_PTR)ghConEmuWndDC, szConEmuC, dwSelfPID, w, h);
+		swprintf_c(szExe, L"\"%s\" /ATTACH /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=%i",
+		          szConEmuC, szConEmuC, dwSelfPID, w, h, LONGOUTPUTHEIGHT_MAX);
+		//swprintf_c(szExe, L"\"%s\" /ATTACH /GID=%u /GHWND=%08X /ROOT \"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=%i",
+		//          szConEmuC, nGuiPID, (DWORD)(DWORD_PTR)ghConEmuWndDC, szConEmuC, dwSelfPID, w, h, LONGOUTPUTHEIGHT_MAX);
 	}
 	else
 	{
 		// Запустить дебаггер в новом видимом консольном окне
-		swprintf_c(szExe, L"\"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=9999",
-		          szConEmuC, dwSelfPID, w, h);
+		swprintf_c(szExe, L"\"%s\" /DEBUGPID=%i /BW=%i /BH=%i /BZ=%i",
+		          szConEmuC, dwSelfPID, w, h, LONGOUTPUTHEIGHT_MAX);
 	}
 
 	if (ghConEmuWndDC)
@@ -3166,6 +3168,8 @@ void CPluginBase::OnMainThreadActivated()
 	// panel paths may be changed even from editor
 	if (!Plugin()->isMacroActive(iMacroActive))
 	{
+		DEBUGSTRCURDIR(L"UpdatePanelDirs()");
+		gbNeedReloadFarDir = FALSE;
 		Plugin()->UpdatePanelDirs();
 	}
 
@@ -3175,6 +3179,7 @@ void CPluginBase::OnMainThreadActivated()
 
 	if (gbNeedPostReloadFarInfo)
 	{
+		DEBUGSTRCURDIR(L"ReloadFarInfo()");
 		gbNeedPostReloadFarInfo = FALSE;
 		ReloadFarInfo(false);
 	}
@@ -4671,7 +4676,8 @@ void CPluginBase::OnConsolePeekReadInput(bool abPeek)
 		}
 	}
 
-	if (gbNeedPostReloadFarInfo || gbNeedPostEditCheck || gbRequestUpdateTabs || gbNeedPostTabSend || gbNeedBgActivate)
+	if (gbNeedPostReloadFarInfo || gbNeedReloadFarDir || gbNeedPostEditCheck
+		|| gbRequestUpdateTabs || gbNeedPostTabSend || gbNeedBgActivate)
 	{
 		lbNeedSynchro = true;
 	}
@@ -4959,7 +4965,7 @@ bool CPluginBase::OnPanelViewCallbacks(HookCallbackArg* pArgs, PanelViewInputCal
 }
 
 
-VOID /*WINAPI*/ CPluginBase::OnShellExecuteExW_Except(HookCallbackArg* pArgs)
+BOOL /*WINAPI*/ CPluginBase::OnShellExecuteExW_Except(HookCallbackArg* pArgs)
 {
 	if (pArgs->bMainThread)
 	{
@@ -4968,16 +4974,20 @@ VOID /*WINAPI*/ CPluginBase::OnShellExecuteExW_Except(HookCallbackArg* pArgs)
 
 	*((LPBOOL*)pArgs->lpResult) = FALSE;
 	SetLastError(E_UNEXPECTED);
+
+	return TRUE; // Result is ignored in this callback type
 }
 
 
-// Для определения "живости" фара
-VOID /*WINAPI*/ CPluginBase::OnGetNumberOfConsoleInputEventsPost(HookCallbackArg* pArgs)
+// Used for detection of Far "aliveness"
+BOOL /*WINAPI*/ CPluginBase::OnGetNumberOfConsoleInputEventsPost(HookCallbackArg* pArgs)
 {
 	if (pArgs->bMainThread && gpConMapInfo && gpFarInfo && gpFarInfoMapping)
 	{
 		TouchReadPeekConsoleInputs(-1);
 	}
+
+	return FALSE; // Result is ignored in this callback type
 }
 
 // Если функция возвращает FALSE - реальный ReadConsoleInput вызван не будет,
@@ -5016,9 +5026,11 @@ BOOL /*WINAPI*/ CPluginBase::OnConsolePeekInput(HookCallbackArg* pArgs)
 	return TRUE; // продолжить
 }
 
-VOID /*WINAPI*/ CPluginBase::OnConsolePeekInputPost(HookCallbackArg* pArgs)
+BOOL /*WINAPI*/ CPluginBase::OnConsolePeekInputPost(HookCallbackArg* pArgs)
 {
-	if (!pArgs->bMainThread) return;  // обработку делаем только в основной нити
+	// Do work in main thread only!
+	if (!pArgs->bMainThread)
+		return FALSE; // Result is ignored in this callback type
 
 #ifdef _DEBUG
 
@@ -5052,8 +5064,10 @@ VOID /*WINAPI*/ CPluginBase::OnConsolePeekInputPost(HookCallbackArg* pArgs)
 	{
 		// Если функция возвращает FALSE - реальное чтение не будет вызвано
 		if (!OnPanelViewCallbacks(pArgs, gPanelRegLeft.pfnPeekPostCall, gPanelRegRight.pfnPeekPostCall))
-			return;
+			return FALSE; // Result is ignored in this callback type
 	}
+
+	return FALSE; // Result is ignored in this callback type
 }
 
 // Если функция возвращает FALSE - реальный ReadConsoleInput вызван не будет,
@@ -5119,9 +5133,11 @@ BOOL /*WINAPI*/ CPluginBase::OnConsoleReadInput(HookCallbackArg* pArgs)
 	return OnConsoleReadInputWork(pArgs);
 }
 
-VOID /*WINAPI*/ CPluginBase::OnConsoleReadInputPost(HookCallbackArg* pArgs)
+BOOL /*WINAPI*/ CPluginBase::OnConsoleReadInputPost(HookCallbackArg* pArgs)
 {
-	if (!pArgs->bMainThread) return;  // обработку делаем только в основной нити
+	// Do work in main thread only!
+	if (!pArgs->bMainThread)
+		return FALSE; // Result is ignored in this callback type
 
 #ifdef _DEBUG
 	{
@@ -5194,7 +5210,7 @@ VOID /*WINAPI*/ CPluginBase::OnConsoleReadInputPost(HookCallbackArg* pArgs)
 	if (gPanelRegLeft.pfnReadPostCall || gPanelRegRight.pfnReadPostCall)
 	{
 		if (!OnPanelViewCallbacks(pArgs, gPanelRegLeft.pfnReadPostCall, gPanelRegRight.pfnReadPostCall))
-			return;
+			return FALSE; // Result is ignored in this callback type
 	}
 
 	// Чтобы ФАР сразу прекратил ходить по каталогам при отпускании Enter
@@ -5234,6 +5250,8 @@ VOID /*WINAPI*/ CPluginBase::OnConsoleReadInputPost(HookCallbackArg* pArgs)
 			}
 		}
 	}
+
+	return FALSE; // Result is ignored in this callback type
 }
 
 BOOL /*WINAPI*/ CPluginBase::OnWriteConsoleOutput(HookCallbackArg* pArgs)
@@ -5274,6 +5292,16 @@ BOOL /*WINAPI*/ CPluginBase::OnWriteConsoleOutput(HookCallbackArg* pArgs)
 		gbWaitConsoleWrite = FALSE;
 		SetEvent(ghConsoleWrite);
 	}
+
+	return TRUE;
+}
+
+BOOL /*WINAPI*/ CPluginBase::OnPostWriteConsoleOutput(HookCallbackArg* pArgs)
+{
+	// After output to the console (Commit call) trigger reloading of Far information
+	// Especially the Panel Directories
+
+	gbNeedReloadFarDir = TRUE;
 
 	return TRUE;
 }
@@ -5328,7 +5356,7 @@ BOOL /*WINAPI*/ CPluginBase::OnConsoleDetaching(HookCallbackArg* pArgs)
 }
 
 // Функции вызываются в основной нити, вполне можно дергать FAR-API
-VOID /*WINAPI*/ CPluginBase::OnConsoleWasAttached(HookCallbackArg* pArgs)
+BOOL /*WINAPI*/ CPluginBase::OnConsoleWasAttached(HookCallbackArg* pArgs)
 {
 	FarHwnd = GetConEmuHWND(2);
 	gbFarWndVisible = IsWindowVisible(FarHwnd);
@@ -5358,6 +5386,8 @@ VOID /*WINAPI*/ CPluginBase::OnConsoleWasAttached(HookCallbackArg* pArgs)
 
 	if (ghMonitorThread)
 		ResumeThread(ghMonitorThread);
+
+	return TRUE; // Result is ignored in this callback type
 }
 
 
@@ -5435,6 +5465,14 @@ void /*WINAPI*/ CPluginBase::OnLibraryLoaded(HMODULE ahModule)
 				// Failed
 				_ASSERTE(lbSucceeded == TRUE);
 			}
+		}
+	}
+
+	if (GetProcAddress(ahModule, "SetConsoleCallbacks"))
+	{
+		if (!ghExtConModule)
+		{
+			StartupConsoleHooks();
 		}
 	}
 }

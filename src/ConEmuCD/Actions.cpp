@@ -39,6 +39,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/CmdLine.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/CEStr.h"
+#include "../common/EnvVar.h"
+#include "../common/MModule.h"
 #include "../common/MProcess.h"
 #include "../common/MStrDup.h"
 #include "../common/ProcessData.h"
@@ -385,7 +387,7 @@ int DoExportEnv(LPCWSTR asCmdArg, ConEmuExecAction eExecAction, bool bSilent /*=
 	HANDLE h;
 	size_t cchMaxEnvLen = 0;
 	wchar_t* pszBuffer;
-	CEStr szTmpPart;
+	CmdArg szTmpPart;
 	LPCWSTR pszTmpPartStart;
 	LPCWSTR pszCmdArg;
 	wchar_t szInfo[200];
@@ -476,7 +478,7 @@ int DoExportEnv(LPCWSTR asCmdArg, ConEmuExecAction eExecAction, bool bSilent /*=
 			pszSrc = pszNext;
 		}
 	}
-	else while (0==NextArg(&pszCmdArg, szTmpPart, &pszTmpPartStart))
+	else while ((pszCmdArg = NextArg(pszCmdArg, szTmpPart, &pszTmpPartStart)))
 	{
 		if ((pszTmpPartStart > asCmdArg) && (*(pszTmpPartStart-1) != L'"'))
 		{
@@ -491,8 +493,8 @@ int DoExportEnv(LPCWSTR asCmdArg, ConEmuExecAction eExecAction, bool bSilent /*=
 			}
 		}
 		LPCWSTR pszPart = szTmpPart;
-		CEStr szTest;
-		while (0==NextArg(&pszPart, szTest))
+		CmdArg szTest;
+		while ((pszPart = NextArg(pszPart, szTest)))
 		{
 			if (!*szTest || *szTest == L'*')
 			{
@@ -596,9 +598,7 @@ int DoExportEnv(LPCWSTR asCmdArg, ConEmuExecAction eExecAction, bool bSilent /*=
 	}
 
 	// Allocate memory for process tree
-	//pList = (ProcInfo*)malloc(cchMax*sizeof(*pList));
-	//if (!pList)
-	if (!List.alloc(4096))
+	if (!List.reserve(4096))
 	{
 		if (!bSilent)
 			_printf(ExpFailedPref ", List allocation failed\n");
@@ -767,9 +767,9 @@ int DoParseArgs(LPCWSTR asCmdLine)
 	LPWSTR* ppszShl = CommandLineToArgvW(asCmdLine, &iShellCount);
 
 	int i = 0;
-	CEStr szArg;
+	CmdArg szArg;
 	_printf("ConEmu `NextArg` splitter\n");
-	while (NextArg(&asCmdLine, szArg) == 0)
+	while ((asCmdLine = NextArg(asCmdLine, szArg)))
 	{
 		if (szArg.mb_Quoted)
 			DemangleArg(szArg, true);
@@ -792,29 +792,6 @@ int DoParseArgs(LPCWSTR asCmdLine)
 	return i;
 }
 
-HMODULE LoadConEmuHk()
-{
-	HMODULE hHooks = NULL;
-	LPCWSTR pszHooksName = WIN3264TEST(L"ConEmuHk.dll",L"ConEmuHk64.dll");
-
-	if ((hHooks = GetModuleHandle(pszHooksName)) == NULL)
-	{
-		wchar_t szSelf[MAX_PATH];
-		if (GetModuleFileName(ghOurModule, szSelf, countof(szSelf)))
-		{
-			wchar_t* pszName = (wchar_t*)PointToName(szSelf);
-			int nSelfName = lstrlen(pszName);
-			_ASSERTE(nSelfName == lstrlen(pszHooksName));
-			lstrcpyn(pszName, pszHooksName, nSelfName+1);
-
-			// ConEmuHk.dll / ConEmuHk64.dll
-			hHooks = LoadLibrary(szSelf);
-		}
-	}
-
-	return hHooks;
-}
-
 int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 {
 	int iRc = 0;
@@ -827,7 +804,7 @@ int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 	bool     bAsciiPrint = false;
 	bool     bExpandEnvVar = false;
 	bool     bStreamBy1 = false;
-	CEStr    szArg;
+	CmdArg   szArg;
 	HANDLE   hFile = NULL;
 	DWORD    DefaultCP = 0;
 
@@ -838,7 +815,7 @@ int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 	_ASSERTE(asCmdArg && (*asCmdArg != L' '));
 	asCmdArg = SkipNonPrintable(asCmdArg);
 
-	while ((*asCmdArg == L'-' || *asCmdArg == L'/') && (NextArg(&asCmdArg, szArg) == 0))
+	while ((*asCmdArg == L'-' || *asCmdArg == L'/') && (asCmdArg = NextArg(asCmdArg, szArg)))
 	{
 		// Make uniform
 		if (szArg.ms_Val[0] == L'/')
@@ -879,7 +856,7 @@ int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 
 	if (eExecAction == ea_OutType)
 	{
-		if (NextArg(&asCmdArg, szArg) == 0)
+		if ((asCmdArg = NextArg(asCmdArg, szArg)))
 		{
 			_ASSERTE(!bAsciiPrint || !DefaultCP);
 			DWORD nSize = 0, nErrCode = 0;
@@ -900,12 +877,13 @@ int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 	{
 		_ASSERTE(szTemp.ms_Val == NULL);
 
-		while (NextArg(&asCmdArg, szArg) == 0)
+		while ((asCmdArg = NextArg(asCmdArg, szArg)))
 		{
 			LPCWSTR pszAdd = szArg.ms_Val;
 			_ASSERTE(pszAdd!=NULL);
 
-			CEStr lsExpand, lsDemangle;
+			CEStr lsExpand;
+			CmdArg lsDemangle;
 
 			// Expand environment variables
 			// TODO: Expand !Variables! too
@@ -944,17 +922,31 @@ int DoOutput(ConEmuExecAction eExecAction, LPCWSTR asCmdArg)
 	}
 	#endif
 
-	iRc = WriteOutput(pszText, cchLen, dwWritten, bProcessed, bAsciiPrint, bStreamBy1, bToBottom);
+	iRc = WriteOutput(pszText, cchLen, &dwWritten, bProcessed, bAsciiPrint, bStreamBy1, bToBottom);
 
 	return iRc;
 }
 
+namespace {
+	/// ConEmuHk is used for preprocessed ANSI output
+	static MModule ConEmuHk;
+};
 
-int WriteOutput(LPCWSTR pszText, DWORD cchLen, DWORD& dwWritten, bool bProcessed, bool bAsciiPrint, bool bStreamBy1, bool bToBottom)
+/// Write text to STD_OUT
+/// @param pszText     text to write, must be '\0'-terminated if #cchLen == -1
+/// @param cchLen      [default -1] length of text in characters or -1 to use len(pszText)
+/// @param pdwWritten  [default null, out] written count
+/// @param bProcessed  [default false] true if pszText contains ANSI sequences (colors, etc.)
+/// @param bAsciiPrint [default false] true if pszText is ASCII (not wchar_t)
+/// @param bStreamBy1  [default false] true to Write 1 character per function call (debug purposes)
+/// @param bToBottom   [default false] true to set text cursor position at the bottom of scroll buffer (force use true-color area)
+/// @result            0 on success, otherwise our internal error code
+int WriteOutput(LPCWSTR pszText, DWORD cchLen /*= -1*/, DWORD* pdwWritten /*= nullptr*/, bool bProcessed /*= false*/, bool bAsciiPrint /*= false*/, bool bStreamBy1 /*= false*/, bool bToBottom /*= false*/)
 {
 	int    iRc = 0;
 	BOOL   bRc = FALSE;
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD  dwWritten = 0;
 
 	if (bToBottom)
 	{
@@ -969,6 +961,11 @@ int WriteOutput(LPCWSTR pszText, DWORD cchLen, DWORD& dwWritten, bool bProcessed
 		}
 	}
 
+	if (pszText && (cchLen == DWORD(-1)))
+		cchLen = bAsciiPrint
+			? (DWORD)strlen((const char*)pszText)
+			: (DWORD)wcslen(pszText);
+
 	if (!pszText || !cchLen)
 	{
 		iRc = 1;
@@ -979,16 +976,15 @@ int WriteOutput(LPCWSTR pszText, DWORD cchLen, DWORD& dwWritten, bool bProcessed
 	{
 		typedef BOOL (WINAPI* WriteProcessed_t)(LPCWSTR lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten);
 		typedef BOOL (WINAPI* WriteProcessedA_t)(LPCSTR lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten, UINT Stream);
-		WriteProcessed_t WriteProcessed = NULL;
-		WriteProcessedA_t WriteProcessedA = NULL;
-		HMODULE hHooks = NULL;
-		if (bProcessed)
+		static WriteProcessed_t WriteProcessed = NULL;
+		static WriteProcessedA_t WriteProcessedA = NULL;
+		if (bProcessed && (!WriteProcessed || !WriteProcessedA))
 		{
 			// ConEmuHk.dll / ConEmuHk64.dll
-			if ((hHooks = LoadConEmuHk()) != NULL)
+			if (ConEmuHk.Load(WIN3264TEST(L"ConEmuHk.dll",L"ConEmuHk64.dll")))
 			{
-				WriteProcessed = (WriteProcessed_t)GetProcAddress(hHooks, "WriteProcessed");
-				WriteProcessedA = (WriteProcessedA_t)GetProcAddress(hHooks, "WriteProcessedA");
+				ConEmuHk.GetProcAddress("WriteProcessed", WriteProcessed);
+				ConEmuHk.GetProcAddress("WriteProcessedA", WriteProcessedA);
 			}
 		}
 
@@ -1058,15 +1054,17 @@ int WriteOutput(LPCWSTR pszText, DWORD cchLen, DWORD& dwWritten, bool bProcessed
 		iRc = 3;
 
 wrap:
+	if (pdwWritten)
+		*pdwWritten = dwWritten;
 	return iRc;
 }
 
 int DoStoreCWD(LPCWSTR asCmdArg)
 {
 	int iRc = 1;
-	CEStr szDir;
+	CmdArg szDir;
 
-	if ((NextArg(&asCmdArg, szDir) != 0) || szDir.IsEmpty())
+	if (!NextArg(asCmdArg, szDir) || szDir.IsEmpty())
 	{
 		if (GetDirectory(szDir) == NULL)
 			goto wrap;
@@ -1105,7 +1103,7 @@ int DoExecAction(ConEmuExecAction eExecAction, LPCWSTR asCmdArg /* rest of cmdli
 			iRc = DoInjectRemote((LPWSTR)asCmdArg, (eExecAction == ea_InjectDefTrm));
 			break;
 		}
-	case ea_GuiMacro:
+	case ea_GuiMacro: // ConEmuC -GuiMacro
 		{
 			LogString(L"DoExecAction: DoGuiMacro");
 			GuiMacroFlags Flags = gmf_SetEnvVar
@@ -1116,32 +1114,32 @@ int DoExecAction(ConEmuExecAction eExecAction, LPCWSTR asCmdArg /* rest of cmdli
 			iRc = DoGuiMacro(asCmdArg, Inst, Flags);
 			break;
 		}
-	case ea_CheckUnicodeFont:
+	case ea_CheckUnicodeFont: // ConEmuC -CheckUnicode
 		{
 			LogString(L"DoExecAction: ea_CheckUnicodeFont");
 			iRc = CheckUnicodeFont();
 			break;
 		}
-	case ea_PrintConsoleInfo:
+	case ea_PrintConsoleInfo: // ConEmuC -ConInfo
 		{
 			LogString(L"DoExecAction: ea_PrintConsoleInfo");
 			PrintConsoleInfo();
 			iRc = 0;
 			break;
 		}
-	case ea_TestUnicodeCvt:
+	case ea_TestUnicodeCvt: // ConEmuC -TestUnicode
 		{
 			LogString(L"DoExecAction: ea_TestUnicodeCvt");
 			iRc = TestUnicodeCvt();
 			break;
 		}
-	case ea_OsVerInfo:
+	case ea_OsVerInfo: // ConEmuC -OsVerInfo
 		{
 			LogString(L"DoExecAction: ea_OsVerInfo");
 			iRc = OsVerInfo();
 			break;
 		}
-	case ea_ExportCon:
+	case ea_ExportCon: // ConEmuC -Export ...
 	case ea_ExportTab:
 	case ea_ExportGui:
 	case ea_ExportAll:
@@ -1150,33 +1148,33 @@ int DoExecAction(ConEmuExecAction eExecAction, LPCWSTR asCmdArg /* rest of cmdli
 			iRc = DoExportEnv(asCmdArg, eExecAction, gbPreferSilentMode);
 			break;
 		}
-	case ea_ParseArgs:
+	case ea_ParseArgs: // ConEmuC -Args ... | ConEmuC -ParseArgs
 		{
 			LogString(L"DoExecAction: DoParseArgs");
 			iRc = DoParseArgs(asCmdArg);
 			break;
 		}
-	case ea_ErrorLevel:
+	case ea_ErrorLevel: // ConEmuC -ErrorLevel
 		{
 			LogString(L"DoExecAction: ea_ErrorLevel");
 			wchar_t* pszEnd = NULL;
 			iRc = wcstol(asCmdArg, &pszEnd, 10);
 			break;
 		}
-	case ea_OutEcho:
-	case ea_OutType:
+	case ea_OutEcho: // ConEmuC -e ...
+	case ea_OutType: // ConEmuC -t
 		{
 			LogString(L"DoExecAction: DoOutput");
 			iRc = DoOutput(eExecAction, asCmdArg);
 			break;
 		}
-	case ea_StoreCWD:
+	case ea_StoreCWD: // ConEmuC -StoreCWD
 		{
 			LogString(L"DoExecAction: DoStoreCWD");
 			iRc = DoStoreCWD(asCmdArg);
 			break;
 		}
-	case ea_DumpStruct:
+	case ea_DumpStruct: // ConEmuC -STRUCT
 		{
 			LogString(L"DoExecAction: DoDumpStruct");
 			iRc = DoDumpStruct(asCmdArg);

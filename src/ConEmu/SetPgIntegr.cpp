@@ -46,7 +46,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct Switch
 {
-	CEStr szSwitch;
+	CmdArg szSwitch;
 	CEStr szOpt;
 
 	// Format examples: `-single` or `-dir "..."`
@@ -144,9 +144,9 @@ struct SwitchParser
 	Switch* GetNextSwitch(LPCWSTR& rpsz, CEStr& szArg)
 	{
 		LPCWSTR psz = rpsz;
-		CEStr szNext;
+		CmdArg szNext;
 
-		if ((0 == NextArg(&psz, szNext)) && !szNext.IsPossibleSwitch())
+		if ((psz = NextArg(psz, szNext)) && !szNext.IsPossibleSwitch())
 			rpsz = psz;
 		else
 			szNext.Clear();
@@ -158,9 +158,9 @@ struct SwitchParser
 	Switch* GetNextPair(LPCWSTR& rpsz)
 	{
 		LPCWSTR psz = rpsz;
-		CEStr szArg;
+		CmdArg szArg;
 
-		if (0 != NextArg(&psz, szArg))
+		if (!(psz = NextArg(psz, szArg)))
 		{
 			return NULL;
 		}
@@ -218,7 +218,7 @@ struct SwitchParser
 		szConfig = L"";
 		ReleaseVectors();
 
-		CEStr szArg, szNext;
+		CmdArg  szArg, szNext;
 		LPCWSTR psz;
 		Switch* ps = NULL;
 
@@ -229,7 +229,7 @@ struct SwitchParser
 		// Drop `-dir "..."` (especially from registry) always!
 
 		psz = pszFull;
-		while (0 == NextArg(&psz, szArg))
+		while ((psz = NextArg(psz, szArg)))
 		{
 			if (!szArg.IsPossibleSwitch())
 				continue;
@@ -244,13 +244,13 @@ struct SwitchParser
 			}
 			else if (szArg.IsSwitch(L"-config"))
 			{
-				if (0 != NextArg(&psz, szArg))
+				if (!(psz = NextArg(psz, szArg)))
 					break;
 				szConfig.Set(szArg);
 			}
 			else if (szArg.IsSwitch(L"-dir"))
 			{
-				if (0 != NextArg(&psz, szArg))
+				if (!(psz = NextArg(psz, szArg)))
 					break;
 				_ASSERTE(lstrcmpi(szArg, L"%1")==0);
 			}
@@ -480,7 +480,7 @@ void CSetPgIntegr::RegisterShell(LPCWSTR asName, LPCWSTR asMode, LPCWSTR asConfi
 	bool isExtendedItem = isPressed(VK_SHIFT);
 
 	#ifdef _DEBUG
-	CEStr szMode(asMode);
+	CmdArg szMode(asMode);
 	_ASSERTE(szMode.IsSwitch(L"-here") || szMode.IsSwitch(L"-inside") || szMode.IsSwitch(L"-inside:"));
 	#endif
 
@@ -501,9 +501,9 @@ void CSetPgIntegr::RegisterShell(LPCWSTR asName, LPCWSTR asMode, LPCWSTR asConfi
 	bool bAddRunSwitch = false;
 	if (*asCmd == L'/' || *asCmd == L'-')
 	{
-		CEStr lsArg;
+		CmdArg lsArg;
 		LPCWSTR pszTemp = asCmd;
-		if (0 == NextArg(&pszTemp, lsArg))
+		if ((pszTemp = NextArg(pszTemp, lsArg)))
 		{
 			bAddRunSwitch = !lsArg.IsPossibleSwitch();
 		}
@@ -808,12 +808,12 @@ bool CSetPgIntegr::ReloadHereList(int* pnHere /*= NULL*/, int* pnInside /*= NULL
 					*pszSlash = 0;
 
 					bool bHasInside = false, bConEmu = false;
-					LPCWSTR pszTemp = pszCmd; CEStr szArg;
-					if (0 == NextArg(&pszTemp, szArg))
+					LPCWSTR pszTemp = pszCmd; CmdArg szArg;
+					if ((pszTemp = NextArg(pszTemp, szArg)))
 					{
 						if ((bConEmu = IsConEmuGui(szArg)))
 						{
-							while (0 == NextArg(&pszTemp, szArg))
+							while ((pszTemp = NextArg(pszTemp, szArg)))
 							{
 								if (szArg.IsSwitch(L"-inside"))
 								{

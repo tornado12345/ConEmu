@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NOMINMAX
 #include <limits>
 #include <algorithm>
+#include <atomic>
 
 #if !defined(__GNUC__) || defined(__MINGW32__)
 #pragma warning(disable: 4091)
@@ -120,8 +121,6 @@ WARNING("WIN64 was not defined");
 #endif
 
 
-#define isPressed(inp) ((GetKeyState(inp) & 0x8000) == 0x8000)
-
 #ifdef ARRAYSIZE
 #define countof(a) (ARRAYSIZE(a)) // (sizeof((a))/(sizeof(*(a))))
 #else
@@ -159,6 +158,8 @@ using ssize_t = int64_t;
 using ssize_t = int32_t;
 #endif
 
+using uint = uint32_t;
+
 
 // GCC headers do not describe Task Scheduler 2.0 interfaces
 #if defined(__GNUC__) // && !defined(__MINGW32__)
@@ -173,6 +174,7 @@ using ssize_t = int32_t;
 
 #define isDriveLetter(c) ((c>=L'A' && c<=L'Z') || (c>=L'a' && c<=L'z'))
 #define isDigit(c) (c>=L'0' && c<=L'9')
+#define isHexDigit(c) ((c>=L'0' && c<=L'9') || (c>=L'a' && c<=L'f') || (c>=L'A' && c<=L'F'))
 #define isDot(c) (c==L'.' || c==',')
 #define isAlpha(c) (IsCharAlpha(c))
 #define isSpace(c) (c==L' ' || c==L'\xA0' || c==L'\t' || c==L'\r' || c==L'\n')

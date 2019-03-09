@@ -447,9 +447,9 @@ HWND CConEmuInside::InsideFindParent()
 		// Если в проводнике уже есть ConEmu - открыть в нем новую вкладку
 		gpSetCls->SingleInstanceShowHide = sih_None;
 		LPCWSTR pszCmdLine = GetCommandLine();
-		CEStr lsArg;
+		CmdArg lsArg;
 		LPCWSTR pszCmd = pszCmdLine;
-		while (0 == NextArg(&pszCmd, lsArg))
+		while ((pszCmd = NextArg(pszCmd, lsArg)))
 		{
 			if (lsArg.OneOfSwitches(L"-runlist",L"-cmdlist"))
 			{

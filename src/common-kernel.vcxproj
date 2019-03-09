@@ -237,9 +237,11 @@
     <ClInclude Include="common\ConEmuCheck.h" />
     <ClInclude Include="common\ConsoleMixAttr.h" />
     <ClInclude Include="common\ConsoleRead.h" />
+    <ClInclude Include="common\EnvVar.h" />
     <ClInclude Include="common\HandleKeeper.h" />
     <ClInclude Include="common\HkFunc.h" />
     <ClInclude Include="common\InQueue.h" />
+    <ClInclude Include="common\Keyboard.h" />
     <ClInclude Include="common\MAssert.h" />
     <ClInclude Include="common\MConHandle.h" />
     <ClInclude Include="common\MFileLog.h" />
@@ -269,9 +271,11 @@
     <ClCompile Include="common\ConEmuCheck.cpp" />
     <ClCompile Include="common\ConsoleMixAttr.cpp" />
     <ClCompile Include="common\ConsoleRead.cpp" />
+    <ClCompile Include="common\EnvVar.cpp" />
     <ClCompile Include="common\HandleKeeper.cpp" />
     <ClCompile Include="common\HkFunc.cpp" />
     <ClCompile Include="common\InQueue.cpp" />
+    <ClCompile Include="common\Keyboard.cpp" />
     <ClCompile Include="common\MAssert.cpp" />
     <ClCompile Include="common\MConHandle.cpp" />
     <ClCompile Include="common\MFileLog.cpp" />

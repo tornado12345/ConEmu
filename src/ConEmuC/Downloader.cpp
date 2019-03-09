@@ -31,6 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Wininet.h>
 #include "../common/Common.h"
 #include "../common/CmdLine.h"
+#include "../common/EnvVar.h"
 #include "../common/MSectionSimple.h"
 #include "../common/MStrDup.h"
 #include "../common/WObjects.h"
@@ -1803,7 +1804,7 @@ int DoDownload(LPCWSTR asCmdLine)
 {
 	int iRc = CERR_CARGUMENT;
 	DWORD_PTR drc;
-	CEStr szArg;
+	CmdArg szArg;
 	wchar_t* pszUrl = NULL;
 	size_t iFiles = 0;
 	CEDownloadErrorArg args[4];
@@ -1858,7 +1859,7 @@ int DoDownload(LPCWSTR asCmdLine)
 		{NULL}
 	};
 
-	while (NextArg(&asCmdLine, szArg) == 0)
+	while ((asCmdLine = NextArg(asCmdLine, szArg)))
 	{
 		LPCWSTR psz = szArg;
 		if ((psz[0] == L'-') || (psz[0] == L'/'))
@@ -1877,7 +1878,7 @@ int DoDownload(LPCWSTR asCmdLine)
 						continue;
 					}
 					SafeFree(*KnownArgs[i].ppszValue);
-					if (NextArg(&asCmdLine, szArg) == 0)
+					if ((asCmdLine = NextArg(asCmdLine, szArg)))
 						*KnownArgs[i].ppszValue = szArg.Detach();
 					break;
 				}
@@ -1899,7 +1900,7 @@ int DoDownload(LPCWSTR asCmdLine)
 
 		SafeFree(pszUrl);
 		pszUrl = szArg.Detach();
-		if (NextArg(&asCmdLine, szArg) != 0)
+		if (!(asCmdLine = NextArg(asCmdLine, szArg)))
 		{
 			// If NOT redirected to file already
 			HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);

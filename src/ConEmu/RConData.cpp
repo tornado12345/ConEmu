@@ -312,6 +312,14 @@ UINT CRConData::GetConsoleData(wchar_t* rpChar, CharAttr* rpAttr, UINT anWidth, 
 		bool bForceMono = (mp_RCon->mn_InRecreate != 0);
 
 		bool has_rowid = (cnSrcLineLen >= ROWID_USED_CELLS) && (GetRowIdFromAttrs(pnSrc) != 0);
+		#ifdef _DEBUG
+		if (!has_rowid && cnSrcLineLen >= ROWID_USED_CELLS) {
+			_ASSERTE(!(pnSrc[0] & (CHANGED_CONATTR & ~LEGACY_CONATTR)));
+			_ASSERTE(!(pnSrc[1] & (CHANGED_CONATTR & ~LEGACY_CONATTR)));
+			_ASSERTE(!(pnSrc[2] & (CHANGED_CONATTR & ~LEGACY_CONATTR)));
+			_ASSERTE(!(pnSrc[3] & (CHANGED_CONATTR & ~LEGACY_CONATTR)));
+		}
+		#endif
 
 		int iTail = cnSrcLineLen;
 		wchar_t* pch = pszDst;
@@ -745,7 +753,7 @@ short CRConData::CheckProgressInConsole(UINT nCursorLine)
 	// ...       Vista x86\Vista x86.7z         6%
 	//aria2c
 	//[#1 SIZE:0B/9.1MiB(0%) CN:1 SPD:1.2KiBs ETA:2h1m11s]
-	int nIdx = 0;
+	ssize_t nIdx = 0;
 	bool bAllowDot = false;
 	short nProgress = -1;
 

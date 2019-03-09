@@ -20,6 +20,133 @@ https://conemu.github.io/en/Whats_New.html
 -------------------------------------------
 
 
+2019.3.3
+* gh-1840: Fix hung during startup if Environment contains `echo -x ...`.
+* The `-FontSize` is better name to change font size switch.
+* Allow to do `Copy all` from load dump screen.
+* gh-1833: Fix border rendering issues (bar placement).
+* Icon was not autoloaded for some tabs (e.g. `pwsh.exe`).
+* Add default tasks for ‘PowerShell Core’.
+* Some internal changes in default tasks generation.
+
+
+2019.3.1
+* gh-1795: Unexpected ConEmu activation on monitor change.
+* Paste hotkeys `Ctrl+V`/`Shift+Ins` didn't work in Far Manager if selection was present.
+* Eliminate copying delay on Paste if mouse selection is present.
+
+
+2019.2.25
+* gh-1835: Connector failed to start (regression).
+
+
+2019.2.24
+* gh-1159, gh-1775: ANSI, tmux, compatibility issues.
+* Connector v1.2.6: Pass ConEmuServerPID environment variable to wslbridge.
+* Add to log start/end time of default tasks populating.
+* Preliminary implementation of PTY in Connector.
+* AnsiDbg: better switch checking.
+
+
+2019.2.17
+* gh-1795: Unexpected ConEmu activation on monitor change.
+* gh-1159, gh-1775: ANSI, tmux, compatibility issues.
+
+
+2019.1.8
+* Start word selection with Ctrl+Shift+Left/Right.
+* Settings/Size & Pos: Apply button ignored invisible part of Win10 frame while setting coordinates.
+* gh-861: Support RAlt the same way as Alt+Numbers (keypad).
+* Predefined palettes were not initialized in some cases.
+* gh-1620: Fade colors were wrong if ConEmu was started with `-Palette` switch.
+* gh-1623: Let `Ctrl+0` and GuiMacro `Tab(7,-1)` activate *last* tab.
+* gh-1637: Show message about absent DosBox required files.
+* Fix unexpected pane-1 activation on mouse hover when pane-2 ChildGui popup dialog is over pane-1.
+* gh-1662: Escape Char not working for passwords with trailing quote.
+* gh-1573: Interface language setting was not saved.
+* Add a new option to auto-trim single lines.
+  When pasting a single line ending in newline, the user is presented with a
+  warning about pasting multi-line strings. This enables a new option to
+  automatically strip trailing newlines whenever we detect that a single line
+  string has been pasted. This prevents the warning and allows the user to more
+  conveniently edit single lines pasted into the console.
+* Add German translation to ConEmu.l10n.
+* Add icon ID number for VS2019 in CreateVCTask.
+* GitShowBranch: Case insensitive check for no branch.
+
+
+2018.6.26
+* gh-1606: Don't show assertion on start if we can't determine HKL name, just write info to log.
+* gh-1613: In some cases first four CJK cells were displayed using wrong attributes (inverse, underline).
+* gh-1560: Try to support high-precision mouse wheels and trackpads.
+* gh-1614: Fix long running session performance issues (CreateToolhelp32Snapshot).
+* gh-1615: Workaroung for Win10 insider cursor position bug after writing `\b \b` to console.
+* Reset prompt-start position after newline to avoid unexpected behavior of `Shift+Home`.
+* Avoid rapid window flashing initialized from console applications, log FlashWindow requests.
+
+
+2018.6.17
+* gh-1590: Quake activation (up/down) did not work properly with ChildGui in tab.
+* Show `-switch` style in ConEmuC help.
+* gh-1240: For those who want to run WinAPI console applications from POSIX layer: `ConEmuC -std -c your-command`.
+  When you run connector (or wslbridge) console handles are set into POSIX mode,
+  and only applications directly compiled for this mode will behave as they are in tty.
+  In other words, if you run ‘ConEmu/cygwin-connector/bash’ and try to start Python
+  outside of cygwin folder (e.g. downloaded from https://www.python.org/downloads/),
+  the Python will not think it was started in terminal, because it was not linked
+  with cygwin1.dll!
+  The command `ConEmuC -std -c python` tries to reinitialize console to work
+  like python was started from cmd.
+* gh-1567: Fixing ANSI scrolling issues.
+* Slightly expand Settings/Environment editor area.
+* Set default console pad size to `4`.
+* gh-728, gh-1570: Easy way to configure cmd prompt in default `{cmd}` task.
+  When you run `{cmd}` task or any other task utilizing `CmdInit.cmd`
+  you may set configuration variables on the Environment settings page:
+  * `set ConEmuPromptNL=NO` - use one-line prompt;
+  * `set ConEmuPromptNames=NO` - don't print `user@pc`.
+* Let configure `csudo` from Environment settings page.
+  * `set ConEmuSudoSplit=NO` - run elevated console in new tab instead of split;
+  * `set ConEmuSudoConfirm=NO` - disable ‘Press Enter or Esc to close console…’ confirmation.
+  * Read more in docs: https://conemu.github.io/en/csudo.html
+* Fix selection artefacts when selected region goes out of the screen.
+* gh-1585: Don't reset search mode by clicking on scrollbar.
+* Support ‘Dynamic scrollbar range’ in search mode.
+* gh-1604, gh-393: Allow users enter buffer height values larger than 9999 to revert to maximum allowed 32766 (by Shawn Presser).
+* gh-1259, gh-1557: ANSI: Some characters disappear by moving cursor with right arrow key.
+* gh-1601: Add logging for keyboard indicators CAPS/NUM/SCRL.
+* Support additional batch init scripts in form of `{cmd} script.cmd <arguments>`.
+  The script.cmd may be surrounded by `"`, but in that case, due to cmd parsing rules,
+  you should append some script arguments without quotes.
+  In other words, the tail of `{cmd}` **should not** end with `"`.
+
+
+2018.5.28
+* gh-1583: Let `-new_console` work in WSL.
+  Note: `ConEmuC.exe` or `ConEmuC64.exe` are required to run commands,
+  for example: `ConEmuC64.exe -c powershell -new_console`.
+* Switch `ConEmuC -ConInfo` was not working on redirected handles (mintty, connector, wsl).
+* gh-1444: ANSI. Fix irssi rendering under tmux.
+* ANSI. Sequence `\e[Nb` repeats output of last written character N times.
+* ANSI: `ESC ] 9 ; 10 ; 0 ST` stops xterm mode emulation.
+* ANSI. Reports for `ESC [ 6 n` cursor position relative to viewport (1-based).
+* gh-1569: True color mode with powershell doesn't scroll correctly.
+* gh-1579: Changes in escaping rules on pasting POSIX paths (exclamation `!` mark).
+  * if path contains special characters, strong quoting (single-quote) is used
+  * it's still possible to paste without quotation via GuiMacro
+* In some cases 32-bit ConEmuHk caused access violation on true-color buffer scrolling.
+
+
+2018.5.6
+* gh-884: In some cases Far panels directory were not updated (Tab title, etc.)
+* gh-1082, gh-1546: Env.var ConEmuCfgDir was shorter by one char.
+* gh-1503: Save on timer (every 5 minutes) only startup task if it was changed.
+* gh-1538: Support user-defined drives mount point in WSL.
+* gh-1539: Add workaround for 2 pixels cut off client area by autohidden taskbar.
+* Far working directory was not reloaded for `%f` macro (tab template).
+* Add TaskBar location to LogFile.
+
+
 2018.5.3
 * gh-1539: Resize fixes for auto-hidden Taskbar and caption-less mode.
 * gh-1545: Fix paste problems in Windows 10 1803 on texts with spaces or CR/LF.

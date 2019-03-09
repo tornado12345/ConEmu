@@ -458,13 +458,18 @@ void Settings::InitSettings()
 	psEnvironmentSet = lstrdup(
 		L"set PATH=%ConEmuBaseDir%\\Scripts;%PATH%\r\n"
 		L"\r\n"
-		L"rem set LANG=ru_RU.utf8\r\n"
-		L"rem set LANG=ru_RU.CP1251\r\n"
+		L"# set ConEmuPromptNames=NO\r\n" // created after gh-1570
+		L"# set ConEmuPromptNL=NO\r\n"
+		L"# set ConEmuSudoSplit=NO\r\n"
+		L"# set ConEmuSudoConfirm=NO\r\n"
 		L"\r\n"
-		L"rem alias cdc=cd /d \"%ConEmuDir%\"\r\n"
-		L"rem alias cd~=cd /d \"%UserProfile%\"\r\n"
-		L"rem alias gl=git-log\r\n"
-		L"rem alias glb=git-log --branches --date-order\r\n"
+		L"# set LANG=ru_RU.utf8\r\n"
+		L"# set LANG=ru_RU.CP1251\r\n"
+		L"\r\n"
+		L"# alias cdc=cd /d \"%ConEmuDir%\"\r\n"
+		L"# alias cd~=cd /d \"%UserProfile%\"\r\n"
+		L"# alias gl=git-log\r\n"
+		L"# alias glb=git-log --branches --date-order\r\n"
 		);
 
 	bool bIsDbcs = IsWinDBCS();
@@ -511,8 +516,8 @@ void Settings::InitSettings()
 
 	isCompressLongStrings = true;
 
-	isTryToCenter = false;
-	nCenterConsolePad = 0;
+	isTryToCenter = true;
+	nCenterConsolePad = 4;
 	isAlwaysShowScrollbar = 2;
 	nScrollBarAppearDelay = 100;
 	nScrollBarDisappearDelay = 1000;
@@ -1571,20 +1576,26 @@ void Settings::LoadPalettes(SettingsBase* reg)
 		lbDelete = true;
 	}
 
-
+	FreePalettes();
 
 	BOOL lbOpened = FALSE;
 	CEStr szBaseKey(gpSetCls->GetConfigPath(), L"\\Colors");
 
 	lbOpened = reg->OpenKey(szBaseKey, KEY_READ);
-	if (lbOpened)
+	if (!lbOpened)
 	{
-		FreePalettes();
+		// Predefined
+		CreatePredefinedPalettes(0);
+		_ASSERTE(Palettes!=NULL);
+		// Was initialize with "Default palettes"
+		_ASSERTE(PaletteCount == (int)countof(DefColors));
+	}
+	else
+	{
 
 		int UserCount = 0;
 		reg->Load(L"Count", UserCount);
 		reg->CloseKey();
-
 
 		// Predefined
 		CreatePredefinedPalettes(UserCount);
@@ -1623,10 +1634,10 @@ void Settings::LoadPalettes(SettingsBase* reg)
 				reg->CloseKey();
 			}
 		}
-
-		// sort
-		SortPalettes();
 	}
+
+	// sort
+	SortPalettes();
 
 	if (lbDelete)
 		delete reg;
@@ -1931,6 +1942,9 @@ int Settings::PaletteSetActive(LPCWSTR asName)
 		AppStd.nBackColorIdx = pPal->nBackColorIdx;
 		AppStd.nPopTextColorIdx = pPal->nPopTextColorIdx;
 		AppStd.nPopBackColorIdx = pPal->nPopBackColorIdx;
+
+		mb_FadeInitialized = false;
+		GetColors(-1, true);
 	}
 
 	return nPalIdx;
@@ -2734,6 +2748,7 @@ void Settings::LoadSettings(bool& rbNeedCreateVanilla, const SettingsStorage* ap
 		reg->Load(L"CTS.ColorIndex", isCTSColorIndex); if (CONFORECOLOR(isCTSColorIndex) == CONBACKCOLOR(isCTSColorIndex)) isCTSColorIndex = DefaultSelectionConsoleColor;
 
 		reg->Load(L"ClipboardConfirmEnter", isPasteConfirmEnter);
+		reg->Load(L"AutoTrimSingleLine", isAutoTrimSingleLine);
 		reg->Load(L"ClipboardConfirmLonger", nPasteConfirmLonger);
 
 		reg->Load(L"FarGotoEditorOpt", isFarGotoEditor);
@@ -3179,23 +3194,51 @@ void Settings::SaveSettingsOnExit()
 		return;
 	mb_ExitSettingsAutoSaved = true;
 
-	AutoSaveSettings();
+	AutoSaveSettings(nullptr, true);
 }
 
 void Settings::OnAutoSaveTimer()
 {
-	static DWORD dwLastTick = 0;
-	const  DWORD dwAutosaveDelay = 60*1000; // 1 minute
+	// Allowed to save?
+	if (!gpConEmu || gpConEmu->GetStartupStage() != CConEmuMain::ss_VConStarted)
+		return;
+	// Are there something to save?
+	if (!IsAutoSaveSettings(false))
+		return;
 
-	DWORD dwDelay = (GetTickCount() - dwLastTick);
-	if (dwDelay > dwAutosaveDelay)
+	// Do the timing
+	static DWORD dwLastTick = 0;
+	const  DWORD dwAutosaveDelay = 5*60*1000; // 5 minutes
+	if (!dwLastTick)
 	{
 		dwLastTick = GetTickCount();
-		AutoSaveSettings();
+		return;
+	}
+	DWORD dwDelay = (GetTickCount() - dwLastTick);
+	// Avoid trying to save at the same time from several instances
+	if (dwDelay > (dwAutosaveDelay + (rand() % 60)))
+	{
+		dwLastTick = GetTickCount();
+		// Save only startup task
+		AutoSaveSettings(nullptr, false);
 	}
 }
 
-void Settings::AutoSaveSettings(SettingsBase* reg/*=NULL*/)
+bool Settings::IsAutoSaveSettings(bool saveAll)
+{
+	bool bTaskAutoSave = (nStartType == (rbStartLastTabs - rbStartSingleApp));
+
+	// What we save on exit?
+	if (saveAll && !(isAutoSaveSizePos || mb_StatusSettingsWasChanged || bTaskAutoSave))
+		return false;
+	// What we save on timer?
+	else if (!saveAll && !(bTaskAutoSave))
+		return false;
+
+	return true;
+}
+
+void Settings::AutoSaveSettings(SettingsBase* reg/* = NULL*/, bool saveAll/* = false*/)
 {
 	if (!this)
 		return;
@@ -3204,11 +3247,12 @@ void Settings::AutoSaveSettings(SettingsBase* reg/*=NULL*/)
 	if (!gpConEmu->IsAllowSaveSettingsOnExit())
 		return;
 
-	bool bTaskAutoSave = (nStartType == (rbStartLastTabs - rbStartSingleApp));
-
-	// Смотрим, нужно ли сохранять что-либо при выходе?
-	if (!isAutoSaveSizePos && !mb_StatusSettingsWasChanged && !bTaskAutoSave)
+	// Do we need to save somethings?
+	if (!((reg && saveAll) // save from settings dialog
+			|| IsAutoSaveSettings(saveAll))) // onTimer and onExit
 		return;
+
+	bool bTaskAutoSave = (nStartType == (rbStartLastTabs - rbStartSingleApp));
 
 	gpConEmu->LogWindowPos(L"AutoSaveSettings");
 
@@ -3227,21 +3271,26 @@ void Settings::AutoSaveSettings(SettingsBase* reg/*=NULL*/)
 		lbDelete = true;
 	}
 
+	// #AutoSave Avoid share violation error on save via named Mutex?
+
 	if (reg->OpenKey(gpSetCls->GetConfigPath(), KEY_WRITE))
 	{
-		if (isAutoSaveSizePos)
+		if (saveAll && isAutoSaveSizePos)
 		{
 			SaveSizeSettings(reg);
 		}
 
-		if (mb_StatusSettingsWasChanged)
+		if (saveAll && mb_StatusSettingsWasChanged)
 		{
 			SaveStatusSettings(reg);
 		}
 
 		if (bTaskAutoSave)
 		{
-			reg->Save(L"StartType", nStartType);
+			BYTE curStartType = -1;
+			if (!reg->Load(L"StartType", curStartType)
+				|| curStartType != nStartType)
+				reg->Save(L"StartType", nStartType);
 		}
 
 		reg->CloseKey();
@@ -3260,8 +3309,13 @@ void Settings::AutoSaveSettings(SettingsBase* reg/*=NULL*/)
 				lbOpened = reg->OpenKey(szCmdKey, KEY_WRITE);
 				if (lbOpened)
 				{
+					bool taskChanged = false;
+
 					if (!StartupTask)
+					{
 						StartupTask = (CommandTasks*)calloc(1, sizeof(CommandTasks));
+						taskChanged = true;
+					}
 
 					if (StartupTask)
 					{
@@ -3271,13 +3325,15 @@ void Settings::AutoSaveSettings(SettingsBase* reg/*=NULL*/)
 						{
 							swprintf_c(szConfig, L"/config \"%s\"", pszConfigName);
 						}
-						StartupTask->SetGuiArg(szConfig);
 
+						taskChanged |= StartupTask->SetGuiArg(szConfig);
 
-						StartupTask->SetCommands(pszTabs);
+						taskChanged |= StartupTask->SetCommands(pszTabs);
 
-
-						StartupTask->SaveCmdTask(reg, true);
+						if (taskChanged)
+						{
+							StartupTask->SaveCmdTask(reg, true);
+						}
 					}
 
 					reg->CloseKey();
@@ -3748,6 +3804,7 @@ BOOL Settings::SaveSettings(BOOL abSilent /*= FALSE*/, const SettingsStorage* ap
 		reg->Save(L"CTS.ColorIndex", isCTSColorIndex);
 
 		reg->Save(L"ClipboardConfirmEnter", isPasteConfirmEnter);
+		reg->Save(L"AutoTrimSingleLine", isAutoTrimSingleLine);
 		reg->Save(L"ClipboardConfirmLonger", nPasteConfirmLonger);
 
 		reg->Save(L"FarGotoEditorOpt", isFarGotoEditor);
@@ -3920,7 +3977,7 @@ BOOL Settings::SaveSettings(BOOL abSilent /*= FALSE*/, const SettingsStorage* ap
 		SaveAppsSettings(reg);
 		SavePalettes(reg);
 		/* Some automatic options: size, autostart task, etc. */
-		AutoSaveSettings(reg);
+		AutoSaveSettings(reg, true);
 
 		/* Done */
 		lbRc = TRUE;
@@ -5193,8 +5250,8 @@ bool Settings::CmdTaskGetDefaultShell(RConStartArgsEx& args, CEStr& lsTitle)
 			return false;
 		}
 
-		CEStr lsExe; LPCWSTR pszTemp = args.pszSpecialCmd;
-		if (0 == NextArg(&pszTemp, lsExe))
+		CmdArg lsExe; LPCWSTR pszTemp = args.pszSpecialCmd;
+		if ((pszTemp = NextArg(pszTemp, lsExe)))
 			lsTitle.Set(PointToName(lsExe));
 		if (lsTitle.IsEmpty())
 			lsTitle.Set(L"cmd.exe");
@@ -5598,7 +5655,7 @@ wchar_t* Settings::MultiLine2MSZ(const wchar_t* apszLines, DWORD* pcbSize/*in by
 		{
 			wchar_t* psz = pszDst;
 			LPCWSTR pszSrc = apszLines;
-			while (0 == NextLine(&pszSrc, lsLine, NLF_NONE))
+			while ((pszSrc = NextLine(pszSrc, lsLine, NLF_NONE)))
 			{
 				// We can't store empty lines in the middle of MSZZ value
 				// That is a registry limitation

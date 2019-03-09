@@ -27,6 +27,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define HIDE_USE_EXCEPTION_INFO
+#define SHOWDEBUGSTR
 #include "Header.h"
 #include "AboutDlg.h"
 #include "ConEmu.h"
@@ -45,6 +46,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Update.h"
 #include "../ConEmuCD/ExitCodes.h"
 #include "../common/CEStr.h"
+#include "../common/EnvVar.h"
 #include "../common/execute.h"
 #include "../common/FarVersion.h"
 #include "../common/MSetter.h"
@@ -54,6 +56,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/WFiles.h"
 #include "../common/WRegistry.h"
 #include "../common/WUser.h"
+
+#define DEBUGSTRTASKS(s) DEBUGSTR(s)
 
 namespace FastConfig
 {
@@ -732,7 +736,10 @@ static INT_PTR OnLanguageChanged(HWND hDlg)
 		if (colon)
 		{
 			*colon = 0;
-			gpConEmu->opt.Language.SetStr(lsValue);
+			if (gpConEmu->opt.Language.Exists)
+				gpConEmu->opt.Language.SetStr(lsValue);
+			else
+				lstrcpyn(gpSet->Language, lsValue, countof(gpSet->Language));
 			gpLng->Reload(true);
 
 			CDynDialog::LocalizeDialog(hDlg);
@@ -965,7 +972,6 @@ struct FoundFile
 {
 	wchar_t* rsFound;
 	wchar_t* rsOptionalFull;
-	bool bNeedQuot;
 };
 
 class FoundFiles : public MArray<FoundFile>
@@ -983,7 +989,6 @@ public:
 			SafeFree(f.rsFound);
 			SafeFree(f.rsOptionalFull);
 		}
-		this->eraseall();
 	}
 
 	void Add(const wchar_t* asFound, const wchar_t* asOptionalFull)
@@ -1001,7 +1006,6 @@ public:
 				return;
 		}
 		FoundFile ff = {lstrdup(asFound), (asOptionalFull && *asOptionalFull) ? lstrdup(asOptionalFull) : NULL};
-		ff.bNeedQuot = IsQuotationNeeded(ff.rsOptionalFull ? ff.rsOptionalFull : ff.rsFound);
 		this->push_back(ff);
 	}
 };
@@ -1141,7 +1145,8 @@ static size_t FindOnDrives(LPCWSTR asFirstDrive, LPCWSTR asSearchPath, FoundFile
 		// Search in [HKCU|HKLM]\Software\Microsoft\Windows\CurrentVersion\App Paths
 		else if (SearchAppPaths(asSearchPath, rsFound, false/*abSetPath*/))
 		{
-			foundFiles.Add(rsFound, NULL);
+			// If app exists in "App Paths" we don't need to store its full path
+			foundFiles.Add(asSearchPath, rsFound);
 			bFound = true;
 		}
 		goto wrap;
@@ -1321,7 +1326,8 @@ public:
 		DWORD dwSubsystem, dwBits;
 		FarVersion FarVer; // ConvertVersionToFarVersion
 		int  iStep;
-		bool bNeedQuot;
+		bool bForceQuot;
+		bool isNeedQuot() const { return bForceQuot || IsQuotationNeeded(szFullPath); };
 		bool bPrimary; // Do not rename this task while unifying
 		void Free()
 		{
@@ -1338,7 +1344,7 @@ public:
 
 protected:
 	// This will load App version and check if it was already added
-	virtual INT_PTR AddAppPath(LPCWSTR asName, LPCWSTR szPath, LPCWSTR pszOptFull, bool bNeedQuot,
+	virtual INT_PTR AddAppPath(LPCWSTR asName, LPCWSTR szPath, LPCWSTR pszOptFull, bool bForceQuot,
 		LPCWSTR asArgs = NULL, LPCWSTR asPrefix = NULL, LPCWSTR asGuiArg = NULL)
 	{
 		INT_PTR iAdded = -1;
@@ -1361,20 +1367,27 @@ protected:
 			for (INT_PTR a = 0; a < Installed.size(); a++)
 			{
 				AppInfo& ai = Installed[a];
+				bool path_match = false;
 				if (lstrcmpi(ai.szFullPath, szPath) == 0)
 				{
-					bAlready = true; break; // Do not add twice same path
+					path_match = true;
 				}
 				else if (pszOptFull && (lstrcmpi(ai.szFullPath, pszOptFull) == 0))
 				{
 					// Store path with environment variables (unexpanded) or without path at all (just "Far.exe" for example)
 					SafeFree(ai.szFullPath);
 					ai.szFullPath = lstrdup(szPath);
-					bAlready = true; break; // Do not add twice same path
+					path_match = true;
 				}
 				else if (pszOptFull && ai.szExpanded && (lstrcmpi(ai.szExpanded, pszOptFull) == 0))
 				{
-					bAlready = true; break; // Do not add twice same path
+					path_match = true;
+				}
+				// Do not add twice same path + args
+				if (path_match
+						&& (lstrcmp(ai.szArgs ? ai.szArgs : L"", asArgs ? asArgs : L"") == 0))
+				{
+					bAlready = true; break;
 				}
 			}
 			// New instance, add it
@@ -1384,7 +1397,7 @@ protected:
 				lstrcpyn(FI.szTaskBaseName, asName, countof(FI.szTaskBaseName));
 				FI.szFullPath = lstrdup(szPath);
 				FI.szExpanded = pszOptFull ? lstrdup(pszOptFull) : ExpandEnvStr(szPath);
-				FI.bNeedQuot = bNeedQuot;
+				FI.bForceQuot = bForceQuot;
 				FI.szArgs = asArgs ? lstrdup(asArgs) : NULL;
 				FI.szPrefix = asPrefix ? lstrdup(asPrefix) : NULL;
 				FI.szGuiArg = asGuiArg ? lstrdup(asGuiArg) : NULL;
@@ -1423,6 +1436,7 @@ protected:
 	}
 
 public:
+	// asPrefix - some prefix before the command line, e.g. "set \"PATH=%ConEmuBaseDirShort%\\wsl;%PATH%\" & "
 	bool Add(LPCWSTR asName, LPCWSTR asArgs, LPCWSTR asPrefix, LPCWSTR asGuiArg, LPCWSTR asExePath, ...)
 	{
 		bool bCreated = false;
@@ -1454,7 +1468,7 @@ public:
 					pszFound = szUnexpand;
 				}
 
-				if (AddAppPath(asName, pszFound, (szOptFull && *szOptFull) ? szOptFull : szFound, f.bNeedQuot, asArgs, asPrefix, asGuiArg) >= 0)
+				if (AddAppPath(asName, pszFound, (szOptFull && *szOptFull) ? szOptFull : szFound, false, asArgs, asPrefix, asGuiArg) >= 0)
 				{
 					bCreated = true;
 
@@ -1504,18 +1518,18 @@ public:
 		UINT idx = 0;
 
 		struct impl {
-			static int SortRoutine(AppInfo &e1, AppInfo &e2)
+			static bool SortRoutine(const AppInfo& e1, const AppInfo& e2)
 			{
 				// Compare task base name
 				int iNameCmp = lstrcmpi(e1.szTaskBaseName, e2.szTaskBaseName);
 				if (iNameCmp)
-					return (iNameCmp < 0) ? -1 : 1;
+					return (iNameCmp < 0);
 
 				// Primary task - to top
 				if (e1.bPrimary && !e2.bPrimary)
-					return -1;
+					return true;
 				else if (e2.bPrimary && !e1.bPrimary)
-					return 1;
+					return false;
 				#ifdef _DEBUG
 				else if (e1.bPrimary && e2.bPrimary)
 					_ASSERTE(!e1.bPrimary || !e2.bPrimary); // Two primary tasks are not allowed!
@@ -1523,21 +1537,21 @@ public:
 
 				// Compare exe version
 				if (e1.Ver.dwFileVersionMS < e2.Ver.dwFileVersionMS)
-					return 1;
+					return false;
 				if (e1.Ver.dwFileVersionMS > e2.Ver.dwFileVersionMS)
-					return -1;
+					return true;
 				if (e1.Ver.dwFileVersionLS < e2.Ver.dwFileVersionLS)
-					return 1;
+					return false;
 				if (e1.Ver.dwFileVersionLS > e2.Ver.dwFileVersionLS)
-					return -1;
+					return true;
 				// And bitness
 				if (e1.dwBits < e2.dwBits)
-					return 1;
+					return false;
 				if (e1.dwBits > e2.dwBits)
-					return -1;
+					return true;
 
 				// Equal?
-				return 0;
+				return false;
 			};
 		};
 		Installed.sort(impl::SortRoutine);
@@ -1694,7 +1708,7 @@ public:
 			}
 
 			// Spaces in path? (use expanded path)
-			if (ai.bNeedQuot)
+			if (ai.isNeedQuot())
 				szFull = lstrmerge(ai.szPrefix, L"\"", ai.szFullPath, L"\"", pszArgs);
 			else
 				szFull = lstrmerge(ai.szPrefix, ai.szFullPath, pszArgs);
@@ -1846,13 +1860,13 @@ public:
 			LPCWSTR pszPrefix = (Installed.size() > 1) ? szFarPrefix : L"";
 
 			struct impl {
-				static int SortRoutine(AppInfo &e1, AppInfo &e2)
+				static bool SortRoutine(const AppInfo& e1, const AppInfo& e2)
 				{
 					// Primary task - to top
 					if (e1.bPrimary && !e2.bPrimary)
-						return -1;
+						return true;
 					else if (e2.bPrimary && !e1.bPrimary)
-						return 1;
+						return false;
 					#ifdef _DEBUG
 					else if (e1.bPrimary && e2.bPrimary)
 						_ASSERTE(!e1.bPrimary || !e2.bPrimary); // Two primary tasks are not allowed!
@@ -1860,20 +1874,20 @@ public:
 
 					// Compare exe version
 					if (e1.FarVer.dwVer < e2.FarVer.dwVer)
-						return 1;
+						return false;
 					if (e1.FarVer.dwVer > e2.FarVer.dwVer)
-						return -1;
+						return true;
 					if (e1.FarVer.dwBuild < e2.FarVer.dwBuild)
-						return 1;
+						return false;
 					if (e1.FarVer.dwBuild > e2.FarVer.dwBuild)
-						return -1;
+						return true;
 					if (e1.dwBits < e2.dwBits)
-						return 1;
+						return false;
 					if (e1.dwBits > e2.dwBits)
-						return -1;
+						return true;
 
 					// Equal?
-					return 0;
+					return false;
 				};
 			};
 			Installed.sort(impl::SortRoutine);
@@ -2142,6 +2156,7 @@ static void CreateVCTask(AppFoundList& App, LPCWSTR pszPlatform, LPCWSTR pszVer,
 		LPCWSTR pszIconSfx;
 		switch (iVer)
 		{
+		case 16: pszIconSfx = L",43\""; break;
 		case 15: pszIconSfx = L",38\""; break;
 		case 14: pszIconSfx = L",33\""; break;
 		case 12: pszIconSfx = L",28\""; break;
@@ -2287,12 +2302,17 @@ static void CreateCmdTask()
 // powershell.exe
 static void CreatePowerShellTask()
 {
+	AppFoundList App;
 	// Windows internal: PowerShell
 	// Don't use 'App.Add' here, we are creating "powershell.exe" tasks directly
-	CreateDefaultTask(L"Shells::PowerShell", L"",
-		L"powershell.exe");
-	CreateDefaultTask(L"Shells::PowerShell (Admin)", L"",
-		L"powershell.exe -new_console:a");
+	App.Add(L"Shells::PowerShell", NULL, NULL, NULL, L"powershell.exe", NULL);
+	App.Add(L"Shells::PowerShell (Admin)", L" -new_console:a", NULL, NULL, L"powershell.exe", NULL);
+
+	App.Add(L"Shells::PowerShell Core", NULL, NULL, NULL, L"pwsh.exe", NULL);
+	App.Add(L"Shells::PowerShell Core (Admin)", L" -new_console:a", NULL, NULL, L"pwsh.exe", NULL);
+
+	// #DefaultTasks pwsh.exe
+	App.Commit();
 }
 
 static void CreatePuttyTask()
@@ -2598,6 +2618,9 @@ static void CreateDockerTask()
 // *Create new* or *add absent* default tasks
 void CreateDefaultTasks(SettingsLoadedFlags slfFlags)
 {
+	LogString(L"CreateDefaultTasks:: started");
+	DEBUGSTRTASKS(L"CreateDefaultTasks:: started");
+
 	iCreatIdx = 0;
 
 	sAppendMode = slfFlags;
@@ -2609,6 +2632,8 @@ void CreateDefaultTasks(SettingsLoadedFlags slfFlags)
 		if (pExist != NULL)
 		{
 			// At least one task was already created
+			LogString(L"CreateDefaultTasks:: tasks exist");
+			DEBUGSTRTASKS(L"CreateDefaultTasks:: tasks exist");
 			return;
 		}
 	}
@@ -2695,6 +2720,9 @@ void CreateDefaultTasks(SettingsLoadedFlags slfFlags)
 	{
 		FindStartupTask(slfFlags);
 	}
+
+	LogString(L"CreateDefaultTasks:: finished");
+	DEBUGSTRTASKS(L"CreateDefaultTasks:: finished");
 }
 
 }; // namespace FastConfig

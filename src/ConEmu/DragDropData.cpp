@@ -31,9 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 
 #include "Header.h"
-#pragma warning(disable: 4091)
-#include <shlobj.h>
-#pragma warning(default: 4091)
+#include "../common/shlobj.h"
 #if defined(__GNUC__) && !defined(__MINGW64_VERSION_MAJOR)
 #include "ShObjIdl_Part.h"
 #endif
@@ -949,7 +947,7 @@ void CDragDropData::EnumDragFormats(IDataObject * pDataObject, HANDLE hDumpFile 
 	memset(stg, 0, sizeof(stg));
 	memset(psz, 0, sizeof(psz));
 	memset(pszData, 0, sizeof(pszData));
-	if (!szNames.alloc(nCnt))
+	if (!szNames.resize(nCnt))
 		return;
 
 	if (hDumpFile) WriteFile(hDumpFile, "\xFF\xFE", 2, &nWritten, NULL);
