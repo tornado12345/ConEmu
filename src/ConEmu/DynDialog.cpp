@@ -48,32 +48,8 @@ wchar_t CDynDialog::ScrollBar[] = L"ScrollBar";
 wchar_t CDynDialog::ComboBox[] = L"ComboBox";
 wchar_t CDynDialog::Unknown[] = L"Unknown";
 
-CDynDialog* CDynDialog::mp_Creating = NULL;
-MMap<HWND,CDynDialog*>* CDynDialog::mp_DlgMap = NULL;
-
-#ifdef _DEBUG
-void CDynDialog::UnitTests()
-{
-	UINT nDlgID[] = {
-		IDD_SETTINGS, IDD_SPG_FONTS,
-		IDD_SPG_COLORS, IDD_SPG_INFO, IDD_SPG_FEATURES, IDD_SPG_DEBUG, IDD_SPG_FEATURE_FAR, IDD_SPG_TASKS,
-		IDD_SPG_APPDISTINCT, IDD_SPG_COMSPEC, IDD_SPG_STARTUP, IDD_SPG_STATUSBAR, IDD_SPG_APPDISTINCT2, IDD_SPG_CURSOR,
-		IDD_SPG_INTEGRATION, IDD_SPG_TRANSPARENT, IDD_SPG_SIZEPOS, IDD_SPG_MARKCOPY, IDD_SPG_TABS, IDD_SPG_VIEWS,
-		IDD_SPG_KEYS, IDD_SPG_UPDATE, IDD_SPG_APPEAR, IDD_SPG_TASKBAR, IDD_SPG_DEFTERM, IDD_SPG_FARMACRO,
-		IDD_SPG_KEYBOARD, IDD_SPG_MOUSE,
-		IDD_SPG_HIGHLIGHT, IDD_SPG_PASTE, IDD_SPG_CONFIRM, IDD_SPG_HISTORY, IDD_SPG_BACKGR,
-		IDD_MORE_CONFONT, IDD_MORE_DOSBOX, IDD_ATTACHDLG, IDD_FAST_CONFIG, IDD_FIND, IDD_ABOUT,
-		IDD_RENAMETAB, IDD_CMDPROMPT, IDD_HELP, IDD_ACTION, IDD_HOTKEY,
-		0
-	};
-
-	for (int i = 0; nDlgID[i]; i++)
-	{
-		CDynDialog dlg(nDlgID[i]);
-		dlg.LoadTemplate();
-	}
-}
-#endif
+CDynDialog* CDynDialog::mp_Creating = nullptr;
+MMap<HWND,CDynDialog*>* CDynDialog::mp_DlgMap = nullptr;
 
 CDynDialog* CDynDialog::ShowDialog(UINT nDlgId, HWND hWndParent, DLGPROC lpDialogFunc, LPARAM dwInitParam)
 {
@@ -81,7 +57,7 @@ CDynDialog* CDynDialog::ShowDialog(UINT nDlgId, HWND hWndParent, DLGPROC lpDialo
 	if (!pDlg->LoadTemplate())
 	{
 		SafeDelete(pDlg);
-		return NULL;
+		return nullptr;
 	}
 
 	// Correct font size?
@@ -90,7 +66,7 @@ CDynDialog* CDynDialog::ShowDialog(UINT nDlgId, HWND hWndParent, DLGPROC lpDialo
 	// Create modeless dialog
 	pDlg->PrepareDlg(lpDialogFunc);
 	pDlg->mh_Dlg = CreateDialogIndirectParam(g_hInstance, (LPCDLGTEMPLATEW)pDlg->mlp_Template, hWndParent, DynDialogBox, dwInitParam);
-	_ASSERTE(mp_Creating == NULL);
+	_ASSERTE(mp_Creating == nullptr);
 	if (!pDlg->mh_Dlg)
 	{
 		DisplayLastError(L"CreateDialogIndirectParam failed");
@@ -115,7 +91,7 @@ INT_PTR CDynDialog::ExecuteDialog(UINT nDlgId, HWND hWndParent, DLGPROC lpDialog
 	// Create modal dialog
 	pDlg->PrepareDlg(lpDialogFunc);
 	INT_PTR iRc = DialogBoxIndirectParam(g_hInstance, (LPCDLGTEMPLATEW)pDlg->mlp_Template, hWndParent, DynDialogBox, dwInitParam);
-	_ASSERTE(mp_Creating == NULL);
+	_ASSERTE(mp_Creating == nullptr);
 	if (iRc == 0 || iRc == -1)
 	{
 		DisplayLastError(L"DialogBoxIndirectParam failed");
@@ -126,14 +102,14 @@ INT_PTR CDynDialog::ExecuteDialog(UINT nDlgId, HWND hWndParent, DLGPROC lpDialog
 }
 
 CDynDialog::CDynDialog(UINT nDlgId)
-	: mh_Dlg(NULL)
+	: mh_Dlg(nullptr)
 	, mn_DlgId(nDlgId)
-	, mp_DlgProc(NULL)
-	, mlp_Template(NULL)
-	, mp_pointsize(NULL)
-	, mpsz_TypeFace(NULL)
+	, mp_DlgProc(nullptr)
+	, mlp_Template(nullptr)
+	, mp_pointsize(nullptr)
+	, mpsz_TypeFace(nullptr)
 	, mn_TemplateLength(0)
-	, mpsz_Title(NULL)
+	, mpsz_Title(nullptr)
 {
 }
 
@@ -144,10 +120,10 @@ CDynDialog::~CDynDialog()
 	if (mp_DlgMap && mh_Dlg)
 	{
 		mp_DlgMap->Del(mh_Dlg);
-		if (!mp_DlgMap->GetNext(NULL, NULL, NULL))
+		if (!mp_DlgMap->GetNext(nullptr, nullptr, nullptr))
 		{
 			MMap<HWND,CDynDialog*>* p = mp_DlgMap;
-			mp_DlgMap = NULL;
+			mp_DlgMap = nullptr;
 			delete p;
 		}
 	}
@@ -166,7 +142,7 @@ void CDynDialog::PrepareDlg(DLGPROC lpDialogFunc)
 
 CDynDialog* CDynDialog::GetDlgClass(HWND hwndDlg)
 {
-	CDynDialog* pDlg = NULL;
+	CDynDialog* pDlg = nullptr;
 	if (mp_DlgMap)
 		mp_DlgMap->Get(hwndDlg, &pDlg);
 	return pDlg;
@@ -175,16 +151,16 @@ CDynDialog* CDynDialog::GetDlgClass(HWND hwndDlg)
 INT_PTR /*CALLBACK*/ CDynDialog::DynDialogBox(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	INT_PTR iRc = 0;
-	CDynDialog* pDlg = NULL;
+	CDynDialog* pDlg = nullptr;
 
 	if (uMsg == WM_INITDIALOG)
 	{
 		pDlg = mp_Creating;
 		if (mp_DlgMap)
 			mp_DlgMap->Set(hwndDlg, pDlg);
-		_ASSERTE(pDlg->mh_Dlg == NULL || pDlg->mh_Dlg == hwndDlg);
+		_ASSERTE(pDlg->mh_Dlg == nullptr || pDlg->mh_Dlg == hwndDlg);
 		pDlg->mh_Dlg = hwndDlg;
-		mp_Creating = NULL;
+		mp_Creating = nullptr;
 	}
 	else
 	{
@@ -202,10 +178,10 @@ INT_PTR /*CALLBACK*/ CDynDialog::DynDialogBox(HWND hwndDlg, UINT uMsg, WPARAM wP
 		{
 			mp_DlgMap->Del(hwndDlg);
 			/*
-			if (!mp_DlgMap->GetNext(NULL, NULL, NULL))
+			if (!mp_DlgMap->GetNext(nullptr, nullptr, nullptr))
 			{
 				delete mp_DlgMap;
-				mp_DlgMap = NULL;
+				mp_DlgMap = nullptr;
 			}
 			*/
 		}
@@ -582,11 +558,11 @@ bool CDynDialog::DrawButton(WPARAM wID, DRAWITEMSTRUCT* pDraw)
 	if (!pDraw || (pDraw->CtlType != ODT_BUTTON))
 		return false;
 
-	CDynDialog* pDlg = NULL;
+	CDynDialog* pDlg = nullptr;
 	if (!mp_DlgMap || !mp_DlgMap->Get(GetParent(pDraw->hwndItem), &pDlg))
 		return false;
 
-	ItemInfo* p = NULL;
+	ItemInfo* p = nullptr;
 	for (INT_PTR i = pDlg->m_Items.size()-1; i >= 0; i--)
 	{
 		p = &(pDlg->m_Items[i]);
@@ -647,7 +623,7 @@ bool CDynDialog::DrawButton(ItemInfo* pItem, DRAWITEMSTRUCT* pDraw)
 void CDynDialog::LocalizeDialog(HWND hDlg, UINT nTitleRsrcId /*= 0*/)
 {
 	#if defined(_DEBUG)
-	static HWND hLastDlg = NULL;
+	static HWND hLastDlg = nullptr;
 	if (hLastDlg != hDlg || hDlg == FastConfig::ghFastCfg)
 		hLastDlg = hDlg;
 	else
@@ -676,8 +652,8 @@ BOOL CDynDialog::LocalizeControl(HWND hChild, LPARAM lParam)
 	if (!CLngRc::isLocalized())
 		return TRUE;
 
-	_ASSERTE(lParam!=NULL);
-	_ASSERTE(IsWindow((HWND)lParam));
+	_ASSERTE(lParam != 0);
+	_ASSERTE(IsWindow(reinterpret_cast<HWND>(lParam)));
 
 	// Only first level
 	HWND hParent = GetParent(hChild);

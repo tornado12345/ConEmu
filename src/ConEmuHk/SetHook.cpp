@@ -52,6 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Ansi.h"
 #include "DefTermHk.h"
 #include "GuiAttach.h"
+#include "hkCmdExe.h"
 #include "hkConsole.h"
 #include "hkDialog.h"
 #include "hkKernel.h"
@@ -830,7 +831,9 @@ bool StartupHooks()
 
 	#ifdef _DEBUG
 	// Консольное окно уже должно быть инициализировано в DllMain
-	_ASSERTE(gbAttachGuiClient || gbDosBoxProcess || gbPrepareDefaultTerminal || (ghConWnd != NULL && ghConWnd == GetRealConsoleWindow()));
+	// real console window handle should be already initialized in DllMain
+	HWND hRealConsole = GetRealConsoleWindow();
+	_ASSERTE(gbAttachGuiClient || gbDosBoxProcess || gbPrepareDefaultTerminal || (hRealConsole == NULL) || (ghConWnd != NULL && ghConWnd == hRealConsole));
 	wchar_t sClass[128];
 	if (ghConWnd)
 	{
@@ -2019,7 +2022,8 @@ void LogModuleLoaded(LPCWSTR pwszModule, HMODULE hModule)
 	// For cmd.exe
 	if (gbIsCmdProcess || gbIsPowerShellProcess)
 	{
-		if (lstrcmpi(PointToName(pwszModule), WIN3264TEST(L"clink_dll_x86.dll", L"clink_dll_x64.dll")) == 0)
+		if (lstrcmpi(PointToName(pwszModule), CLINK_DLL_NAME_v1) == 0
+			|| lstrcmpi(PointToName(pwszModule), CLINK_DLL_NAME_v0) == 0)
 			gnExeFlags |= caf_Clink;
 	}
 

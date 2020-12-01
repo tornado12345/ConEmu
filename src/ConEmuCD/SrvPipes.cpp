@@ -26,7 +26,10 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "ConsoleMain.h"
 #include "ConEmuSrv.h"
+#include "InputLogger.h"
+#include "SrvCommands.h"
 #include "Queue.h"
 
 #define DEBUGSTRINPUTPIPE(s) //DEBUGSTR(s) // ConEmuC: Received key... / ConEmuC: Received input
@@ -239,93 +242,6 @@ BOOL WINAPI CmdServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ* &ppR
 	}
 
 	return lbRc;
-
-	//CESERVER_REQ in= {{0}}, *pIn=NULL, *pOut=NULL;
-	//DWORD cbBytesRead, cbWritten, dwErr = 0;
-	//BOOL fSuccess;
-	//HANDLE hPipe;
-	//// The thread's parameter is a handle to a pipe instance.
-	//hPipe = (HANDLE) lpvParam;
-	//MCHKHEAP;
-	//// Read client requests from the pipe.
-	//memset(&in, 0, sizeof(in));
-	//fSuccess = ReadFile(
-	//	hPipe,        // handle to pipe
-	//	&in,          // buffer to receive data
-	//	sizeof(in),   // size of buffer
-	//	&cbBytesRead, // number of bytes read
-	//	NULL);        // not overlapped I/O
-
-	//if ((!fSuccess && ((dwErr = GetLastError()) != ERROR_MORE_DATA)) ||
-	//	cbBytesRead < sizeof(CESERVER_REQ_HDR) || in.hdr.cbSize < sizeof(CESERVER_REQ_HDR))
-	//{
-	//	goto wrap;
-	//}
-
-	//if (in.hdr.cbSize > cbBytesRead)
-	//{
-	//	DWORD cbNextRead = 0;
-	//	// Тут именно calloc, а не ExecuteNewCmd, т.к. данные пришли снаружи, а не заполняются здесь
-	//	pIn = (CESERVER_REQ*)calloc(in.hdr.cbSize, 1);
-
-	//	if (!pIn)
-	//		goto wrap;
-
-	//	memmove(pIn, &in, cbBytesRead); // стояло ошибочное присвоение
-	//	fSuccess = ReadFile(
-	//		hPipe,        // handle to pipe
-	//		((LPBYTE)pIn)+cbBytesRead,  // buffer to receive data
-	//		in.hdr.cbSize - cbBytesRead,   // size of buffer
-	//		&cbNextRead, // number of bytes read
-	//		NULL);        // not overlapped I/O
-
-	//	if (fSuccess)
-	//		cbBytesRead += cbNextRead;
-	//}
-
-	//	if (!ProcessSrvCommand(pIn ? *pIn : in, &pOut) || pOut==NULL)
-	//	{
-	//		// Если результата нет - все равно что-нибудь запишем, иначе TransactNamedPipe может виснуть?
-	//		CESERVER_REQ_HDR Out;
-	//		ExecutePrepareCmd(&Out, in.hdr.nCmd, sizeof(Out));
-	//		fSuccess = WriteFile(
-	//			hPipe,        // handle to pipe
-	//			&Out,         // buffer to write from
-	//			Out.cbSize,    // number of bytes to write
-	//			&cbWritten,   // number of bytes written
-	//			NULL);        // not overlapped I/O
-	//	}
-	//	else
-	//	{
-	//		MCHKHEAP;
-	//		// Write the reply to the pipe.
-	//		fSuccess = WriteFile(
-	//			hPipe,        // handle to pipe
-	//			pOut,         // buffer to write from
-	//			pOut->hdr.cbSize,  // number of bytes to write
-	//			&cbWritten,   // number of bytes written
-	//			NULL);        // not overlapped I/O
-	//
-	//		// освободить память
-	//		if ((LPVOID)pOut != (LPVOID)gpStoredOutput)  // Если это НЕ сохраненный вывод
-	//			ExecuteFreeResult(pOut);
-	//	}
-	//
-	//	if (pIn)    // не освобождалась, хотя, таких длинных команд наверное не было
-	//	{
-	//		free(pIn); pIn = NULL;
-	//	}
-	//
-	//	MCHKHEAP;
-	//	//if (!fSuccess || pOut->hdr.cbSize != cbWritten) break;
-	//	// Flush the pipe to allow the client to read the pipe's contents
-	//	// before disconnecting. Then disconnect the pipe, and close the
-	//	// handle to this pipe instance.
-	//wrap: // Flush и Disconnect делать всегда
-	//	FlushFileBuffers(hPipe);
-	//	DisconnectNamedPipe(hPipe);
-	//	SafeCloseHandle(hPipe);
-	//	return 1;
 }
 
 void WINAPI CmdServerFree(CESERVER_REQ* pReply, LPARAM lParam)
@@ -369,19 +285,28 @@ BOOL WINAPI DataServerCommand(LPVOID pInst, CESERVER_REQ* pIn, CESERVER_REQ* &pp
 		gpSrv->pConsole->bDataChanged = FALSE;
 
 		SMALL_RECT rc = gpSrv->pConsole->ConState.sbi.srWindow;
-		int iWidth = rc.Right - rc.Left + 1;
-		int iHeight = rc.Bottom - rc.Top + 1;
+		const int iWidth = rc.Right - rc.Left + 1;
+		const int iHeight = rc.Bottom - rc.Top + 1;
+		if (iWidth < 0 || iHeight < 0)
+		{
+			_ASSERTE(iWidth >= 0 && iHeight >= 0);
+			return FALSE;
+		}
 		DWORD ccCells = iWidth * iHeight;
 
-		// Такого быть не должно, ReadConsoleData корректирует возможный размер
-		if (ccCells > (size_t)(gpSrv->pConsole->ConState.crMaxSize.X * gpSrv->pConsole->ConState.crMaxSize.Y))
+		const auto& crMaxSize = gpSrv->pConsole->ConState.crMaxSize;
+		_ASSERTE(crMaxSize.X > 0 && crMaxSize.Y > 0);
+		// We should fit, ReadConsoleData corrects possible size. But check.
+		const DWORD ccMaxSizeCells = static_cast<uint32_t>(static_cast<uint16_t>(crMaxSize.X))
+			* static_cast<uint32_t>(static_cast<uint16_t>(crMaxSize.Y));
+		if (ccCells > ccMaxSizeCells)
 		{
-			_ASSERTE(ccCells <= (size_t)(gpSrv->pConsole->ConState.crMaxSize.X * gpSrv->pConsole->ConState.crMaxSize.Y));
-			ccCells = (gpSrv->pConsole->ConState.crMaxSize.X * gpSrv->pConsole->ConState.crMaxSize.Y);
+			_ASSERTE(ccCells <= ccMaxSizeCells);
+			ccCells = ccMaxSizeCells;
 		}
 
 		gpSrv->pConsole->ConState.nDataCount = ccCells;
-		size_t cbDataSize = sizeof(gpSrv->pConsole->ConState) + ccCells * sizeof(CHAR_INFO);
+		const size_t cbDataSize = sizeof(gpSrv->pConsole->ConState) + ccCells * sizeof(CHAR_INFO);
 		pcbReplySize = sizeof(CESERVER_REQ_HDR) + cbDataSize;
 		if (ExecuteNewCmd(ppReply, pcbMaxReplySize, pIn->hdr.nCmd, pcbReplySize))
 		{

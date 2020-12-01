@@ -68,7 +68,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../ConEmuHk/ConEmuHooks.h"
 #include "../ConEmu/version.h"
 
-#include <TlHelp32.h>
 
 extern MOUSE_EVENT_RECORD gLastMouseReadEvent;
 extern LONG gnDummyMouseEventFromMacro;
@@ -1595,11 +1594,7 @@ bool CPluginBase::Attach2Gui(bool bLeaveOpened /*= false*/)
 	{
 		wchar_t szHookLib[MAX_PATH+16];
 		wcscpy_c(szHookLib, szConEmuBase);
-		#ifdef _WIN64
-			wcscat_c(szHookLib, L"\\ConEmuHk64.dll");
-		#else
-			wcscat_c(szHookLib, L"\\ConEmuHk.dll");
-		#endif
+		wcscat_c(szHookLib, L"\\" ConEmuHk_DLL_3264);
 		ghHooksModule = LoadLibrary(szHookLib);
 		if (ghHooksModule)
 		{
@@ -2741,7 +2736,7 @@ void CPluginBase::EmergencyShow()
 		return;
 
 	// If there is a ConEmuCD - just skip 'Plugin version'
-	HMODULE hSrv = GetModuleHandle(WIN3264TEST(L"ConEmuCD.dll",L"ConEmuCD64.dll"));
+	HMODULE hSrv = GetModuleHandle(ConEmuCD_DLL_3264);
 	if (hSrv)
 		return;
 
@@ -4615,7 +4610,7 @@ void CPluginBase::OnConsolePeekReadInput(bool abPeek)
 	if (nCurTID != nCurMainTID)
 	{
 		HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, nCurMainTID);
-		if (hThread) SuspendThread(hThread);
+		if (hThread) SuspendThread(hThread);  // -V720
 		_ASSERTE(nCurTID == nCurMainTID);
 		if (hThread) { ResumeThread(hThread); CloseHandle(hThread); }
 	}
@@ -5310,7 +5305,7 @@ BOOL /*WINAPI*/ CPluginBase::OnConsoleDetaching(HookCallbackArg* pArgs)
 {
 	if (ghMonitorThread)
 	{
-		SuspendThread(ghMonitorThread);
+		SuspendThread(ghMonitorThread);  // -V720
 		// ResumeThread выполняется в конце OnConsoleWasAttached
 	}
 

@@ -29,13 +29,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 
 #ifdef _DEBUG
-//  Раскомментировать, чтобы сразу после загрузки модуля показать MessageBox, чтобы прицепиться дебаггером
+//  Uncomment to show MsgBox on startup to let us attach a debugger
 //	#define SHOW_STARTED_MSGBOX
 //	#define SHOW_INJECT_MSGBOX
-	#define SHOW_EXE_MSGBOX // показать сообщение при загрузке в определенный exe-шник (SHOW_EXE_MSGBOX_NAME)
-	#define SHOW_EXE_MSGBOX_NAME L"xxx.exe"
+	#define SHOW_EXE_MSGBOX // show a MsgBox when we are loaded into known exe-process (SHOW_EXE_MSGBOX_NAME)
+	#define SHOW_EXE_MSGBOX_NAME L"|xxx.exe|yyy.exe|"
 //	#define SLEEP_EXE_UNTIL_DEBUGGER
 //	#define SHOW_EXE_TIMINGS
+//	#define PRINT_EXE_TIMINGS
 //	#define SHOW_FIRST_ANSI_CALL
 #else
 	#undef SLEEP_EXE_UNTIL_DEBUGGER
@@ -59,7 +60,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "../common/defines.h"
-#include <Tlhelp32.h>
 
 #ifndef TESTLINK
 #include "../common/Common.h"
@@ -87,6 +87,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/CmdLine.h"
 #include "../common/ConsoleAnnotation.h"
 #include "../common/HkFunc.h"
+#include "../common/MModule.h"
 #include "../common/MStrDup.h"
 #include "../common/RConStartArgs.h"
 #include "../common/WConsole.h"
@@ -104,8 +105,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "hkCmdExe.h"
 #include "hkConsoleInput.h"
-#include "hkConsoleOutput.h"
 #include "hkEnvironment.h"
+#include "../ConEmuCD/ExportedFunctions.h"
 
 
 // Visual Studio 2015 Universal CRT
@@ -126,15 +127,19 @@ DWORD gnLastShowExeTick = 0;
 
 void force_print_timings(LPCWSTR s, HANDLE hTimingHandle, wchar_t (&szTimingMsg)[512])
 {
-	DWORD nCurTick = GetTickCount();
+	const DWORD nCurTick = GetTickCount();
 
 	#ifdef SHOW_EXE_TIMINGS
-	msprintf(szTimingMsg, countof(szTimingMsg), L">>> %s PID=%u >>> %u >>> %s\n", SHOW_EXE_MSGBOX_NAME, GetCurrentProcessId(), gnLastShowExeTick?(nCurTick - gnLastShowExeTick):0, s);
+	msprintf(szTimingMsg, countof(szTimingMsg), L">>> %s PID=%u >>> %u >>> %s\n", gsExeName, GetCurrentProcessId(), gnLastShowExeTick?(nCurTick - gnLastShowExeTick):0, s);
 	#else
 	msprintf(szTimingMsg, countof(szTimingMsg), L">>> PID=%u >>> %u >>> %s\n", GetCurrentProcessId(), (nCurTick - gnLastShowExeTick), s);
 	#endif
 
+	#ifdef PRINT_EXE_TIMINGS
 	WriteProcessed3(szTimingMsg, lstrlen(szTimingMsg), NULL, hTimingHandle);
+	#else
+	OutputDebugString(szTimingMsg);
+	#endif
 
 	gnLastShowExeTick = nCurTick;
 }
@@ -164,6 +169,7 @@ extern "C" {
 //HWND  ghKeyHookConEmuRoot = NULL;
 
 extern HMODULE ghOurModule;
+wchar_t gsConEmuBaseDir[MAX_PATH + 1] = L"";
 //HMODULE ghOurModule = NULL; // ConEmu.dll - сам плагин
 //UINT gnMsgActivateCon = 0; //RegisterWindowMessage(CONEMUMSG_LLKEYHOOK);
 //SECURITY_ATTRIBUTES* gpLocalSecurity = NULL;
@@ -185,8 +191,6 @@ struct CpConv gCpConv = {};
 
 #define isPressed(inp) ((GetKeyState(inp) & 0x8000) == 0x8000)
 
-extern HANDLE ghHeap;
-//extern HMODULE ghKernel32, ghUser32, ghShell32, ghAdvapi32;
 extern HMODULE ghUser32;
 //extern const wchar_t *kernel32;// = L"kernel32.dll";
 extern const wchar_t *user32  ;// = L"user32.dll";
@@ -230,7 +234,6 @@ HWND    ghConWnd = NULL; // Console window
 HWND    ghConEmuWnd = NULL; // Root! window
 HWND    ghConEmuWndDC = NULL; // ConEmu DC window
 HWND    ghConEmuWndBack = NULL; // ConEmu Back window - holder for GUI client
-void    SetConEmuHkWindows(HWND hDcWnd, HWND hBackWnd);
 BOOL    gbWasBufferHeight = FALSE;
 BOOL    gbNonGuiMode = FALSE;
 DWORD   gnImageSubsystem = 0;
@@ -248,7 +251,7 @@ ConEmuInOutPipe *gpCEIO_In = NULL, *gpCEIO_Out = NULL, *gpCEIO_Err = NULL;
 void StartPTY();
 void StopPTY();
 
-HMODULE ghSrvDll = NULL;
+MModule ghSrvDll{};
 //typedef int (__stdcall* RequestLocalServer_t)(AnnotationHeader** ppAnnotation, HANDLE* ppOutBuffer);
 RequestLocalServer_t gfRequestLocalServer = NULL;
 TODO("AnnotationHeader* gpAnnotationHeader");
@@ -364,37 +367,20 @@ void ShutdownStep(LPCWSTR asInfo, int nParm1 = 0, int nParm2 = 0, int nParm3 = 0
 
 
 
-void ShowStartedMsgBox(LPCWSTR asLabel, LPCWSTR pszName = NULL)
+void ShowStartedMsgBox(LPCWSTR asLabel)
 {
-	wchar_t szMsg[MAX_PATH];
-	STARTUPINFO si = {sizeof(si)};
-	GetStartupInfo(&si);
-	LPCWSTR pszCmd = GetCommandLineW();
+	wchar_t szTitle[64];
+	msprintf(szTitle, countof(szTitle),
+		L"ConEmuHk, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
+
+	wchar_t szStartupInfo[128];
+	msprintf(szStartupInfo, countof(szStartupInfo), L"hIn=%04X state=%i hOut=%04X state=%i",
+		LODWORD(gpStartEnv->hIn.hStd), gpStartEnv->hIn.nMode, LODWORD(gpStartEnv->hOut.hStd), gpStartEnv->hOut.nMode);
+
+	CEStr message(gsExeName, asLabel, L"\n", szStartupInfo, L"\nCmdLine: ", gpStartEnv->pszCmdLine);
+
 	// GuiMessageBox is not accepted here, ConEmu is not initialized yet, use MessageBoxW instead
-	if (!pszName || !*pszName)
-	{
-		if (!GetModuleFileName(NULL, szMsg, countof(szMsg)))
-		{
-			wcscpy_c(szMsg, L"GetModuleFileName failed");
-		}
-		else
-		{
-			// Show name only
-			pszName = PointToName(szMsg);
-			if (pszName != szMsg)
-				wmemmove(szMsg, pszName, lstrlen(pszName)+1);
-			szMsg[96] = 0; // trim if longer
-		}
-	}
-	else
-	{
-		lstrcpyn(szMsg, pszName, 96);
-	}
-
-	lstrcat(szMsg, asLabel/*L" loaded!"*/);
-
-	wchar_t szTitle[64]; msprintf(szTitle, countof(szTitle), L"ConEmuHk, PID=%u, TID=%u", GetCurrentProcessId(), GetCurrentThreadId());
-	MessageBoxW(NULL, szMsg, szTitle, MB_SYSTEMMODAL);
+	MessageBoxW(nullptr, message, szTitle, MB_SYSTEMMODAL);
 }
 
 
@@ -529,7 +515,7 @@ wrap:
 	bAnsiLog = ((gpConInfo != NULL) && (gpConInfo->AnsiLog.Enabled && *gpConInfo->AnsiLog.Path));
 	if (bAnsiLog)
 	{
-		CEAnsi::InitAnsiLog(gpConInfo->AnsiLog.Path);
+		CEAnsi::InitAnsiLog(gpConInfo->AnsiLog.Path, gpConInfo->AnsiLog.LogAnsiCodes);
 	}
 	return gpConInfo;
 }
@@ -905,7 +891,7 @@ DWORD WINAPI DllStart(LPVOID /*apParm*/)
 	else if (gnImageSubsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI)
 	{
 		print_timings(L"IMAGE_SUBSYSTEM_WINDOWS_GUI");
-		DWORD dwConEmuHwnd = 0;
+		HWND2 dwConEmuHwnd{};
 		BOOL  bAttachExistingWindow = FALSE;
 		wchar_t szVar[64], *psz;
 		ConEmuGuiMapping* GuiMapping = (ConEmuGuiMapping*)calloc(1,sizeof(*GuiMapping));
@@ -930,13 +916,13 @@ DWORD WINAPI DllStart(LPVOID /*apParm*/)
 			{
 				if (szVar[0] == L'0' && szVar[1] == L'x')
 				{
-					dwConEmuHwnd = wcstoul(szVar+2, &psz, 16);
-					if (!IsWindow((HWND)dwConEmuHwnd))
-						dwConEmuHwnd = 0;
-					else if (!GetClassName((HWND)dwConEmuHwnd, szVar, countof(szVar)))
-						dwConEmuHwnd = 0;
+					dwConEmuHwnd.u = wcstoul(szVar+2, &psz, 16);
+					if (!IsWindow(HWND(dwConEmuHwnd)))
+						dwConEmuHwnd.u = 0;  // NOLINT(bugprone-branch-clone)
+					else if (!GetClassName(HWND(dwConEmuHwnd), szVar, countof(szVar)))
+						dwConEmuHwnd.u = 0;
 					else if (lstrcmp(szVar, VirtualConsoleClassMain) != 0)
-						dwConEmuHwnd = 0;
+						dwConEmuHwnd.u = 0;
 				}
 			}
 
@@ -959,7 +945,7 @@ DWORD WINAPI DllStart(LPVOID /*apParm*/)
 				pIn->AttachGuiApp.hkl = (DWORD)(LONG)(LONG_PTR)GetKeyboardLayout(0);
 
 				wchar_t szGuiPipeName[128];
-				msprintf(szGuiPipeName, countof(szGuiPipeName), CEGUIPIPENAME, L".", dwConEmuHwnd);
+				msprintf(szGuiPipeName, countof(szGuiPipeName), CEGUIPIPENAME, L".", DWORD(dwConEmuHwnd));
 
 				CESERVER_REQ* pOut = ExecuteCmd(szGuiPipeName, pIn, 10000, NULL);
 
@@ -980,7 +966,7 @@ DWORD WINAPI DllStart(LPVOID /*apParm*/)
 							gnGuiPID = pOut->hdr.nSrcPID;
 							//ghConEmuWnd = (HWND)dwConEmuHwnd;
 							_ASSERTE(ghConEmuWnd==NULL || gnGuiPID!=0);
-							_ASSERTE(pOut->AttachGuiApp.hConEmuWnd==(HWND)dwConEmuHwnd);
+							_ASSERTE(pOut->AttachGuiApp.hConEmuWnd == HWND(dwConEmuHwnd));
 							ghConEmuWnd = pOut->AttachGuiApp.hConEmuWnd;
 							SetConEmuHkWindows(pOut->AttachGuiApp.hConEmuDc, pOut->AttachGuiApp.hConEmuBack);
 							ghConWnd = pOut->AttachGuiApp.hSrvConWnd;
@@ -1039,7 +1025,7 @@ DWORD DllStart_Continue()
 
 	//if (!gbSkipInjects)
 	{
-		//gnRunMode = RM_APPLICATION;
+		//gpStatus->runMode_ = RunMode::RM_APPLICATION;
 
 		#ifdef _DEBUG
 		//wchar_t szModule[MAX_PATH+1]; szModule[0] = 0;
@@ -1152,7 +1138,7 @@ void InitExeFlags()
 		gnExeFlags |= caf_Msys2;
 
 	// Most probably, clink is not loaded yet, but we'll check
-	if (GetModuleHandle(WIN3264TEST(L"clink_dll_x86.dll", L"clink_dll_x64.dll")) != NULL)
+	if (IsClinkLoaded())
 		gnExeFlags |= caf_Clink;
 }
 
@@ -1173,6 +1159,7 @@ void InitExeName()
 		_ASSERTEX(wcschr(pszName,L'.')!=NULL);
 		wcscat_c(gsExeName, L".exe");
 	}
+	CharLowerBuff(gsExeName, lstrlen(gsExeName));
 	pszName = gsExeName;
 
 	InitExeFlags();
@@ -1193,7 +1180,8 @@ void InitExeName()
 	#if defined(SHOW_EXE_TIMINGS) || defined(SHOW_EXE_MSGBOX)
 		wchar_t szTimingMsg[512]; UNREFERENCED_PARAMETER(szTimingMsg[0]);
 		HANDLE hTimingHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (!lstrcmpi(pszName, SHOW_EXE_MSGBOX_NAME))
+		const auto* nameFound = wcsstr(SHOW_EXE_MSGBOX_NAME, gsExeName);
+		if (nameFound && *(nameFound - 1) == L'|' && nameFound[lstrlen(gsExeName)] == L'|')
 		{
 			#ifndef SLEEP_EXE_UNTIL_DEBUGGER
 			gbShowExeMsgBox = smb_HardCoded;
@@ -1209,7 +1197,7 @@ void InitExeName()
 
 	if (gbShowExeMsgBox)
 	{
-		ShowStartedMsgBox(L" loaded!", pszName);
+		ShowStartedMsgBox(L" loaded!");
 	}
 
 	// ConEmuCpCvt=perl.exe:1252:1251;less.exe:850:866;*:1234:866;...
@@ -1384,6 +1372,34 @@ void InitExeName()
 	}
 }
 
+void InitBaseDir()
+{
+	const auto cchMax = static_cast<DWORD>(countof(gsConEmuBaseDir));
+	const DWORD modResult = ghOurModule ? GetModuleFileName(ghOurModule, gsConEmuBaseDir, cchMax) : 0;
+	if (modResult > 0 && modResult < cchMax)
+	{
+		auto* pchName = const_cast<wchar_t*>(PointToName(gsConEmuBaseDir));
+		if (pchName && pchName > gsConEmuBaseDir)
+		{
+			_ASSERTE(*(pchName - 1) == L'\\' || *(pchName - 1) == L'/');
+			*(pchName - 1) = L'\0';
+			return;
+		}
+	}
+
+	_ASSERTE(FALSE && "GetModuleFileName(ghOurModule) failed, getting ConEmuBaseDir from env.var");
+	gsConEmuBaseDir[0] = L'\0';
+	const DWORD envResult = GetEnvironmentVariable(ENV_CONEMUBASEDIR_VAR_W, gsConEmuBaseDir, cchMax);
+	if (envResult > 0 && envResult < cchMax)
+	{
+		_ASSERTE(gsConEmuBaseDir[0] != 0);
+		return; // OK
+	}
+
+	_ASSERTE(FALSE && "GetEnvironmentVariable(ConEmuBaseDir) failed");
+	gsConEmuBaseDir[0] = L'\0';
+}
+
 
 void FlushMouseEvents()
 {
@@ -1500,7 +1516,7 @@ void DoDllStop(bool bFinal, ConEmuHkDllState bFromTerminate)
 	{
 		DLOG1("GuiSetProgress(0,0)",0);
 		gnPowerShellProgressValue = -1;
-		GuiSetProgress(0,0);
+		GuiSetProgress(AnsiProgressStatus::None, 0);
 		DLOGEND1();
 	}
 
@@ -1677,6 +1693,7 @@ void DoDllStop(bool bFinal, ConEmuHkDllState bFromTerminate)
 
 	if (bFinal)
 	{
+		gfnSrvLogString = nullptr;
 		DLOG1("HeapDeinitialize",0);
 		gnDllState |= ds_HeapDeinitialized;
 		HeapDeinitialize();
@@ -1696,6 +1713,8 @@ BOOL DllMain_ProcessAttach(HANDLE hModule, DWORD  ul_reason_for_call)
 
 	ghOurModule = (HMODULE)hModule;
 	ghWorkingModule = hModule;
+
+	InitBaseDir();
 
 	#ifdef USEHOOKLOG
 	QueryPerformanceFrequency(&HookLogger::g_freq);
@@ -1887,10 +1906,6 @@ BOOL DllMain_ProcessAttach(HANDLE hModule, DWORD  ul_reason_for_call)
 	#endif
 	DLOGEND1();
 
-	//_ASSERTE(ghHeap == NULL);
-	//ghHeap = HeapCreate(HEAP_GENERATE_EXCEPTIONS, 200000, 0);
-
-
 	DLOG1_("DllMain.DllStart",ul_reason_for_call);
 	if (DllStart(NULL) != 0)
 	{
@@ -1966,7 +1981,7 @@ BOOL DllMain_ThreadDetach(HANDLE hModule, DWORD  ul_reason_for_call)
 		gnDllState |= ds_DllDeinitializing;
 	}
 
-	if (ghHeap)
+	if (IsHeapInitialized())
 	{
 		gStartedThreads.Del(nTID);
 	}
@@ -2574,7 +2589,7 @@ int DuplicateRoot(CESERVER_REQ_DUPLICATE* Duplicate)
 	_ASSERTEX(GuiMapping->ComSpec.ConEmuBaseDir[0]!=0);
 	lstrcpy(pszCmd+1, GuiMapping->ComSpec.ConEmuBaseDir);
 	pszName = pszCmd + lstrlen(pszCmd);
-	lstrcpy(pszName, WIN3264TEST(L"\\ConEmuC.exe",L"\\ConEmuC64.exe"));
+	lstrcpy(pszName, L"\\" ConEmuC_EXE_3264);
 	bSrvFound = FileExists(pszCmd+1);
 	#ifdef _WIN64
 	if (!bSrvFound)
@@ -2748,7 +2763,7 @@ BOOL WINAPI HookServerCommand(LPVOID pInst, CESERVER_REQ* pCmd, CESERVER_REQ* &p
 			if (GetModuleFileName(ghOurModule, szSrvPathName, MAX_PATH) && ((pszNamePtr = (wchar_t*)PointToName(szSrvPathName)) != NULL))
 			{
 				// Запускаем сервер той же битности, что и текущий процесс
-				_wcscpy_c(pszNamePtr, 16, WIN3264TEST(L"ConEmuC.exe",L"ConEmuC64.exe"));
+				_wcscpy_c(pszNamePtr, 16, ConEmuC_EXE_3264);
 
 				if (gnImageSubsystem==IMAGE_SUBSYSTEM_WINDOWS_GUI)
 				{
@@ -2944,47 +2959,50 @@ int WINAPI RequestLocalServer(/*[IN/OUT]*/RequestLocalServerParm* Parm)
 
 	if (!ghSrvDll || !gfRequestLocalServer)
 	{
-		LPCWSTR pszSrvName = WIN3264TEST(L"ConEmuCD.dll",L"ConEmuCD64.dll");
+		const auto* const pszSrvName = ConEmuCD_DLL_3264;
 
 		if (!ghSrvDll)
 		{
-			gfRequestLocalServer = NULL;
-			ghSrvDll = GetModuleHandle(pszSrvName);
+			gfRequestLocalServer = nullptr;
+			ghSrvDll.SetHandle(GetModuleHandle(pszSrvName));
 		}
 
 		if (!ghSrvDll)
 		{
-			wchar_t *pszSlash, szFile[MAX_PATH+1] = {};
+			wchar_t szFile[MAX_PATH+1] = {};
 
 			GetModuleFileName(ghOurModule, szFile, MAX_PATH);
-			pszSlash = wcsrchr(szFile, L'\\');
+			wchar_t* pszSlash = wcsrchr(szFile, L'\\');
 			if (!pszSlash)
 				goto wrap;
 			pszSlash[1] = 0;
 			wcscat_c(szFile, pszSrvName);
 
-			ghSrvDll = LoadLibrary(szFile);
+			ghSrvDll.Load(szFile);
 			if (!ghSrvDll)
 				goto wrap;
 		}
 
-		gfRequestLocalServer = (RequestLocalServer_t)GetProcAddress(ghSrvDll, "PrivateEntry");
+		ghSrvDll.GetProcAddress(FN_CONEMUCD_REQUEST_LOCAL_SERVER_NAME, gfRequestLocalServer);
 	}
 
 	if (!gfRequestLocalServer)
 		goto wrap;
 
-	_ASSERTE(CheckCallbackPtr(ghSrvDll, 1, (FARPROC*)&gfRequestLocalServer, TRUE));
+	_ASSERTE(CheckCallbackPtr(HMODULE(ghSrvDll), 1, reinterpret_cast<FARPROC*>(&gfRequestLocalServer), TRUE));
 
 	if (Parm->Flags & slsf_RequestTrueColor)
 		gbTrueColorServerRequested = TRUE;
 
 	iRc = gfRequestLocalServer(Parm);
 
-	if  ((iRc == 0) && (Parm->Flags & slsf_PrevAltServerPID))
+	if  (iRc == 0)
 	{
 		// nPrevAltServerPID is DWORD_PTR for struct aligning purposes
-		gnPrevAltServerPID = (DWORD)Parm->nPrevAltServerPID;
+		if (Parm->Flags & slsf_PrevAltServerPID)
+			gnPrevAltServerPID = LODWORD(Parm->nPrevAltServerPID);
+		// Server logging callback
+		gfnSrvLogString = Parm->fSrvLogString;
 	}
 wrap:
 	return iRc;
@@ -2993,17 +3011,17 @@ wrap:
 // When _st_ is 0: remove progress.
 // When _st_ is 1: set progress value to _pr_ (number, 0-100).
 // When _st_ is 2: set error state in progress on Windows 7 taskbar
-void GuiSetProgress(WORD st, WORD pr, LPCWSTR pszName /*= NULL*/)
+void GuiSetProgress(const AnsiProgressStatus st, const WORD pr, LPCWSTR pszName /*= NULL*/)
 {
-	int nLen = pszName ? (lstrlen(pszName) + 1) : 1;
-	CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_SETPROGRESS, sizeof(CESERVER_REQ_HDR)+sizeof(WORD)*(2+nLen));
+	const int nLen = pszName ? (lstrlen(pszName) + 1) : 1;
+	CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_SETPROGRESS, sizeof(CESERVER_REQ_HDR) + sizeof(WORD) * (2 + nLen));
 	if (pIn)
 	{
-		pIn->wData[0] = st;
-		pIn->wData[1] = pr;
+		pIn->wData[0] = static_cast<uint16_t>(st);
+		pIn->wData[1] = pr;  // NOLINT(clang-diagnostic-array-bounds)
 		if (pszName)
 		{
-			lstrcpy((wchar_t*)(pIn->wData+2), pszName);
+			lstrcpy(reinterpret_cast<wchar_t*>(pIn->wData + 2), pszName);
 		}
 
 		CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd);

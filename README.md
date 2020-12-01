@@ -1,4 +1,8 @@
 ## About ConEmu
+
+[![master build status](https://dev.azure.com/MaksimMoisiuk/conemu/_apis/build/status/Maximus5.ConEmu?branchName=master&label=master)](https://dev.azure.com/MaksimMoisiuk/conemu/_build/latest?definitionId=1&branchName=master&label=master)
+[![daily build status](https://dev.azure.com/MaksimMoisiuk/conemu/_apis/build/status/Maximus5.ConEmu?branchName=daily&label=daily)](https://dev.azure.com/MaksimMoisiuk/conemu/_build/latest?definitionId=1&branchName=daily&label=daily)
+
 [ConEmu-Maximus5](https://conemu.github.io) is a Windows console emulator with tabs, which represents
 multiple consoles as one customizable GUI window with various features.
 
@@ -11,7 +15,8 @@ Today, ConEmu can be used with any other console application or simple GUI tools
 (like PuTTY for example). ConEmu is an active project, open to
 [suggestions](https://github.com/Maximus5/ConEmu/issues).
 
-<a href="http://www.fosshub.com/ConEmu.html">![Fosshub.com ConEmu mirror](https://github.com/Maximus5/ConEmu/wiki/Downloads.png)</a>
+<a href="https://www.fosshub.com/ConEmu.html">![Fosshub.com ConEmu mirror](https://github.com/Maximus5/ConEmu/wiki/downloads-new.png)</a>
+<a href="https://conemu.github.io/donate.html">![Donate](https://github.com/Maximus5/ConEmu/wiki/donate-new.png)</a>
 
 Take a look at [screencast](http://dotnetsurfers.com/blog/2013/12/15/developer-tools-screencast-7-conemu/) about ConEmu.
 
@@ -27,9 +32,9 @@ See [Release/ConEmu/License.txt](https://github.com/Maximus5/ConEmu/blob/master/
 
 
 ## Some links
-Wiki: https://conemu.github.io/en/TableOfContents.html  
-What's new: https://conemu.github.io/en/Whats_New.html  
-Release stages: https://conemu.github.io/en/StableVsPreview.html  
+Wiki: https://conemu.github.io/en/TableOfContents.html
+What's new: https://conemu.github.io/en/Whats_New.html
+Release stages: https://conemu.github.io/en/StableVsPreview.html
 Donate this project: <a ref="https://conemu.github.io/donate.html" rel="nofollow">https://conemu.github.io/donate.html</a>
 
 
@@ -62,7 +67,8 @@ are applied. You may easily use several named configurations (for different PCs 
 
 
 ## Requirements
-  * Windows 2000 or later.
+  * Windows XP or later for 32-bit.
+  * Windows Vista or later for 64-bit.
 
 
 ## Installation
@@ -75,7 +81,7 @@ about release stages, distro packets, some warnings and much more...
 
 ## Building from sources
 https://github.com/Maximus5/ConEmu/blob/master/src/HowToBuild.md
- 
+
 ## Screenshots
 ![Splits and tabs in ConEmu](https://github.com/Maximus5/ConEmu/wiki/ConEmuSplits.png)
 

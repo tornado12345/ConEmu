@@ -29,17 +29,24 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
+#if defined(max) || defined(min)
+#pragma message("error: min/max macros should not be defined")
+#endif
+
 #include <limits>
 #include <algorithm>
 #include <atomic>
 
 #if !defined(__GNUC__) || defined(__MINGW32__)
+#pragma warning(push)
 #pragma warning(disable: 4091)
 #endif
-#include <Windows.h>
+#include <windows.h>
 #if !defined(__GNUC__) || defined(__MINGW32__)
-#pragma warning(default: 4091)
+#pragma warning(pop)
 #endif
 
 #include <wchar.h>
@@ -134,6 +141,7 @@ WARNING("WIN64 was not defined");
 
 #if defined(_MSC_VER) && (_MSC_VER <= 1500)
 	#undef HAS_CPP11
+	#error C++11 capable compiler is required
 #elif defined(__GNUC__)
 	#define HAS_CPP11
 #else
@@ -153,12 +161,18 @@ WARNING("WIN64 was not defined");
 
 
 #ifdef _WIN64
+// ReSharper disable once IdentifierTypo,CppInconsistentNaming
 using ssize_t = int64_t;
 #else
+// ReSharper disable once IdentifierTypo,CppInconsistentNaming
 using ssize_t = int32_t;
 #endif
 
+// ReSharper disable once CppInconsistentNaming
 using uint = uint32_t;
+
+
+#define MAX_WIDE_PATH_LENGTH 0x8000
 
 
 // GCC headers do not describe Task Scheduler 2.0 interfaces
@@ -172,12 +186,12 @@ using uint = uint32_t;
 #define ScopedObject_Cat1(n,i) ScopedObject_Cat2(n,i)
 #define ScopedObject(cls) cls ScopedObject_Cat1(cls,__LINE__)
 
-#define isDriveLetter(c) ((c>=L'A' && c<=L'Z') || (c>=L'a' && c<=L'z'))
-#define isDigit(c) (c>=L'0' && c<=L'9')
-#define isHexDigit(c) ((c>=L'0' && c<=L'9') || (c>=L'a' && c<=L'f') || (c>=L'A' && c<=L'F'))
-#define isDot(c) (c==L'.' || c==',')
+#define isDriveLetter(c) (((c)>=L'A' && (c)<=L'Z') || ((c)>=L'a' && (c)<=L'z'))
+#define isDigit(c) ((c)>=L'0' && (c)<=L'9')
+#define isHexDigit(c) (((c)>=L'0' && (c)<=L'9') || ((c)>=L'a' && (c)<=L'f') || ((c)>=L'A' && (c)<=L'F'))
+#define isDot(c) ((c)==L'.' || (c)==',')
 #define isAlpha(c) (IsCharAlpha(c))
-#define isSpace(c) (c==L' ' || c==L'\xA0' || c==L'\t' || c==L'\r' || c==L'\n')
+#define isSpace(c) ((c)==L' ' || (c)==L'\xA0' || (c)==L'\t' || (c)==L'\r' || (c)==L'\n')
 
 #define LODWORD(ull) ((DWORD)((ULONGLONG)(ull) & 0x00000000ffffffff))
 #define LOLONG(ull)  ((LONG)LODWORD(ull))
@@ -187,8 +201,12 @@ using uint = uint32_t;
 #define RectWidth(rc) ((rc).right-(rc).left)
 #define RectHeight(rc) ((rc).bottom-(rc).top)
 #define LOGRECTCOORDS(rc) (rc).left, (rc).top, (rc).right, (rc).bottom
-#define LOGSRECTCOORDS(rc) (rc).Left, (rc).Top, (rc).Right, (rc).Bottom
 #define LOGRECTSIZE(rc) RectWidth(rc), RectHeight(rc)
+
+#define SRectWidth(rc) ((rc).Right-(rc).Left)
+#define SRectHeight(rc) ((rc).Bottom-(rc).Top)
+#define LogSRectCoords(rc) (rc).Left, (rc).Top, (rc).Right, (rc).Bottom
+#define LogSRectSize(rc) SRectWidth(rc), SRectHeight(rc)
 
 template <typename T>
 const T _abs(const T& n) { return ((n)>=0) ? (n) : -(n); }

@@ -29,10 +29,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include  <stdexcept>
 #include "../common/defines.h"
 #include <deque>
 #include <vector>
 #include <string>
+#include <stdexcept>
 #include "../common/CEStr.h"
 #include "../common/ConsoleMixAttr.h"
 #include "../common/MArray.h"
@@ -89,7 +91,7 @@ struct Attribute
 		/// Use Italic font
 		fItalic   = 0x00000002,
 		// #condata Not supported yet, reserved
-		fStrike   = 0x00000004,
+		fCrossed  = 0x00000004,
 
 		// #condata crForeColor contains xterm-256 palette index (unused yet)
 		fFore8b   = 0x00000100,

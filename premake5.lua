@@ -1,3 +1,7 @@
+-- ConEmu's solution generator script
+-- 1. Download premake5 from https://premake.github.io/download.html
+-- 2. Run `premake5 vs2019`
+
 workspace "CE"
   configurations { "Release", "Debug", "Remote" }
   platforms { "Win32", "x64" }
@@ -6,10 +10,12 @@ workspace "CE"
   --basedir "%{cfg.location}"
   -- Subdir for temporary files
   local build_dir = "_VCBUILD"
-   
+
   startproject "ConEmu"
 
-  flags { "StaticRuntime", "Maps" }
+  staticruntime "On"
+  flags { "MultiProcessorCompile" }
+  flags { "Maps" }
   filter "configurations:Release"
     flags { "NoIncrementalLink" }
 
@@ -21,6 +27,8 @@ workspace "CE"
     architecture "x64"
     defines { "WIN64", "_WIN64" }
 
+  filter { "action:vs2019", "configurations:Release", "platforms:Win32" }
+    toolset "v141_xp"
   filter "action:vs2017"
     toolset "v141_xp"
   filter "action:vs2015"
@@ -31,16 +39,16 @@ workspace "CE"
     toolset "v110_xp"
 
   filter "configurations:Release"
-    defines { "NDEBUG", "HIDE_TODO" }
+    defines { "NDEBUG", "HIDE_TODO", "NOMINMAX" }
     optimize "Size"
     symbols "On"
 
   filter "configurations:Debug"
-    defines { "_DEBUG", "HIDE_TODO", "MSGLOGGER" }
+    defines { "_DEBUG", "HIDE_TODO", "MSGLOGGER", "NOMINMAX" }
     symbols "On"
 
   filter "configurations:Remote"
-    defines { "_DEBUG", "HIDE_TODO", "MSGLOGGER" }
+    defines { "_DEBUG", "HIDE_TODO", "MSGLOGGER", "NOMINMAX" }
     symbols "On"
 
   filter{}
@@ -109,9 +117,14 @@ local common_remove = {
   "**/_*.*",
 }
 
+local tests_remove = {
+  "**/*_test.cpp",
+}
+
 local common_kernel = {
   "src/common/CEHandle.*",
   "src/common/CEStr.*",
+  "src/common/CmdArg.*",
   "src/common/CmdLine.*",
   "src/common/Common.cpp",
   "src/common/Common.h",
@@ -143,8 +156,27 @@ local common_kernel = {
   "src/common/WModuleCheck.*",
   "src/common/WObjects.*",
   "src/common/WThreads.*",
-
 }
+
+local conemu_remove = {
+  "**/ConEmuMinGW.rc",
+  "**/ToolBarClass.*",
+  "**/Theming.*",
+  "**/FontRanges.*",
+  "**/*-old.*",
+  "**/RegExp.*",
+  "**/ConsoleTrueMod_Concept.h",
+  "**/hourglass.bmp",
+  "**/UserImages.bmp",
+  "**/User16.bmp",
+  "**/Shield32*.bmp",
+  "**/Scroll256.bmp",
+  "**/Scroll16.bmp",
+  "**/Scroll0.bmp",
+  "**/base64.h",
+  "**/!*.*",
+}
+
 
 
 -- ############################### --
@@ -156,8 +188,10 @@ project "common-kernel"
   exceptionhandling "Off"
 
   files (common_kernel)
+  files {"src/common/defines.h"}
 
   removefiles (common_remove)
+  removefiles (tests_remove)
 
   vpaths {
     ["Headers"] = {"**.h"},
@@ -191,6 +225,7 @@ project "common-user"
 
   removefiles (common_remove)
   removefiles (common_kernel)
+  removefiles (tests_remove)
 
   vpaths {
     ["Headers"] = {"**.h"},
@@ -205,7 +240,6 @@ project "common-user"
     targetsuffix "64"
   filter {}
 -- end of "common-user"
-
 
 
 
@@ -242,36 +276,23 @@ project "ConEmu"
     "src/ConEmu/*.bmp",
     "src/ConEmu/*.cur",
     "src/ConEmu/*.ico",
+    "Release/ConEmu/ConEmu.l10n",
     "src/ConEmu/conemu.gcc.manifest",
   }
-  removefiles {
-    "**/ConEmuMinGW.rc",
-    "**/ToolBarClass.*",
-    "**/Theming.*",
-    "**/FontRanges.*",
-    "**/*-old.*",
-    "**/RegExp.*",
-    "**/ConsoleTrueMod_Concept.h",
-    "**/hourglass.bmp",
-    "**/UserImages.bmp",
-    "**/User16.bmp",
-    "**/Shield32*.bmp",
-    "**/Scroll256.bmp",
-    "**/Scroll16.bmp",
-    "**/Scroll0.bmp",
-    "**/base64.h",
-    "**/!*.*",
-  }
 
+  removefiles (conemu_remove)
   removefiles (common_remove)
+  removefiles (tests_remove)
 
   vpaths {
     { ["Common"]    = {"src/common/*.h"} },
     { ["Resources"] = {"**/*.rc", "**/*.rc2", "**/*.manifest", "**/*.bmp", "**/*.cur", "**/*.ico"} },
+    { ["Localizations"] = {"**/Lng*.*", "Release/ConEmu/ConEmu.l10n"} },
     { ["Exports"]   = {"**.def"} },
+    { ["Macro"]     = {"**/Macro*.*"} },
     { ["Graphics"]  = {"**/GdiObjects.*", "**/Font*.*", "**/CustomFonts.*", "**/Background.*", "**/ColorFix.*",
                        "**/IconList.*", "**/ImgButton.*", "**/LoadImg.*", "**/ScreenDump.*", "**/ToolImg.*"} },
-    { ["Settings"]  = {"**/SetPg*.*", "**/Options*.*"} },
+    { ["Settings"]  = {"**/SetPg*.*", "**/Options*.*", "**/SettingsStorage.*"} },
     { ["Headers"]   = {"**/*.h"} },
     { ["Sources"]   = {"**/*.cpp"} },
   }
@@ -312,6 +333,8 @@ project "ConEmuC"
     "src/ConEmuC/ConEmuC.exe.manifest",
   }
 
+  removefiles (tests_remove)
+
   vpaths {
     { ["Headers"] = {"**.h"} },
     { ["Sources"] = {"**.cpp"} },
@@ -351,6 +374,8 @@ project "ConEmuCD"
     linkoptions { "--image-base=0x6F780000000" }
   filter {}
 
+  defines { "DLL_CONEMUCD_EXPORTS" }
+
   links {
     "common-kernel",
     "common-user",
@@ -364,6 +389,8 @@ project "ConEmuCD"
     "src/ConEmuCD/*.rc",
   }
 
+  removefiles (tests_remove)
+
   filter "action:vs*"
     files "src/ConEmuCD/export.def"
   filter "action:gmake"
@@ -371,13 +398,14 @@ project "ConEmuCD"
   filter {}
 
   vpaths {
+    { ["Exports"]   = {"**.def", "**/ExportedFunctions.h"} },
     { ["Interface"] = {"**/Common.h", "**/SrvCommands.*", "**/Queue.*", "**/SrvPipes.*"} },
     { ["Automation"] = {"**/Actions.*", "**/GuiMacro.*"} },
     { ["Console"] = {"**/ConAnsi.*", "**/ConAnsiImpl.*", "**/ConData.*"} },
+    { ["Server"] = {"**/ConEmuSrv.*", "**/ConEmuCmd.*", "**/WorkerBase.*"} },
     { ["Headers"] = {"**.h"} },
     { ["Sources"] = {"**.cpp"} },
     { ["Resources"] = {"**.rc", "**.rc2", "**.manifest"} },
-    { ["Exports"]   = {"**.def"} },
   }
 
   target_dir("ConEmu/")
@@ -440,6 +468,7 @@ project "ConEmuHk"
     "**/CETaskBar_.*",
     "**/*-orig.*",
   }
+  removefiles (tests_remove)
 
   filter { "files:**/HDE/*.*" }
     flags {"ExcludeFromBuild"}
@@ -831,3 +860,72 @@ project "Far.ExtendedConsole"
     targetsuffix "64"
   filter {}
 -- end of "Far.ExtendedConsole"
+
+
+
+-- ############################### --
+-- ############################### --
+-- ############################### --
+project "Tests"
+  kind "ConsoleApp"
+  language "C++"
+  exceptionhandling "On"
+
+  defines {"TESTS_MEMORY_MODE", "CE_UNIT_TEST=1"}
+
+  files {
+    -- tests
+    "src/UnitTests/*_test.cpp",
+    "src/UnitTests/test_stubs.cpp",
+    "src/UnitTests/test_mock*.*",
+    "src/**/*_test.cpp",
+    -- common files
+    "src/common/*.cpp",
+    "src/common/*.h",
+    -- main sources
+    "src/ConEmu/*.rc",
+    "src/ConEmu/*.cpp",
+    "src/ConEmu/*.h",
+    "src/ConEmu/conemu.gcc.manifest",
+    -- server sources
+    "src/ConEmuCD/StartEnv.cpp",
+    -- googletest
+    "src/modules/googletest/googletest/src/gtest-all.cc",
+  }
+
+  removefiles (common_remove)
+  removefiles (conemu_remove)
+  removefiles {
+    "src/ConEmu/ConEmuApp.*",
+  }
+
+  vpaths {
+    { ["mocks"] = {"**/test_stubs.cpp", "**/test_mock*.*"} },
+    { ["tests"] = {"**/*_test.*"} },
+    { ["Resources"] = {"**/*.rc", "**/*.rc2", "**/*.manifest", "**/*.bmp", "**/*.cur", "**/*.ico"} },
+  }
+
+  includedirs {
+    "src/modules/googletest/googletest/include",
+    "src/modules/googletest/googletest",
+  }
+
+  links {
+    -- don't link "common-kernel" or  "common-user"!
+    "comctl32",
+    "shlwapi",
+    "version",
+    "gdiplus",
+    "winmm",
+    "netapi32",
+  }
+
+  target_dir("")
+  targetname ("Tests_%{cfg.buildcfg}_%{cfg.platform}")
+  objdir ("%{wks.location}/"..build_dir.."/%{cfg.buildcfg}/%{prj.name}_%{cfg.platform}")
+  implibdir ("%{cfg.objdir}")
+
+  -- postbuildcommands {"$(SolutionDir)UnitTests\\Tests_%{cfg.buildcfg}_%{cfg.platform}.exe"}
+
+  filter {}
+-- end of "Tests"

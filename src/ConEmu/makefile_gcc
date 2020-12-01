@@ -20,16 +20,20 @@ RES_NAME2 = ConEmuMinGW
 
 include ../makefile_gcc_inc
 
-USERLIBS += -lversion -lshlwapi -loleaut32 -lNetapi32 -lwinmm
-USERLIBS += -ladvapi32 -lshell32 -lgdi32 -lcomdlg32 -lole32 -luuid -lcomctl32
+USERLIBS += -lversion -lshlwapi -loleaut32 -lnetapi32 -lwinmm
+USERLIBS += -ladvapi32 -lshell32 -lgdi32 -lcomdlg32 -lole32 -luuid -lcomctl32 mstask.lib
 
 SRCS = \
 		../common/CEStr.cpp          \
+		../common/CEHandle.cpp       \
 		../common/CmdLine.cpp        \
 		../common/Common.cpp         \
 		../common/ConEmuCheck.cpp    \
+		../common/ConsoleMixAttr.cpp \
+		../common/EnvVar.cpp         \
 		../common/execute.cpp        \
 		../common/HkFunc.cpp         \
+		../common/Keyboard.cpp       \
 		../common/MAssert.cpp        \
 		../common/MBSTR.cpp          \
 		../common/md5.cpp            \
@@ -86,6 +90,7 @@ SRCS = \
 		CustomFonts.cpp    \
 		DefaultTerm.cpp    \
 		DlgItemHelper.cpp  \
+		DontEnable.cpp     \
 		DpiAware.cpp       \
 		DragDrop.cpp       \
 		DragDropData.cpp   \
@@ -100,11 +105,13 @@ SRCS = \
 		GdiObjects.cpp     \
 		GestureEngine.cpp  \
 		GuiServer.cpp      \
+		helper.cpp         \
 		HooksUnlocker.cpp  \
 		HotkeyChord.cpp    \
 		HotkeyDlg.cpp      \
 		HotkeyList.cpp     \
 		Hotkeys.cpp        \
+		HtmlCopy.cpp       \
 		IconList.cpp       \
 		ImgButton.cpp      \
 		Inside.cpp         \
@@ -112,9 +119,11 @@ SRCS = \
 		LngRc.cpp          \
 		LoadImg.cpp        \
 		Macro.cpp          \
+		MacroImpl.cpp      \
 		Match.cpp          \
 		Menu.cpp           \
 		MyClipboard.cpp    \
+		OleInitializer.cpp \
 		Options.cpp        \
 		OptionsClass.cpp   \
 		OptionsFast.cpp    \
@@ -127,7 +136,6 @@ SRCS = \
 		RealConsole.cpp    \
 		RealServer.cpp     \
 		Recreate.cpp       \
-		Registry.cpp       \
 		RunQueue.cpp       \
 		ScreenDump.cpp     \
 		SearchCtrl.cpp     \
@@ -155,6 +163,7 @@ SRCS = \
 		SetPgFarMacro.cpp  \
 		SetPgFeatures.cpp  \
 		SetPgFonts.cpp     \
+		SetPgGeneral.cpp   \
 		SetPgHilight.cpp   \
 		SetPgInfo.cpp      \
 		SetPgIntegr.cpp    \
@@ -173,8 +182,10 @@ SRCS = \
 		SetPgTransparent.cpp\
 		SetPgUpdate.cpp    \
 		SetPgViews.cpp     \
+		SettingsStorage.cpp     \
 		SizeInfo.cpp       \
 		Status.cpp         \
+		SystemEnvironment.cpp \
 		TabBar.cpp         \
 		TabCtrlBase.cpp    \
 		TabCtrlWin.cpp     \

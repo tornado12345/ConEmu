@@ -32,8 +32,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef TESTLINK
 #include "../common/Common.h"
-#include "../common/ConEmuCheck.h"
-#include "../common/execute.h"
 #endif
 
 #include "ConEmuSrv.h"
@@ -63,8 +61,6 @@ extern UINT gnMsgHookedKey;        // RegisterWindowMessage(CONEMUMSG_HOOKEDKEY)
 //extern UINT gnMsgConsoleHookedKey; // RegisterWindowMessage(CONEMUMSG_CONSOLEHOOKEDKEY)
 
 #define isPressed(inp) ((GetKeyState(inp) & 0x8000) == 0x8000)
-
-extern HANDLE ghHeap;
 
 //enum CONSOLE_KEY_ID
 //{

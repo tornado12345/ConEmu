@@ -34,6 +34,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "MModule.h"
 #include "WUser.h"
 #include <limits>
+#include <stdexcept>
+#include <iterator>
 
 #ifndef NOMINMAX
 #error NOMINMAX was not defined
@@ -69,7 +71,7 @@ class MPipeBase
 		size_t mn_OutSize = 0, mn_MaxOutSize = 0;
 		DWORD mn_ErrCode = 0;
 
-		std::atomic_int mn_OpenCount, mn_CloseCount, mn_FailCount;
+		std::atomic_int mn_OpenCount{0}, mn_CloseCount{0}, mn_FailCount{0};
 
 		void SetErrorCode(DWORD nCode)
 		{
@@ -86,7 +88,7 @@ class MPipeBase
 
 				if (!ptrNew)
 				{
-					_ASSERTE(ptrNew!=NULL);
+					_ASSERTE(ptrNew!=NULL);  // -V547
 					msprintf(ms_Error, countof(ms_Error), L"%s: Can't allocate %u bytes!", ms_Module, nAllSize);
 					return FALSE;
 				}
@@ -194,7 +196,7 @@ class MPipe : public MPipeBase
 				if (mh_Heap)
 					HeapFree(mh_Heap, 0, mp_Out);
 				else
-					_ASSERTE(mh_Heap!=NULL);
+					_ASSERTE(mh_Heap!=NULL);  // -V547
 			}
 			mp_Out = NULL;
 		}
@@ -351,7 +353,7 @@ class MPipe : public MPipeBase
 			// Пошли проверки заголовка
 			if (cbRead < sizeof(CESERVER_REQ_HDR))
 			{
-				_ASSERTE(cbRead >= sizeof(CESERVER_REQ_HDR));
+				_ASSERTE(cbRead >= sizeof(CESERVER_REQ_HDR));  // -V547
 				msprintf(ms_Error, countof(ms_Error),
 				          L"%s: Only %i bytes received, required %i bytes at least!",
 				          ms_Module, cbRead, (DWORD)sizeof(CESERVER_REQ_HDR));
@@ -386,7 +388,7 @@ class MPipe : public MPipeBase
 			}
 
 			#ifdef _DEBUG
-			DWORD nMoreDataTick[6] = {GetTickCount()};
+			DWORD nMoreDataTick[6] = {GetTickCount()};  // -V1009
 			#endif
 
 			if (dwErr == ERROR_MORE_DATA)
@@ -463,14 +465,14 @@ class MPipe : public MPipeBase
 
 				if (nAllSize > 0)
 				{
-					_ASSERTE(nAllSize==0);
+					_ASSERTE(nAllSize==0);  // -V547
 					msprintf(ms_Error, countof(ms_Error), L"%s: Can't read %u bytes!", ms_Module, nAllSize);
 					return false;
 				}
 
 				if (dwErr == ERROR_MORE_DATA)
 				{
-					_ASSERTE(dwErr != ERROR_MORE_DATA);
+					_ASSERTE(dwErr != ERROR_MORE_DATA);  // -V547
 					//	BYTE cbTemp[512];
 					//	while (1) {
 					//		fSuccess = ReadFile( mh_Pipe, cbTemp, 512, &cbRead, NULL);
@@ -625,7 +627,7 @@ public:
 		std::pair<void*,uint32_t> rc = {};
 		DWORD avail = 0, read = 0; uint32_t data_size = 0;
 
-		if (blocking || PeekNamedPipe(read_pipe.mh_Pipe, NULL, 0, NULL, &avail, NULL) && avail >= sizeof(data_size))
+		if (blocking || (PeekNamedPipe(read_pipe.mh_Pipe, NULL, 0, NULL, &avail, NULL) && avail >= sizeof(data_size)))
 		{
 			if (!ReadFile(read_pipe.mh_Pipe, &data_size, sizeof(data_size), &read, NULL) || read != sizeof(data_size))
 			{

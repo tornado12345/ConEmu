@@ -29,20 +29,19 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HIDE_USE_EXCEPTION_INFO
 
 #include "defines.h"
-#include "MAssert.h"
 #include "MConHandle.h"
 
-WARNING("После перехода на альтернативный сервер - должен работать строго в 'стандартном' режиме (mn_StdMode=STD_OUTPUT_HANDLE/STD_INPUT_HANLDE)");
+#include <intrin.h>
 
-MConHandle::MConHandle(LPCWSTR asName, SECURITY_ATTRIBUTES *apSec)
+WARNING("После перехода на альтернативный сервер - должен работать строго в 'стандартном' режиме (mn_StdMode=STD_OUTPUT_HANDLE/STD_INPUT_HANDLE)");
+
+MConHandle::MConHandle(LPCWSTR asName)
+	: mcs_Handle(true)
 {
-	mn_StdMode = 0;
-	mb_OpenFailed = FALSE; mn_LastError = 0;
-	mh_Handle = INVALID_HANDLE_VALUE;
-	mpp_OutBuffer = NULL;
-	mp_sec = apSec;
-	lstrcpynW(ms_Name, asName, 9);
-	m_logidx = -1;
+	m_sec.nLength = sizeof(m_sec);
+	m_sec.bInheritHandle = TRUE;
+	
+	lstrcpynW(ms_Name, asName ? asName : L"", 9);
 	memset(m_log, 0, sizeof(m_log));
 	/*
 	FAR2 последний
@@ -138,32 +137,64 @@ MConHandle::MConHandle(LPCWSTR asName, SECURITY_ATTRIBUTES *apSec)
 	//	else if (!lstrcmpW(ms_Name, L"CONIN$"))
 	//		mn_StdMode = STD_INPUT_HANDLE;
 	//}
-};
-
-#include <intrin.h>
-
-void MConHandle::LogHandle(UINT evt, HANDLE h)
-{
-	LONG i = (_InterlockedIncrement(&m_logidx) & (HANDLE_BUFFER_SIZE - 1));
-	m_log[i].evt = (Event::EventType)evt;
-	DEBUGTEST(m_log[i].time = GetTickCount());
-	m_log[i].TID = GetCurrentThreadId();
-	m_log[i].h = h;
 }
 
 MConHandle::~MConHandle()
 {
 	Close();
-};
+}
 
-void MConHandle::SetBufferPtr(HANDLE* ppOutBuffer)
+// ReSharper disable once CppParameterMayBeConst
+void MConHandle::LogHandle(UINT evt, HANDLE h)
+{
+	const LONG i = (_InterlockedIncrement(&m_logIdx) & (HANDLE_BUFFER_SIZE - 1));
+	m_log[i].evt = static_cast<Event::EventType>(evt);
+	DEBUGTEST(m_log[i].time = GetTickCount());
+	m_log[i].TID = GetCurrentThreadId();
+	m_log[i].h = h;
+}
+
+// may point to some GLOBAL SCOPE variable with console handle
+void MConHandle::SetHandlePtr(HANDLE* ppOutBuffer)
 {
 	mpp_OutBuffer = ppOutBuffer;
+}
+
+// may point to some GLOBAL SCOPE variable with console handle
+void MConHandle::SetHandlePtr(const MConHandle& out_buffer)
+{
+	mpp_OutBuffer = &out_buffer.mh_Handle;
+}
+
+// ReSharper disable once CppParameterMayBeConst
+bool MConHandle::SetHandle(HANDLE newHandle, const StdMode stdMode)
+{
+	MSectionLockSimple CS; CS.Lock(&mcs_Handle);
+	// ReSharper disable once CppLocalVariableMayBeConst
+	HANDLE h = (newHandle == nullptr) ? INVALID_HANDLE_VALUE : newHandle;
+	Close();
+	mh_Handle = h;
+	mn_StdMode = stdMode;
+	return HasHandle();
+}
+
+bool MConHandle::HasHandle() const
+{
+	return mh_Handle && (mh_Handle != INVALID_HANDLE_VALUE);
 }
 
 MConHandle::operator const HANDLE()
 {
 	return GetHandle();
+}
+
+HANDLE MConHandle::Release()
+{
+	MSectionLockSimple CS; CS.Lock(&mcs_Handle);
+	HANDLE h = INVALID_HANDLE_VALUE;
+	std::swap(h, mh_Handle);
+	mn_StdMode = StdMode::None;
+	return h;
 }
 
 HANDLE MConHandle::GetHandle()
@@ -176,21 +207,21 @@ HANDLE MConHandle::GetHandle()
 
 	if (mh_Handle == INVALID_HANDLE_VALUE)
 	{
-		if (mn_StdMode)
+		if (mn_StdMode != StdMode::None)
 		{
-			mh_Handle = GetStdHandle(mn_StdMode);
+			mh_Handle = GetStdHandle(mn_StdMode == StdMode::Input ? STD_INPUT_HANDLE : STD_OUTPUT_HANDLE);
 			LogHandle(Event::e_CreateHandleStd, mh_Handle);
 		}
 		else
 		{
 			// Чтобы случайно не открыть хэндл несколько раз в разных потоках
-			MSectionLock CS; CS.Lock(&mcs_Handle, TRUE);
+			MSectionLockSimple CS; CS.Lock(&mcs_Handle);
 
 			// Во время ожидания хэндл мог быт открыт в другом потоке
 			if (mh_Handle == INVALID_HANDLE_VALUE)
 			{
 				mh_Handle = CreateFileW(ms_Name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-										mp_sec, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+										&m_sec, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 				if (!mh_Handle) // Is not expected, JIC
 					mh_Handle = INVALID_HANDLE_VALUE;
 
@@ -207,9 +238,10 @@ HANDLE MConHandle::GetHandle()
 						mb_OpenFailed = TRUE; // чтобы ошибка вываливалась только один раз!
 						char szErrMsg[512], szNameA[10], szSelfFull[MAX_PATH];
 						const char *pszSelf;
+						// ReSharper disable once CppJoinDeclarationAndAssignment
 						char *pszDot;
 
-						if (!GetModuleFileNameA(0,szSelfFull,MAX_PATH))
+						if (!GetModuleFileNameA(nullptr, szSelfFull, MAX_PATH))
 						{
 							pszSelf = "???";
 						}
@@ -218,19 +250,21 @@ HANDLE MConHandle::GetHandle()
 							pszSelf = strrchr(szSelfFull, '\\');
 							if (pszSelf) pszSelf++; else pszSelf = szSelfFull;
 
-							pszDot = strrchr((char*)pszSelf, '.');
+							// ReSharper disable once CppJoinDeclarationAndAssignment
+							pszDot = strrchr(const_cast<char*>(pszSelf), '.');
 
 							if (pszDot) *pszDot = 0;
 						}
 
-						WideCharToMultiByte(CP_OEMCP, 0, ms_Name, -1, szNameA, sizeof(szNameA), 0,0);
+						WideCharToMultiByte(CP_OEMCP, 0, ms_Name, -1, szNameA, sizeof(szNameA), nullptr, nullptr);
 						sprintf_c(szErrMsg, "%s: CreateFile(%s) failed, ErrCode=0x%08X\n", pszSelf, szNameA, mn_LastError);
+						// ReSharper disable once CppLocalVariableMayBeConst
 						HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 
-						if (h && h!=INVALID_HANDLE_VALUE)
+						if (h && h != INVALID_HANDLE_VALUE)
 						{
 							DWORD dwWritten = 0;
-							WriteFile(h, szErrMsg, lstrlenA(szErrMsg), &dwWritten, 0);
+							WriteFile(h, szErrMsg, lstrlenA(szErrMsg), &dwWritten, nullptr);
 						}
 					}
 				}
@@ -242,7 +276,7 @@ HANDLE MConHandle::GetHandle()
 
 	LogHandle(Event::e_GetHandle, mh_Handle);
 	return mh_Handle;
-};
+}
 
 void MConHandle::Close()
 {
@@ -254,13 +288,14 @@ void MConHandle::Close()
 
 	if (mh_Handle != INVALID_HANDLE_VALUE)
 	{
-		if (mn_StdMode)
+		if (mn_StdMode != StdMode::None)
 		{
 			LogHandle(Event::e_CloseHandleStd, mh_Handle);
 			mh_Handle = INVALID_HANDLE_VALUE;
 		}
 		else
 		{
+			// ReSharper disable once CppLocalVariableMayBeConst
 			HANDLE h = mh_Handle;
 			LogHandle(Event::e_CloseHandleStd, h);
 			mh_Handle = INVALID_HANDLE_VALUE;
@@ -268,4 +303,4 @@ void MConHandle::Close()
 			CloseHandle(h);
 		}
 	}
-};
+}

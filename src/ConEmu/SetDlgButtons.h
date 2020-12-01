@@ -96,12 +96,14 @@ protected:
 	static void OnBtn_NewConfirm(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_DupConfirm(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ConfirmDetach(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_ConfirmResetTerminal(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_LongOutput(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecRadio(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecExplicit(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecTest(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecBitsRadio(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecUpdateEnv(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_AutoReloadEnvironment(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_AddConEmu2Path(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_AddConEmuBase2Path(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ComspecUncPaths(HWND hDlg, WORD CB, BYTE uCheck);
@@ -171,6 +173,7 @@ protected:
 	static void OnBtn_ProcessAnsi(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_AnsiSecureRadio(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_AnsiLog(HWND hDlg, WORD CB, BYTE uCheck);
+	static void OnBtn_AnsiLogCodes(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_KillSshAgent(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ProcessNewConArg(HWND hDlg, WORD CB, BYTE uCheck);
 	static void OnBtn_ProcessCmdStart(HWND hDlg, WORD CB, BYTE uCheck);

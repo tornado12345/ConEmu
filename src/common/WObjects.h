@@ -45,11 +45,33 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef BOOL (WINAPI* AttachConsole_t)(DWORD dwProcessId);
 
 // Some WinAPI related functions
+
+/// <summary>
+/// Searches for a <ref>lpFileName</ref> with optional <ref>lpExtension</ref>
+/// in either specified <ref>lpPath</ref> or default search PATH defined in System.
+/// Look full description in WinAPI SearchPath.
+/// </summary>
+/// <param name="lpPath">nullptr or directory to search.</param>
+/// <param name="lpFileName">File name, extension is optional.</param>
+/// <param name="lpExtension">nullptr or ".ext", should start with dot.</param>
+/// <param name="rsPath">output CEStr</param>
+/// <returns></returns>
 int apiSearchPath(LPCWSTR lpPath, LPCWSTR lpFileName, LPCWSTR lpExtension, CEStr& rsPath);
+
 int apiGetFullPathName(LPCWSTR lpFileName, CEStr& rsPath);
-bool FileExists(LPCWSTR asFilePath, DWORD* pnSize = NULL);
+
+/// <summary>
+/// Check if file or directory exists
+/// </summary>
+/// <param name="asFilePath">Full or relative path to the file or directory</param>
+/// <param name="pnSize">pointer to uint64_t - for files it's filled with file size</param>
+/// <returns>true - if file or directory exists</returns>
+bool FileExists(const wchar_t* asFilePath, uint64_t* pnSize = nullptr);
+
 bool FileSearchInDir(LPCWSTR asFilePath, CEStr& rsFound);
+
 bool IsVsNetHostExe(LPCWSTR asFilePatName);
+
 bool IsGDB(LPCWSTR asFilePatName);
 
 class CEnvRestorer;
@@ -73,6 +95,7 @@ bool IsWinXP();
 bool IsWinXPSP1();
 bool IsWin6();
 bool IsWin7();
+bool IsWin7Eql();
 bool IsWin8();
 bool IsWin8_1();
 bool IsWin10();
@@ -91,3 +114,10 @@ void ApplyExportEnvVar(LPCWSTR asEnvNameVal);
 bool CoordInSmallRect(const COORD& cr, const SMALL_RECT& rc);
 
 UINT GetCpFromString(LPCWSTR asString, LPCWSTR* ppszEnd = NULL);
+
+template <typename Func>
+Func GetProcAddress(Func& fn, HMODULE module, const char* name)
+{
+	fn = reinterpret_cast<Func>(module ? ::GetProcAddress(module, name) : nullptr);
+	return fn;
+}

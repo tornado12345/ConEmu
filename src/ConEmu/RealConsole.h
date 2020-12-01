@@ -170,6 +170,7 @@ struct ConsoleInfoArg;
 
 #include "HotkeyChord.h"
 #include "RealServer.h"
+#include "SetTypes.h"
 #include "TabID.h"
 
 class CRealConsole
@@ -195,7 +196,7 @@ class CRealConsole
 		BYTE    m_ConsoleKeyShortcuts;
 		BYTE    mn_TextColorIdx, mn_BackColorIdx, mn_PopTextColorIdx, mn_PopBackColorIdx;
 		HKEY    PrepareConsoleRegistryKey(LPCWSTR asSubKey);
-		void    PrepareDefaultColors(BYTE& nTextColorIdx, BYTE& nBackColorIdx, BYTE& nPopTextColorIdx, BYTE& nPopBackColorIdx, bool bUpdateRegistry = false, HKEY hkConsole = NULL);
+		void    PrepareDefaultColors(BYTE& nTextColorIdx, BYTE& nBackColorIdx, BYTE& nPopTextColorIdx, BYTE& nPopBackColorIdx, bool bUpdateRegistry = false, HKEY hkConsole = nullptr);
 		void    PrepareNewConArgs();
 	public:
 		void    PrepareDefaultColors();
@@ -286,7 +287,7 @@ class CRealConsole
 		bool    isGuiOverCon();
 		void    StoreGuiChildRect(LPRECT prcNewPos);
 		void    SetGuiMode(DWORD anFlags, HWND ahGuiWnd, DWORD anStyle, DWORD anStyleEx, LPCWSTR asAppFileName, DWORD anAppPID, int anBits, RECT arcPrev);
-		void    SetSplitProperties(RConStartArgsEx::SplitType aSplitType, UINT aSplitValue, UINT aSplitPane);
+		void    UpdateStartArgs(RConStartArgsEx::SplitType aSplitType, UINT aSplitValue, UINT aSplitPane, bool active);
 		static void CorrectGuiChildRect(DWORD anStyle, DWORD anStyleEx, RECT& rcGui, LPCWSTR pszExeName);
 		static bool CanCutChildFrame(LPCWSTR pszExeName);
 
@@ -311,6 +312,7 @@ class CRealConsole
 		void DoLockUnlock(bool bLock);
 
 		bool SetConsoleSize(SHORT sizeX, SHORT sizeY, USHORT sizeBuffer=0, DWORD anCmdID=CECMD_SETSIZESYNC);
+		void EndSizing();
 	private:
 		bool SetActiveBuffer(CRealBuffer* aBuffer, bool abTouchMonitorEvent = true);
 		bool LoadAlternativeConsole(LoadAltMode iMode = lam_Default);
@@ -349,7 +351,7 @@ class CRealConsole
 		bool SetOtherWindowRgn(HWND hWnd, int nRects, LPRECT prcRects, bool bRedraw);
 		void PostDragCopy(bool abMove);
 		void PostMacro(LPCWSTR asMacro, bool abAsync = false);
-		wchar_t* PostponeMacro(wchar_t* RVAL_REF asMacro);
+		wchar_t* PostponeMacro(wchar_t*&& asMacro);
 		bool GetFarVersion(FarVersion* pfv);
 		bool IsFarLua();
 		bool StartDebugger(StartDebugType sdt);
@@ -416,11 +418,11 @@ class CRealConsole
 		void QueryTermModes(wchar_t* pszInfo, int cchMax, bool bFull);
 		void QueryRConModes(wchar_t* pszInfo, int cchMax, bool bFull);
 		void QueryCellInfo(wchar_t* pszInfo, int cchMax);
-		void GetConsoleCursorInfo(CONSOLE_CURSOR_INFO *ci, COORD *cr = NULL);
+		void GetConsoleCursorInfo(CONSOLE_CURSOR_INFO *ci, COORD *cr = nullptr);
 		DWORD GetConsoleCP();
 		DWORD GetConsoleOutputCP();
 		void GetConsoleModes(WORD& nConInMode, WORD& nConOutMode, TermEmulationType& Term, bool& bBracketedPaste);
-		void SyncConsole2Window(bool abNtvdmOff = false, LPRECT prcNewWnd=NULL);
+		void SyncConsole2Window(bool abNtvdmOff = false, LPRECT prcNewWnd=nullptr);
 		void SyncGui2Window(const RECT rcVConBack);
 		HWND OnServerStarted(const HWND ahConWnd, const DWORD anServerPID, const DWORD dwKeybLayout, CESERVER_REQ_SRVSTARTSTOPRET& pRet);
 		void OnDosAppStartStop(enum StartStopType sst, DWORD anPID);
@@ -431,11 +433,11 @@ class CRealConsole
 		void SetFarPluginPID(DWORD nFarPluginPID);
 		void SetProgramStatus(DWORD nDrop, DWORD nSet);
 		void SetFarStatus(DWORD nNewFarStatus);
-		bool GetProcessInformation(DWORD nPID, ConProcess* rpProcess = NULL);
+		bool GetProcessInformation(DWORD nPID, ConProcess* rpProcess = nullptr);
 		ConEmuAnsiLog GetAnsiLogInfo();
 		LPCWSTR GetConsoleInfo(LPCWSTR asWhat, CEStr& rsInfo);
 		LPCWSTR GetActiveProcessInfo(CEStr& rsInfo);
-		DWORD GetActivePID(ConProcess* rpProcess = NULL);
+		DWORD GetActivePID(ConProcess* rpProcess = nullptr);
 		DWORD GetInteractivePID();
 		DWORD GetLoadedPID();
 		DWORD GetRunningPID();
@@ -478,7 +480,7 @@ class CRealConsole
 		void StartSelection(bool abTextMode, SHORT anX=-1, SHORT anY=-1, bool abByMouse = false, DWORD anAnchorFlag=0);
 		void ChangeSelectionByKey(UINT vkKey, bool bCtrl, bool bShift);
 		void ExpandSelection(SHORT anX, SHORT anY);
-		bool DoSelectionCopy(CECopyMode CopyMode = cm_CopySel, BYTE nFormat = CTSFormatDefault, LPCWSTR pszDstFile = NULL);
+		bool DoSelectionCopy(CECopyMode CopyMode = cm_CopySel, BYTE nFormat = CTSFormatDefault, LPCWSTR pszDstFile = nullptr);
 		void DoSelectionFinalize();
 		void OnSelectionChanged();
 		void DoFindText(int nDirection);
@@ -514,9 +516,9 @@ class CRealConsole
 		void UpdateScrollInfo();
 		void SetTabs(ConEmuTab* apTabs, int anTabsCount, DWORD anFarPID);
 		void DoRenameTab();
-		bool DuplicateRoot(bool bSkipMsg = false, bool bRunAsAdmin = false, LPCWSTR asNewConsole = NULL, LPCWSTR asApp = NULL, LPCWSTR asParm = NULL);
-		void RenameTab(LPCWSTR asNewTabText = NULL);
-		void RenameWindow(LPCWSTR asNewWindowText = NULL);
+		bool DuplicateRoot(bool bSkipMsg = false, bool bRunAsAdmin = false, LPCWSTR asNewConsole = nullptr, LPCWSTR asApp = nullptr, LPCWSTR asParm = nullptr);
+		void RenameTab(LPCWSTR asNewTabText = nullptr);
+		void RenameWindow(LPCWSTR asNewWindowText = nullptr);
 		int GetTabCount(bool abVisibleOnly = false);
 		int GetRootProcessIcon();
 		LPCWSTR GetRootProcessName();
@@ -536,7 +538,7 @@ class CRealConsole
 		bool TerminateAllButShell(bool abConfirm);
 		bool TerminateActiveProcess(bool abConfirm, DWORD nPID);
 		bool TerminateActiveProcessConfirm(DWORD nPID);
-		bool ChangeAffinityPriority(LPCWSTR asAffinity = NULL, LPCWSTR asPriority = NULL);
+		bool ChangeAffinityPriority(LPCWSTR asAffinity = nullptr, LPCWSTR asPriority = nullptr);
 		bool isCloseTabConfirmed(CEFarWindowType TabType, LPCWSTR asConfirmation, bool bForceAsk = false);
 		void CloseConfirmReset();
 		bool CanCloseTab(bool abPluginRequired = false);
@@ -544,8 +546,8 @@ class CRealConsole
 		bool isConsoleClosing();
 		bool isConsoleReady();
 		void OnServerClosing(DWORD anSrvPID, int* pnShellExitCode);
-		void Paste(CEPasteMode PasteMode = pm_Standard, LPCWSTR asText = NULL, bool abNoConfirm = false, PosixPasteMode posixMode = pxm_Auto);
-		bool Write(LPCWSTR pszText, int nLen = -1, DWORD* pnWritten = NULL);
+		void Paste(CEPasteMode PasteMode = pm_Standard, LPCWSTR asText = nullptr, bool abNoConfirm = false, PosixPasteMode posixMode = pxm_Auto);
+		bool Write(LPCWSTR pszText, int nLen = -1, DWORD* pnWritten = nullptr);
 		unsigned isLogging(unsigned level = 1);
 		bool LogString(LPCSTR asText);
 		bool LogString(LPCWSTR asText);
@@ -559,30 +561,37 @@ class CRealConsole
 		bool isViewer();
 		bool isVisible();
 		bool isNtvdm();
-		bool isFixAndCenter(COORD* lpcrConSize = NULL);
+		bool isFixAndCenter(COORD* lpcrConSize = nullptr);
 		const RConStartArgsEx& GetArgs();
 		void SetPaletteName(LPCWSTR asPaletteName);
 		LPCWSTR GetCmd(bool bThisOnly = false);
 		LPCWSTR GetStartupDir();
 		wchar_t* CreateCommandLine(bool abForTasks = false);
 		bool GetUserPwd(const wchar_t** ppszUser, const wchar_t** ppszDomain, bool* pbRestricted);
-		short GetProgress(int* rpnState/*1-error,2-ind*/, bool* rpbNotFromTitle = NULL);
-		bool SetProgress(short nState, short nValue, LPCWSTR pszName = NULL);
+		short GetProgress(AnsiProgressStatus* rpnState/*1-error,2-ind*/, bool* rpbNotFromTitle = nullptr);
+		/// <summary>
+		/// Set progress state for the console
+		/// </summary>
+		/// <param name="state">AnsiProgressStatus</param>
+		/// <param name="value">0..100 for nState = (Running, Paused, Error)</param>
+		/// <param name="pszName">Reserved for future use - exe name of the running process</param>
+		/// <returns>true on success</returns>
+		bool SetProgress(AnsiProgressStatus state, short value, LPCWSTR pszName = nullptr);
 		void UpdateGuiInfoMapping(const ConEmuGuiMapping* apGuiInfo);
-		void UpdateFarSettings(DWORD anFarPID = 0, FAR_REQ_FARSETCHANGED* rpSetEnvVar = NULL);
-		void UpdateTextColorSettings(bool ChangeTextAttr = true, bool ChangePopupAttr = true, const AppSettings* apDistinct = NULL);
+		void UpdateFarSettings(DWORD anFarPID = 0, FAR_REQ_FARSETCHANGED* rpSetEnvVar = nullptr);
+		void UpdateTextColorSettings(bool ChangeTextAttr = true, bool ChangePopupAttr = true, const AppSettings* apDistinct = nullptr);
 		int CoordInPanel(COORD cr, bool abIncludeEdges = false);
 		bool GetPanelRect(bool abRight, RECT* prc, bool abFull = false, bool abIncludeEdges = false);
 		bool isAdministrator();
 		bool isMouseButtonDown();
 		void OnConsoleLangChange(DWORD_PTR dwNewKeybLayout);
-		void ChangeBufferHeightMode(bool abBufferHeight); // Вызывается из TabBar->ConEmu
+		void ChangeBufferHeightMode(bool abBufferHeight); // called from TabBar->ConEmu
 		bool isAlive();
 		bool GetMaxConSize(COORD* pcrMaxConSize);
 		int GetDetectedDialogs(int anMaxCount, SMALL_RECT* rc, DWORD* rf);
 		const CRgnDetect* GetDetector();
 		int GetStatusLineCount(int nLeftPanelEdge);
-		void GetStartTime(SYSTEMTIME& st);
+		const SYSTEMTIME& GetStartTime() const;
 		LPCWSTR GetConsoleStartDir(CEStr& szDir);
 		LPCWSTR GetFileFromConsole(LPCWSTR asSrc, CEStr& szFull);
 		LPCWSTR GetConsoleCurDir(CEStr& szDir, bool NeedRealPath);
@@ -603,7 +612,7 @@ class CRealConsole
 		bool InRecreate();
 		bool GuiAppAttachAllowed(DWORD anServerPID, LPCWSTR asAppFileName, DWORD anAppPID);
 		void ShowPropertiesDialog();
-		bool LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = NULL);
+		bool LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = nullptr);
 
 		void OnStartProcessAllowed();
 		void OnTimerCheck();
@@ -675,7 +684,10 @@ class CRealConsole
 			short Progress, LastShownProgress;
 			short PreWarningProgress; DWORD LastWarnCheckTick;
 			short ConsoleProgress, LastConsoleProgress; DWORD LastConProgrTick;
-			short AppProgressState, AppProgress; // Может быть задан из консоли (Ansi codes, Macro)
+			// Could be set from the console (Ansi codes, Macro)
+			AnsiProgressStatus AppProgressState;
+			// Could be set from the console (Ansi codes, Macro)
+			short AppProgress;
 		} m_Progress;
 		// a-la properties
 		void setProgress(short value);
@@ -683,7 +695,7 @@ class CRealConsole
 		void setPreWarningProgress(short value);
 		void setConsoleProgress(short value);
 		void setLastConsoleProgress(short value, bool UpdateTick);
-		void setAppProgress(short AppProgressState, short AppProgress);
+		void setAppProgress(AnsiProgressStatus AppProgressState, short AppProgress);
 		void logProgress(LPCWSTR asFormat, int V1, int V2 = 0);
 		// method
 		short CheckProgressInTitle();
@@ -869,7 +881,7 @@ class CRealConsole
 		DWORD mn_LastConsoleDataIdx, mn_LastConsolePacketIdx;
 		DWORD mn_LastFarReadTick;
 		bool OpenFarMapData();
-		void CloseFarMapData(MSectionLock* pCS = NULL);
+		void CloseFarMapData(MSectionLock* pCS = nullptr);
 		bool OpenMapHeader(bool abFromAttach = false);
 		void CloseMapHeader();
 		bool mb_DataChanged;

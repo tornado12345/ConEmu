@@ -64,13 +64,15 @@ public:
 	// Was specified in command line?
 	bool Exists;
 
-private:
-	// Not copyable!
-	CESwitch& operator=(const CESwitch &);
-
 public:
 	CESwitch(CESwitchType aType = sw_None);
 	~CESwitch();
+
+	// Not copyable!
+	CESwitch& operator=(const CESwitch&) = delete;
+	CESwitch(const CESwitch&) = delete;
+	CESwitch& operator=(CESwitch&&) = delete;
+	CESwitch(CESwitch&&) = delete;
 
 	void Clear();
 
@@ -93,7 +95,7 @@ public:
 
 public:
 	operator bool();
-	// other operators are not defined to avoid unambiguous calls
+	// other operators are not defined to avoid ambiguous calls
 };
 
 class CConEmuStart
@@ -133,10 +135,10 @@ public:
 public:
 	/* Store/retrieve command line, specified with "-run" or "-runlist" switches */
 	void SetCurCmd(LPCWSTR pszNewCmd, bool bIsCmdList);
-	LPCTSTR GetCurCmd(bool *pIsCmdList = NULL);
+	LPCTSTR GetCurCmd(bool *pIsCmdList = nullptr);
 
 	/* "Active" command line */
-	LPCTSTR GetCmd(bool *pIsCmdList = NULL, bool bNoTask = false);
+	LPCTSTR GetCmd(bool *pIsCmdList = nullptr, bool bNoTask = false);
 	/* If some task was marked ad "Default for new consoles" */
 	LPCTSTR GetDefaultTask();
 
@@ -184,6 +186,7 @@ public:
 		CESwitch ForceUseRegistryPrm;
 		CESwitch LoadCfgFile; // sw_Str
 		CESwitch SaveCfgFile; // sw_Str
+		CESwitch NoHooksWarn; // sw_Simple /NoHooksWarn
 		CESwitch DisableAutoUpdate; // sw_Simple /noupdate
 		CESwitch AutoUpdateOnStart; // sw_Simple /update
 		CESwitch UpdateSrcSet; // sw_Str
@@ -194,6 +197,7 @@ public:
 		CESwitch DesktopMode; // sw_Simple
 		bool SizePosPrm; // -WndX -WndY -WndW[idth] -WndH[eight]
 		CESwitch sWndX, sWndY, sWndW, sWndH; // sw_Str
+		CESwitch WindowTheme; // swStr: -theme "DarkMode_Explorer"
 		CESwitch Monitor; // -Monitor <1 | x10001 | "\\.\DISPLAY1">
 		CESwitch SetUpDefaultTerminal; // sw_Simple
 		CESwitch FixZoneId; // sw_Simple
@@ -204,6 +208,7 @@ public:
 		CESwitch AdvLogging; // sw_Int: -log[1|2|3|4]
 		CESwitch Detached; // sw_Simple
 		CESwitch NoAutoClose; // checked by isCloseOnLastTabClose()
+		CESwitch NoAutoEnvReload;
 	public:
 		// Suppress intellisense warning:
 		// the default constructor of "CConEmuStart::StartOptions" cannot be referenced -- it is a deleted function	ConEmu

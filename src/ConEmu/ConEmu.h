@@ -52,6 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //typedef HRESULT(WINAPI* FDwmIsCompositionEnabled)(BOOL *pfEnabled);
 
+class CAltNumpad;
 class CAttachDlg;
 class CConEmuBack;
 class CConEmuChild;
@@ -60,6 +61,7 @@ class CConEmuMacro;
 class CConEmuMenu;
 class CDefaultTerminal;
 class CGestures;
+class CPushInfo;
 class CRecreateDlg;
 class CRunQueue;
 class CStatus;
@@ -68,14 +70,14 @@ class CToolTip;
 class CVConGroup;
 class CVConGuard;
 class MFileLogEx;
-struct MSectionSimple;
-struct MSectionLockSimple;
+class GlobalHotkeys;
 enum ConEmuWindowMode;
 struct CEFindDlg;
-union CESize;
-class CPushInfo;
-class CAltNumpad;
 struct HandleMonitor;
+struct MSectionLockSimple;
+struct MSectionSimple;
+struct SystemEnvironment;
+union CESize;
 
 struct ConsoleInfoArg
 {
@@ -85,6 +87,9 @@ struct ConsoleInfoArg
 	CONSOLE_CURSOR_INFO cInfo;
 	TOPLEFTCOORD TopLeft;
 };
+
+#include <memory>
+#include <mutex>
 
 #include "DwmHelper.h"
 #include "TaskBar.h"
@@ -147,14 +152,14 @@ class CConEmuMain
 		wchar_t ms_AppID[40] = L"";                   // Generated in ::UpdateAppUserModelID
 		void SetAppID(LPCWSTR asExtraArgs);
 		bool mb_ConEmuWorkDirArg = false;             // Was started as "ConEmu.exe /Dir C:\abc ..."; may be overridden with "/dir" switch in task parameter
-		void StoreWorkDir(LPCWSTR asNewCurDir = NULL);
-		LPCWSTR WorkDir(LPCWSTR asOverrideCurDir = NULL);
+		void StoreWorkDir(LPCWSTR asNewCurDir = nullptr);
+		LPCWSTR WorkDir(LPCWSTR asOverrideCurDir = nullptr);
 		bool ChangeWorkDir(LPCWSTR asTempCurDir);
 		private:
-		LPWSTR  mps_ConEmuExtraArgs = NULL;            // Used with TaskBar jump list creation (/FontDir, /FontFile, etc.)
+		LPWSTR  mps_ConEmuExtraArgs = nullptr;            // Used with TaskBar jump list creation (/FontDir, /FontFile, etc.)
 		public:
-		void AppendExtraArgs(LPCWSTR asSwitch, LPCWSTR asSwitchValue = NULL);
-		LPCWSTR MakeConEmuStartArgs(CEStr& rsArgs, LPCWSTR asOtherConfig = NULL);
+		void AppendExtraArgs(LPCWSTR asSwitch, LPCWSTR asSwitchValue = nullptr);
+		LPCWSTR MakeConEmuStartArgs(CEStr& rsArgs, LPCWSTR asOtherConfig = nullptr) const;
 		wchar_t ms_ComSpecInitial[MAX_PATH] = L"";
 		CEStr ms_PostGuiMacro;
 		void SetPostGuiMacro(LPCWSTR asGuiMacro);
@@ -162,7 +167,7 @@ class CConEmuMain
 		void AddPostGuiRConMacro(LPCWSTR asGuiMacro);
 		void ExecPostGuiMacro();
 		wchar_t *mps_IconPath = nullptr;
-		HICON mh_TaskbarIcon = NULL;
+		HICON mh_TaskbarIcon = nullptr;
 		void SetWindowIcon(LPCWSTR asNewIcon);
 		void SetTaskbarIcon(HICON ahNewIcon);
 		CPushInfo *mp_PushInfo = nullptr;
@@ -181,7 +186,8 @@ class CConEmuMain
 			bool  bBlockChildrenDebuggers;
 		} m_DbgInfo;
 	private:
-		bool CheckBaseDir();
+		bool CheckBaseDir() const;
+		bool mb_DontUseInjects = false;
 		bool mb_ForceUseRegistry = false;
 		bool mb_SpecialConfigPath = false;
 		wchar_t ms_ConEmuXml[MAX_PATH+1] = L"";       // полный путь к портабельным настройкам
@@ -190,12 +196,12 @@ class CConEmuMain
 		bool SetConfigFile(LPCWSTR asFilePath, bool abWriteReq = false, bool abSpecialPath = false);
 		void SetForceUseRegistry();
 		LPCWSTR FindConEmuXml(CEStr& szXmlFile);
-		LPWSTR ConEmuXml(bool* pbSpecialPath = NULL);
+		LPWSTR ConEmuXml(bool* pbSpecialPath = nullptr);
 		LPWSTR ConEmuIni();
 		wchar_t ms_ConEmuChm[MAX_PATH+1] = L"";       // полный путь к chm-файлу (help)
 		wchar_t ms_ConEmuC32Full[MAX_PATH+12] = L"";  // полный путь к серверу (ConEmuC.exe) с длинными именами
 		wchar_t ms_ConEmuC64Full[MAX_PATH+12] = L"";  // полный путь к серверу (ConEmuC64.exe) с длинными именами
-		LPCWSTR ConEmuCExeFull(LPCWSTR asCmdLine=NULL);
+		LPCWSTR ConEmuCExeFull(LPCWSTR asCmdLine=nullptr);
 		//wchar_t *mpsz_ConEmuArgs;    // Use opt.cmdLine, opt.cfgSwitches and opt.runCommand instead
 		void GetComSpecCopy(ConEmuComspec& ComSpec);
 		void CreateGuiAttachMapping(DWORD nGuiAppPID);
@@ -226,6 +232,9 @@ class CConEmuMain
 			int  iRc;
 		};
 		static BOOL CALLBACK EnumWindowsOverQuake(HWND hWnd, LPARAM lpData);
+
+		std::mutex mcs_Log; // for create mp_Log
+		std::shared_ptr<MFileLogEx> mp_Log;
 	public:
 		//CConEmuChild *m_Child;
 		//CConEmuBack  *m_Back;
@@ -235,18 +244,17 @@ class CConEmuMain
 		CConEmuInside *mp_Inside = nullptr;
 		CStatus *mp_Status;
 		CToolTip *mp_Tip = nullptr;
-		MFileLogEx *mp_Log = nullptr;
-		MSectionSimple* mpcs_Log; // mcs_Log - для создания
 		CDefaultTerminal *mp_DefTrm;
 		CEFindDlg *mp_Find;
 		CRunQueue *mp_RunQueue;
 		HandleMonitor *mp_HandleMonitor = nullptr;
 
 		bool CreateLog();
+		std::shared_ptr<MFileLogEx> GetLogger() const;
 		bool LogString(LPCWSTR asInfo, bool abWriteTime = true, bool abWriteLine = true);
 		bool LogString(LPCSTR asInfo, bool abWriteTime = true, bool abWriteLine = true);
 		bool LogMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-		bool LogWindowPos(LPCWSTR asPrefix, LPRECT prcWnd = NULL);
+		bool LogWindowPos(LPCWSTR asPrefix, LPRECT prcWnd = nullptr);
 
 	public:
 		bool  WindowStartMinimized = false; // ключик "/min" или "Свернуть" в свойствах ярлыка
@@ -285,40 +293,40 @@ class CConEmuMain
 	public:
 		StartupStage GetStartupStage() const;
 
-		struct
+		struct MouseState
 		{
-			WORD  state;
-			bool  bSkipRDblClk;
-			bool  bIgnoreMouseMove;
-			bool  bCheckNormalRect; // call StoreNormalRect after resize in main timer
+			WORD  state = 0;
+			bool  bSkipRDblClk = false;
+			bool  bIgnoreMouseMove = false;
+			bool  bCheckNormalRect = false; // call StoreNormalRect after resize in main timer
 
-			COORD LClkDC, LClkCon;
-			POINT LDblClkDC; // заполняется в PatchMouseEvent
-			DWORD LDblClkTick;
-			COORD RClkDC, RClkCon;
-			DWORD RClkTick;
+			COORD LClkDC = {}, LClkCon = {};
+			POINT LDblClkDC = {}; // filled in PatchMouseEvent
+			DWORD LDblClkTick = 0;
+			COORD RClkDC = {}, RClkCon = {};
+			DWORD RClkTick = 0;
 
-			// Для обработки gpSet->isActivateSplitMouseOver
-			POINT  ptLastSplitOverCheck;
+			// For processing in gpSet->isActivateSplitMouseOver
+			POINT  ptLastSplitOverCheck = {};
 
-			// Чтобы не слать в консоль бесконечные WM_MOUSEMOVE
-			UINT   lastMsg;
+			// To avoid infinite WM_MOUSEMOVE posting to the console
+			UINT   lastMsg = 0;
 			WPARAM lastMMW = (WPARAM)-1;
 			LPARAM lastMML = (LPARAM)-1;
 
-			// Пропустить клик мышкой (окно было неактивно)
-			UINT nSkipEvents[2]; UINT nReplaceDblClk;
+			// Skip the mouse click (window was inactive)
+			UINT nSkipEvents[2] = {}; UINT nReplaceDblClk = 0;
 			// Activated by touch, skip next "activation" emulated by real mouse click
-			BOOL bTouchActivation;
-			// не пропускать следующий клик в консоль!
-			BOOL bForceSkipActivation;
+			bool bTouchActivation = false;
+			// Don't pass next click into the console!
+			bool bForceSkipActivation = false;
 
-			// таскание окошка за клиентскую область
-			POINT ptWndDragStart;
-			RECT  rcWndDragStart;
+			// Drag the window by client area
+			POINT ptWndDragStart = {};
+			RECT  rcWndDragStart = {};
 
-			// настройки скролла мышкой (сколько линий/символов "за клик")
-			UINT nWheelScrollChars, nWheelScrollLines;
+			// Settings from Windows - how many rows/chars we shall scroll by one step
+			UINT nWheelScrollChars = 0, nWheelScrollLines = 0;
 			void  ReloadWheelScroll()
 			{
 				#ifndef SPI_GETWHEELSCROLLCHARS
@@ -380,8 +388,8 @@ class CConEmuMain
 			typedef HRESULT (WINAPI* SetProcessDPIAwareness_t)(/*_In_*/Process_DPI_Awareness value);
 		} dpi;
 		bool isPiewUpdate = false;
-		HWND hPictureView = NULL; bool bPicViewSlideShow = false; DWORD dwLastSlideShowTick = 0; RECT mrc_WndPosOnPicView = {};
-		HWND mh_ShellWindow = NULL; // The Progman window for "Desktop" mode
+		HWND hPictureView = nullptr; bool bPicViewSlideShow = false; DWORD dwLastSlideShowTick = 0; RECT mrc_WndPosOnPicView = {};
+		HWND mh_ShellWindow = nullptr; // The Progman window for "Desktop" mode
 		DWORD mn_ShellWindowPID = 0;
 		BOOL mb_FocusOnDesktop = TRUE;
 		POINT cursor = {}, Rcursor = {};
@@ -394,7 +402,7 @@ class CConEmuMain
 		HICON GetCurrentVConIcon();
 		HCURSOR mh_CursorWait, mh_CursorArrow, mh_CursorAppStarting, mh_CursorMove, mh_CursorIBeam;
 		HCURSOR mh_SplitV = nullptr, mh_SplitV2 = nullptr, mh_SplitH = nullptr;
-		HCURSOR mh_DragCursor = NULL;
+		HCURSOR mh_DragCursor = nullptr;
 		CDragDrop *mp_DragDrop = nullptr;
 		// TODO: ==>> m_Foreground
 		bool mb_SkipOnFocus = false;
@@ -427,7 +435,7 @@ class CConEmuMain
 		bool mb_ProcessCreated = false;
 		bool mb_WorkspaceErasedOnClose = false;
 		#ifndef _WIN64
-		HWINEVENTHOOK mh_WinHook = NULL;
+		HWINEVENTHOOK mh_WinHook = nullptr;
 		static VOID CALLBACK WinEventProc(HWINEVENTHOOK hWinEventHook, DWORD anEvent, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
 		#endif
 		bool mb_ShellHookRegistered = false;
@@ -473,50 +481,37 @@ class CConEmuMain
 		bool mb_InImeComposition = false, mb_ImeMethodChanged = false;
 		wchar_t ms_ConEmuAliveEvent[MAX_PATH] = L"";
 		bool mb_AliveInitialized = false;
-		HANDLE mh_ConEmuAliveEvent = NULL; bool mb_ConEmuAliveOwned = false; DWORD mn_ConEmuAliveEventErr = 0;
-		HANDLE mh_ConEmuAliveEventNoDir = NULL; bool mb_ConEmuAliveOwnedNoDir = false; DWORD mn_ConEmuAliveEventErrNoDir = 0;
+		HANDLE mh_ConEmuAliveEvent = nullptr; bool mb_ConEmuAliveOwned = false; DWORD mn_ConEmuAliveEventErr = 0;
+		HANDLE mh_ConEmuAliveEventNoDir = nullptr; bool mb_ConEmuAliveOwnedNoDir = false; DWORD mn_ConEmuAliveEventErrNoDir = 0;
 		//
-		bool mb_HotKeyRegistered = false;
-		HHOOK mh_LLKeyHook = NULL;
-		HMODULE mh_LLKeyHookDll = NULL;
-		HWND* mph_HookedGhostWnd = nullptr;
-		HMODULE LoadConEmuCD();
-		void RegisterHotKeys();
-		void RegisterGlobalHotKeys(bool bRegister);
+		std::shared_ptr<GlobalHotkeys> m_Hotkeys;
 	public:
-		void GlobalHotKeyChanged();
+		GlobalHotkeys& GetGlobalHotkeys() const;
 	protected:
-		void UnRegisterHotKeys(bool abFinal=false);
-		HBITMAP mh_RightClickingBmp = NULL; HDC mh_RightClickingDC = NULL;
+		HBITMAP mh_RightClickingBmp = nullptr; HDC mh_RightClickingDC = nullptr;
 		POINT m_RightClickingSize = {}; // {384 x 16} 24 фрейма, считаем, что четверть отведенного времени прошла до начала показа
 		int m_RightClickingFrames = 0, m_RightClickingCurrent = -1;
 		bool mb_RightClickingPaint = false, mb_RightClickingLSent = false, mb_RightClickingRegistered = false;
 		void StartRightClickingPaint();
 		void StopRightClickingPaint();
 		static LRESULT CALLBACK RightClickingProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
-		HWND mh_RightClickingWnd = NULL;
+		HWND mh_RightClickingWnd = nullptr;
 		bool PatchMouseEvent(UINT messg, POINT& ptCurClient, POINT& ptCurScreen, WPARAM wParam, bool& isPrivate);
 	public:
-		wchar_t* LoadConsoleBatch(LPCWSTR asSource, RConStartArgsEx* pArgs = NULL);
+		wchar_t* LoadConsoleBatch(LPCWSTR asSource, RConStartArgsEx* pArgs = nullptr);
 		static wchar_t IsConsoleBatchOrTask(LPCWSTR asSource);
 	private:
 		wchar_t* LoadConsoleBatch_File(LPCWSTR asSource);
 		wchar_t* LoadConsoleBatch_Drops(LPCWSTR asSource);
-		wchar_t* LoadConsoleBatch_Task(LPCWSTR asSource, RConStartArgsEx* pArgs = NULL);
+		wchar_t* LoadConsoleBatch_Task(LPCWSTR asSource, RConStartArgsEx* pArgs = nullptr);
 	public:
 		void RightClickingPaint(HDC hdcIntVCon, CVirtualConsole* apVCon);
-		void RegisterMinRestore(bool abRegister);
-		bool IsKeyboardHookRegistered();
-		void RegisterHooks();
-		void UnRegisterHooks(bool abFinal=false);
-		void OnWmHotkey(WPARAM wParam, DWORD nTime = 0);
-		void UpdateWinHookSettings();
 		void CtrlWinAltSpace();
 		void DeleteVConMainThread(CVirtualConsole* apVCon);
-		UINT GetRegisteredMessage(LPCSTR asLocal, LPCWSTR asGlobal = NULL);
+		UINT GetRegisteredMessage(LPCSTR asLocal, LPCWSTR asGlobal = nullptr);
 		LRESULT CallMainThread(bool bSync, CallMainThreadFn fn, LPARAM lParam);
 	private:
-		UINT RegisterMessage(LPCSTR asLocal, LPCWSTR asGlobal = NULL);
+		UINT RegisterMessage(LPCSTR asLocal, LPCWSTR asGlobal = nullptr);
 		void RegisterMessages();
 	protected:
 		friend class CConEmuCtrl;
@@ -577,13 +572,13 @@ class CConEmuMain
 		DWORD GetFarPID(bool abPluginRequired=false);
 
 	public:
-		LPCWSTR GetDefaultTitle(); // вернуть ms_ConEmuDefTitle
-		LPCWSTR GetDefaultTabLabel(); // L"ConEmu"
+		LPCWSTR GetDefaultTitle() const; // ms_ConEmuDefTitle
+		LPCWSTR GetDefaultTabLabel() const; // L"ConEmu"
 		LPCTSTR GetLastTitle(bool abUseDefault=true);
 		LPCTSTR GetVConTitle(int nIdx);
 		void SetTitle(HWND ahWnd, LPCWSTR asTitle, bool abTrySync = false);
 		void SetTitleTemplate(LPCWSTR asTemplate);
-		int GetActiveVCon(CVConGuard* pVCon = NULL, int* pAllCount = NULL);
+		int GetActiveVCon(CVConGuard* pVCon = nullptr, int* pAllCount = nullptr);
 		int isVConValid(CVirtualConsole* apVCon);
 		void UpdateCaretPos(CVirtualConsole& vcon, const RECT& rect);
 		void UpdateCursorInfo(const ConsoleInfoArg* pInfo);
@@ -603,6 +598,7 @@ class CConEmuMain
 		void AttachToDialog();
 		void CheckFocus(LPCWSTR asFrom);
 		bool CheckRequiredFiles();
+		bool CanUseInjects() const;
 		bool CheckUpdates(UINT abShowMessages);
 		DWORD isSelectionModifierPressed(bool bAllowEmpty);
 		void ForceSelectionModifierPressed(DWORD nValue);
@@ -610,9 +606,9 @@ class CConEmuMain
 		bool ConActivate(int nCon);
 		bool ConActivateByName(LPCWSTR asName);
 		bool ConActivateNext(bool abNext);
-		bool CreateWnd(RConStartArgsEx *args);
-		CVirtualConsole* CreateCon(RConStartArgsEx *args, bool abAllowScripts = false, bool abForceCurConsole = false);
-		CVirtualConsole* CreateConGroup(LPCWSTR apszScript, bool abForceAsAdmin = false, LPCWSTR asStartupDir = NULL, const RConStartArgsEx *apDefArgs = NULL);
+		bool CreateWnd(RConStartArgsEx& args);
+		CVirtualConsole* CreateCon(RConStartArgsEx& args, bool abAllowScripts = false, bool abForceCurConsole = false);
+		CVirtualConsole* CreateConGroup(LPCWSTR apszScript, const RConStartArgsEx *apDefArgs = nullptr);
 		LPCWSTR ParseScriptLineOptions(LPCWSTR apszLine, bool* rpbSetActive, RConStartArgsEx* pArgs);
 		void CreateGhostVCon(CVirtualConsole* apVCon);
 		BOOL CreateMainWindow();
@@ -645,7 +641,7 @@ class CConEmuMain
 			fgf_InsideParent = 0x0008,
 			fgf_ConEmuAny    = (fgf_ConEmuMain|fgf_RealConsole|fgf_ConEmuDialog|fgf_InsideParent),
 		};
-		bool isMeForeground(bool abRealAlso=false, bool abDialogsAlso=true, HWND* phFore=NULL);
+		bool isMeForeground(bool abRealAlso=false, bool abDialogsAlso=true, HWND* phFore=nullptr);
 	protected:
 		struct {
 			HWND  hLastFore;
@@ -655,7 +651,7 @@ class CConEmuMain
 			DWORD nDefTermTick;
 			bool  bCaretCreated;
 		} m_Foreground = {};
-		bool RecheckForegroundWindow(LPCWSTR asFrom, HWND* phFore = NULL, HWND hForcedForeground = NULL);
+		bool RecheckForegroundWindow(LPCWSTR asFrom, HWND* phFore = nullptr, HWND hForcedForeground = nullptr);
 
 	public:
 		DWORD GetWindowStyle();
@@ -691,7 +687,7 @@ class CConEmuMain
 		bool isValid(CRealConsole* apRCon);
 		bool isValid(CVirtualConsole* apVCon);
 		bool isVConExists(int nIdx);
-		bool isVConHWND(HWND hChild, CVConGuard* pVCon = NULL);
+		bool isVConHWND(HWND hChild, CVConGuard* pVCon = nullptr);
 		bool isViewer();
 		void LoadIcons();
 		void MoveActiveTab(CVirtualConsole* apVCon, bool bLeftward);
@@ -702,7 +698,7 @@ class CConEmuMain
 		void OnMainCreateFinished();
 		bool CreateStartupConsoles();
 	public:
-		void PostCreateCon(RConStartArgsEx *pArgs);
+		void PostCreateCon(const RConStartArgsEx& args);
 		HWND PostCreateView(CConEmuChild* pChild);
 		void PostFontSetSize(int nRelative/*0/1/2*/, int nValue/*для nRelative==0 - высота, для ==1 - +-1, +-2,... | 100%*/);
 		void PostMacro(LPCWSTR asMacro);
@@ -713,7 +709,7 @@ class CConEmuMain
 		bool RecreateAction(RecreateActionParm aRecreate, BOOL abConfirm, RConBoolArg bRunAs = crb_Undefined);
 		int RecreateDlg(RConStartArgsEx* apArg, bool abDontAutoSelCmd = false);
 		void RequestPostUpdateTabs();
-		int RunSingleInstance(HWND hConEmuWnd = NULL, LPCWSTR apszCmd = NULL);
+		int RunSingleInstance(HWND hConEmuWnd = nullptr, LPCWSTR apszCmd = nullptr);
 		void SetDragCursor(HCURSOR hCur);
 		bool SetSkipOnFocus(bool abSkipOnFocus);
 		void SetWaitCursor(BOOL abWait);
@@ -731,7 +727,6 @@ class CConEmuMain
 		BOOL TrackMouse();
 		void SetSkipMouseEvent(UINT nMsg1, UINT nMsg2, UINT nReplaceDblClk);
 		void Update(bool isForce = false);
-		void UpdateActiveGhost(CVirtualConsole* apVCon);
 	protected:
 		void UpdateImeComposition();
 	public:
@@ -754,7 +749,7 @@ class CConEmuMain
 		LRESULT OnDestroy(HWND hWnd);
 		LRESULT OnFlashWindow(WPARAM wParam, LPARAM lParam);
 		void DoFlashWindow(CESERVER_REQ_FLASHWINFO* pFlash, bool bFromMacro);
-		LRESULT OnFocus(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam, LPCWSTR asMsgFrom = NULL, bool abForceChild = false);
+		LRESULT OnFocus(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam, LPCWSTR asMsgFrom = nullptr, bool abForceChild = false);
 		bool IsChildFocusAllowed(HWND hChild);
 		void RefreshWindowStyles();
 		LRESULT OnKeyboard(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
@@ -816,7 +811,7 @@ class CConEmuMain
 		#endif
 
 		// IME support (WinXP or later)
-		HMODULE mh_Imm32 = NULL;
+		HMODULE mh_Imm32 = nullptr;
 		ImmSetCompositionFontW_t _ImmSetCompositionFont = nullptr;
 		ImmSetCompositionWindow_t _ImmSetCompositionWindow = nullptr;
 		ImmGetContext_t _ImmGetContext = nullptr;
@@ -845,6 +840,13 @@ class CConEmuMain
 			MSectionLockSimple* pcsLock;
 			bool wait;
 		} m_LockConhostStart = {};
+
+	public:
+		void ReloadEnvironmentVariables();
+		std::shared_ptr<SystemEnvironment> GetEnvironmentVariables() const;
+	private:
+		std::shared_ptr<SystemEnvironment> saved_environment_;
+		mutable std::mutex saved_environment_mutex_;
 };
 
 // Message Logger

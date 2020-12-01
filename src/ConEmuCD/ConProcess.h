@@ -29,20 +29,24 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include "../common/MArray.h"
+#include "../common/Common.h"
 
-extern BOOL   gbUseDosBox;
-extern HANDLE ghDosBoxProcess;
-extern DWORD  gnDosBoxPID;
+#include "WinConExports.h"
 
 class MSectionLock;
 
-struct ConProcess
+struct ConProcess final
 {
 public:
-	ConProcess();
+	explicit ConProcess(const MModule& kernel32);
 	~ConProcess();
 
-	bool CheckProcessCount(BOOL abForce = FALSE);
+	ConProcess(const ConProcess&) = delete;
+	ConProcess(ConProcess&&) = delete;
+	ConProcess& operator=(const ConProcess&) = delete;
+	ConProcess& operator=(ConProcess&&) = delete;
+
+	bool CheckProcessCount(bool abForce = false);
 	bool GetRootInfo(CESERVER_REQ* pReq);
 	bool ProcessAdd(DWORD nPID, MSectionLock& CS);
 	void ProcessCountChanged(BOOL abChanged, UINT anPrevCount, MSectionLock& CS);
@@ -52,11 +56,23 @@ public:
 	void OnAttached();
 
 	// returns true if process list was changed since last query
-	bool GetProcesses(DWORD* processes, UINT count);
+	bool GetProcesses(DWORD* processes, UINT count, DWORD dwMainServerPid);
 
-	#ifdef _DEBUG
-	void DumpProcInfo(LPCWSTR sLabel, DWORD nCount, DWORD* pPID);
-	#endif
+	void DumpProcInfo(LPCWSTR sLabel, DWORD nCount, DWORD* pPID) const;
+
+	DWORD WaitForRootConsoleProcess(DWORD nTimeout) const;
+
+	/// Checks if we are able to retrieve current console processes list. <br>
+	/// Note that this could not be possible on old OS or emulators.
+	bool IsConsoleProcessCountSupported() const;
+
+	/// Returns PIDs of processes except of server/root/ntvdm. <br>
+	/// The function is used to check if we need to print
+	/// the "Press Enter or Esc to exit..." confirmation
+	MArray<DWORD> GetSpawnedProcesses() const;
+
+	/// Returns all PIDs of processes without sorting, just as WinApi returns them.
+	MArray<DWORD> GetAllProcesses() const;
 
 public:
 	MSection *csProc = nullptr;
@@ -80,6 +96,8 @@ public:
 	#endif
 
 protected:
+	int GetProcessCount(DWORD* rpdwPID, UINT nMaxCount, DWORD dwMainServerPid);
+
 	// Hold all XTermMode requests
 	struct XTermRequest
 	{
@@ -95,6 +113,14 @@ protected:
 	// Some flags (only tmc_CursorShape yet) are *console* life-time
 	// And we store here current projection of xRequests
 	DWORD xFixedRequests[tmc_Last] = {};
+
+	/// DWORD GetConsoleProcessList(LPDWORD lpdwProcessList, DWORD dwProcessCount)
+	FGetConsoleProcessList pfnGetConsoleProcessList = nullptr;
+
+	/// Console processes count on startup
+	DWORD startProcessCount_ = 0;
+	/// Console processes IDs on startup
+	DWORD startProcessIds_[64] = {};
 
 	// create=false used to erasing on reset
 	INT_PTR GetXRequestIndex(DWORD pid, bool create);

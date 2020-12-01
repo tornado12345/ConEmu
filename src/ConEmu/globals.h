@@ -61,21 +61,6 @@ extern HWND ghConWnd;
 #endif
 
 extern bool gbMessagingStarted;
-
-class DontEnable
-{
-private:
-	LONG nPrev; // Informational!
-	static LONG gnDontEnable;
-	static LONG gnDontEnableCount;
-	bool bLocked;
-public:
-	DontEnable(bool abLock = true);
-	~DontEnable();
-public:
-	static bool isDontEnable();
-};
-
 extern OSVERSIONINFO gOSVer;
 extern WORD gnOsVer;
 extern bool gbIsWine;
@@ -131,8 +116,8 @@ HWND getForegroundWindow();
 
 extern HWND ghDlgPendingFrom;
 extern LONG gnInMsgBox;
-int MsgBox(LPCTSTR lpText, UINT uType, LPCTSTR lpCaption = NULL, HWND ahParent = (HWND)-1, bool abModal = true);
-void AssertBox(LPCTSTR szText, LPCTSTR szFile, UINT nLine, LPEXCEPTION_POINTERS ExceptionInfo = NULL);
+int MsgBox(LPCTSTR lpText, UINT uType, LPCTSTR lpCaption = nullptr, HWND ahParent = (HWND)-1, bool abModal = true);
+void AssertBox(LPCTSTR szText, LPCTSTR szFile, UINT nLine, LPEXCEPTION_POINTERS ExceptionInfo = nullptr);
 void PatchMsgBoxIcon(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
 
 #include "../ConEmu/version_stage.h"
@@ -140,7 +125,7 @@ void PatchMsgBoxIcon(HWND hWnd, UINT messg, WPARAM wParam, LPARAM lParam);
 #define Assert(V)
 #define AssertMsg(V)
 #else
-#define Assert(V) if ((V)==FALSE) { AssertBox(_T(#V), _T(__FILE__), __LINE__); }
+#define Assert(V) if (!(V)) { AssertBox(_T(#V), _T(__FILE__), __LINE__); }
 #define AssertMsg(V) AssertBox(V, _T(__FILE__), __LINE__);
 #endif
 
@@ -161,4 +146,4 @@ struct NestedCallCounter
 #define NestedCallAssert(level) \
 	static LONG NestedCallLevel = 0; \
 	NestedCallCounter ncCounter(NestedCallLevel); \
-	Assert(NestedCallLevel <= level);
+	Assert(NestedCallLevel <= (level));

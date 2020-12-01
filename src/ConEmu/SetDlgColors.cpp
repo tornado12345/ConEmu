@@ -39,13 +39,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "VConGroup.h"
 #include "VirtualConsole.h"
 
+using ConEmu::PaletteColors;
+
 const int CSetDlgColors::MAX_COLOR_EDT_ID = c15;
 
 BOOL CSetDlgColors::gbLastColorsOk = FALSE;
 ColorPalette CSetDlgColors::gLastColors = {};
 
-HBRUSH CSetDlgColors::mh_CtlColorBrush = NULL;
-COLORREF CSetDlgColors::acrCustClr[16] = {}; // array of custom colors, используется в ChooseColor(...)
+HBRUSH CSetDlgColors::mh_CtlColorBrush = nullptr;
+PaletteColors CSetDlgColors::m_CustClr = {}; // array of custom colors, используется в ChooseColor(...)
 MMap<HWND, WNDPROC> CSetDlgColors::gColorBoxMap;
 
 bool CSetDlgColors::GetColorById(WORD nID, COLORREF* color)
@@ -133,7 +135,7 @@ bool CSetDlgColors::SetColorById(WORD nID, COLORREF color)
 LRESULT CSetDlgColors::ColorBoxProc(HWND hCtrl, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	LRESULT lRc = 0;
-	WNDPROC pfnOldProc = NULL;
+	WNDPROC pfnOldProc = nullptr;
 	gColorBoxMap.Get(hCtrl, &pfnOldProc);
 
 	UINT CB = GetWindowLong(hCtrl, GWL_ID);
@@ -179,7 +181,7 @@ LRESULT CSetDlgColors::ColorBoxProc(HWND hCtrl, UINT uMsg, WPARAM wParam, LPARAM
 			if (!PtInRect(&rcSelf, ptCur))
 			{
 				bClicked = false;
-				HDC hdc = GetDC(NULL);
+				HDC hdc = GetDC(nullptr);
 				if (hdc)
 				{
 					COLORREF clr = GetPixel(hdc, ptCur.x, ptCur.y);
@@ -191,7 +193,7 @@ LRESULT CSetDlgColors::ColorBoxProc(HWND hCtrl, UINT uMsg, WPARAM wParam, LPARAM
 						gpConEmu->InvalidateAll();
 						gpConEmu->Update(true);
 					}
-					ReleaseDC(NULL, hdc);
+					ReleaseDC(nullptr, hdc);
 				}
 			}
 		}
@@ -202,7 +204,7 @@ LRESULT CSetDlgColors::ColorBoxProc(HWND hCtrl, UINT uMsg, WPARAM wParam, LPARAM
 			bHooked = false;
 			ReleaseCapture();
 		}
-		gColorBoxMap.Get(hCtrl, NULL, true);
+		gColorBoxMap.Get(hCtrl, nullptr, true);
 		break;
 	}
 
@@ -216,12 +218,12 @@ wrap:
 
 void CSetDlgColors::ColorSetEdit(HWND hWnd2, WORD c)
 {
-	_ASSERTE(hWnd2!=NULL);
+	_ASSERTE(hWnd2!=nullptr);
 	// Hook ctrl procedure
 	if (!gColorBoxMap.Initialized())
 		gColorBoxMap.Init(128);
 	HWND hBox = GetDlgItem(hWnd2, c);
-	if (!gColorBoxMap.Get(hBox, NULL))
+	if (!gColorBoxMap.Get(hBox, nullptr))
 	{
 		WNDPROC pfnOld = (WNDPROC)SetWindowLongPtr(hBox, GWLP_WNDPROC, (LONG_PTR)ColorBoxProc);
 		gColorBoxMap.Set(hBox, pfnOld);
@@ -250,7 +252,7 @@ void CSetDlgColors::ColorSetEdit(HWND hWnd2, WORD c)
 
 bool CSetDlgColors::ColorEditDialog(HWND hWnd2, WORD c)
 {
-	_ASSERTE(hWnd2!=NULL);
+	_ASSERTE(hWnd2!=nullptr);
 	bool bChanged = false;
 	COLORREF color = 0;
 	GetColorById(c, &color);
@@ -311,7 +313,7 @@ INT_PTR CSetDlgColors::ColorCtlStatic(HWND hWnd2, WORD c, HWND hItem)
 
 		if (c >= c32 && c <= c34)
 		{
-			ThumbColor *ptc = NULL;
+			ThumbColor *ptc = nullptr;
 
 			if (c == c32) ptc = &gpSet->ThSet.crBackground;
 			else if (c == c33) ptc = &gpSet->ThSet.crPreviewFrame;
@@ -327,7 +329,7 @@ INT_PTR CSetDlgColors::ColorCtlStatic(HWND hWnd2, WORD c, HWND hItem)
 				else
 				{
 					CVConGuard VCon;
-					const CEFAR_INFO_MAPPING *pfi = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon()->GetFarInfo() : NULL;
+					const CEFAR_INFO_MAPPING *pfi = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon()->GetFarInfo() : nullptr;
 
 					if (pfi && pfi->cbSize>=sizeof(CEFAR_INFO_MAPPING))
 					{
@@ -358,13 +360,10 @@ INT_PTR CSetDlgColors::ColorCtlStatic(HWND hWnd2, WORD c, HWND hItem)
 
 bool CSetDlgColors::ShowColorDialog(HWND HWndOwner, COLORREF *inColor)
 {
-	CHOOSECOLOR cc;                 // common dialog box structure
-	// Вернул. IMHO - бред. Добавили Custom Color, а меняется ФОН окна!
-	// Initialize CHOOSECOLOR
-	ZeroMemory(&cc, sizeof(cc));
+	CHOOSECOLOR cc{};
 	cc.lStructSize = sizeof(cc);
 	cc.hwndOwner = HWndOwner;
-	cc.lpCustColors = (LPDWORD)acrCustClr;
+	cc.lpCustColors = LPDWORD(&(m_CustClr[0]));
 	cc.rgbResult = *inColor;
 	cc.Flags = CC_FULLOPEN | CC_RGBINIT;
 
@@ -391,10 +390,10 @@ bool CSetDlgColors::GetColorRef(HWND hDlg, WORD TB, COLORREF* pCR)
 	return ::GetColorRef(temp, pCR);
 }
 
-void CSetDlgColors::OnSettingsLoaded(const COLORREF (&Colors)[0x10])
+void CSetDlgColors::OnSettingsLoaded(const PaletteColors &Colors)
 {
 	// Init custom palette for ColorSelection dialog
-	memmove(acrCustClr, gpSet->Colors, sizeof(Colors));
+	m_CustClr = gpSet->Colors;
 }
 
 void CSetDlgColors::ReleaseHandles()

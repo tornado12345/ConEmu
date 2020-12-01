@@ -36,6 +36,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "OptionsClass.h"
 #include "SetPgFeatures.h"
 
+#include "../common/MFileLogEx.h"
+
 CSetPgFeatures::CSetPgFeatures()
 {
 }
@@ -66,6 +68,7 @@ LRESULT CSetPgFeatures::OnInitDialog(HWND hDlg, bool abInitial)
 	checkDlgButton(hDlg, cbProcessAnsi, gpSet->isProcessAnsi);
 
 	checkDlgButton(hDlg, cbAnsiLog, gpSet->isAnsiLog);
+	checkDlgButton(hDlg, cbAnsiLogCodes, gpSet->isAnsiLogCodes);
 	SetDlgItemText(hDlg, tAnsiLogPath, (gpSet->pszAnsiLog && *gpSet->pszAnsiLog) ? gpSet->pszAnsiLog : CEANSILOGFOLDER);
 
 	checkDlgButton(hDlg, cbKillSshAgent, gpSet->isKillSshAgent);
@@ -92,11 +95,12 @@ LRESULT CSetPgFeatures::OnInitDialog(HWND hDlg, bool abInitial)
 	return 0;
 }
 
-void CSetPgFeatures::UpdateLogLocation()
+void CSetPgFeatures::UpdateLogLocation() const
 {
 	// Cut log file to directory only
-	CEStr lsLogPath(gpSet->GetLogFileName());
-	LPCWSTR pszName = lsLogPath.IsEmpty() ? NULL : PointToName(lsLogPath.ms_Val);
+	const auto pLogger = gpConEmu->GetLogger();
+	CEStr lsLogPath(pLogger ? pLogger->GetLogFileName() : L"");
+	LPCWSTR pszName = lsLogPath.IsEmpty() ? nullptr : PointToName(lsLogPath.ms_Val);
 	if (pszName)
 		*(wchar_t*)pszName = 0;
 	SetDlgItemText(gpSetCls->GetPage(thi_Features), tDebugLogDir, lsLogPath);
@@ -107,11 +111,12 @@ LRESULT CSetPgFeatures::OnEditChanged(HWND hDlg, WORD nCtrlId)
 	switch (nCtrlId)
 	{
 	case tAnsiLogPath:
-	{
 		SafeFree(gpSet->pszAnsiLog);
 		gpSet->pszAnsiLog = GetDlgItemTextPtr(hDlg, tAnsiLogPath);
-	}
-	break;
+		break;
+
+	case tDebugLogDir:
+		break; // read-only
 
 	default:
 		_ASSERTE(FALSE && "EditBox was not processed");

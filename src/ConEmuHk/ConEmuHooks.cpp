@@ -52,10 +52,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#define SHOWDEBUGSTR -- специально отключено, CONEMU_MINIMAL, OutputDebugString могут нарушать работу процессов
 
 #undef SHOWCREATEPROCESSTICK
-#undef SHOWCREATEBUFFERINFO
 #ifdef _DEBUG
 	#define SHOWCREATEPROCESSTICK
-//	#define SHOWCREATEBUFFERINFO
 	#define DUMP_VIM_SETCURSORPOS
 #endif
 
@@ -76,26 +74,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DECLARE_CONEMU_HOOK_FUNCTION_ID
 
 #include "../common/defines.h"
-#include <WinError.h>
-#include <WinNT.h>
-#include <TCHAR.h>
-#include <Tlhelp32.h>
+#include <winnt.h>
+#include <tchar.h>
 #include <shlwapi.h>
 #include "../common/Common.h"
-#include "../common/ConEmuCheck.h"
 #include "SetHook.h"
-#include "../common/execute.h"
 #include "DefTermHk.h"
 #include "ShellProcessor.h"
-#include "GuiAttach.h"
-#include "Ansi.h"
-#include "MainThread.h"
 #include "../common/CmdLine.h"
-#include "../common/ConsoleAnnotation.h"
-#include "../common/ConsoleRead.h"
-#include "../common/UnicodeChars.h"
 #include "../common/WConsole.h"
-#include "../common/WThreads.h"
 
 #include "hkCmdExe.h"
 #include "hkConsole.h"
@@ -155,6 +142,7 @@ HookModeFar gFarMode = {sizeof(HookModeFar)};
 bool    gbIsFarProcess = false;
 InQueue gInQueue = {};
 HANDLE  ghConsoleCursorChanged = NULL;
+SrvLogString_t gfnSrvLogString = nullptr;
 /* ************ Globals for Far Hooks ************ */
 
 /* ************ Globals for cmd.exe/clink ************ */
@@ -448,6 +436,9 @@ bool InitHooksConsole()
 		HOOK_ITEM_BY_NAME(ScrollConsoleScreenBufferW, kernel32),
 		HOOK_ITEM_BY_NAME(WriteConsoleOutputCharacterA, kernel32),
 		HOOK_ITEM_BY_NAME(WriteConsoleOutputCharacterW, kernel32),
+		HOOK_ITEM_BY_NAME(FillConsoleOutputCharacterA, kernel32),
+		HOOK_ITEM_BY_NAME(FillConsoleOutputCharacterW, kernel32),
+		HOOK_ITEM_BY_NAME(FillConsoleOutputAttribute, kernel32),
 		/* Others console functions */
 		HOOK_ITEM_BY_NAME(GetNumberOfConsoleInputEvents, kernel32),
 		HOOK_ITEM_BY_NAME(FlushConsoleInputBuffer, kernel32),

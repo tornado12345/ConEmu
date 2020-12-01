@@ -52,7 +52,7 @@ public:
 
 	void FixSingleModifier(DWORD Vk, CRealConsole* pRCon);
 
-	static void StatusCommand(ConEmuStatusCommand nStatusCmd, int IntParm = 0, LPCWSTR StrParm = NULL, CRealConsole* pRCon = NULL); // csc_ShowHide, csc_SetStatusText
+	static void StatusCommand(ConEmuStatusCommand nStatusCmd, int IntParm = 0, LPCWSTR StrParm = nullptr, CRealConsole* pRCon = nullptr); // csc_ShowHide, csc_SetStatusText
 
 	static void TabCommand(ConEmuTabCommand nTabCmd); // ctc_ShowHide, ctc_SwitchNext, и т.п.
 	static size_t GetOpenedTabs(CESERVER_REQ_GETALLTABS::TabInfo*& pTabs);
@@ -60,38 +60,39 @@ public:
 
 	static void ChooseTabFromMenu(BOOL abFirstTabOnly, POINT pt, DWORD Align /*= TPM_CENTERALIGN|TPM_VCENTERALIGN*/);
 
-	static void DoFindText(int nDirection, CRealConsole* pRCon = NULL);
-	static void DoEndFindText(CRealConsole* pRCon = NULL);
+	static void DoFindText(int nDirection, CRealConsole* pRCon = nullptr);
+	static void DoEndFindText(CRealConsole* pRCon = nullptr);
 
 	void SkipOneAppsRelease(bool abSkip);
 
 	static void MakeScreenshot(bool abFullscreen = false);
 
 protected:
-	BOOL mb_InWinTabSwitch;
-	BOOL mb_InCtrlTabSwitch;
+	BOOL mb_InWinTabSwitch = FALSE;
+	BOOL mb_InCtrlTabSwitch = FALSE;
 
-	UINT mn_DoubleKeyConsoleNum; // Предыдущий VK
-	void ResetDoubleKeyConsoleNum(CRealConsole* pRCon = NULL);
+	UINT mn_DoubleKeyConsoleNum = 0; // Previous VK
+	void ResetDoubleKeyConsoleNum(CRealConsole* pRCon = nullptr);
 
 private:
-	DWORD dwControlKeyState;
-	bool bWin, bApps;
-	bool bCaps, bNum, bScroll;
-	bool bLAlt, bRAlt;
-	bool bLCtrl, bRCtrl;
-	bool bLShift, bRShift;
-	DWORD mn_LastSingleModifier, mn_SingleModifierFixKey, mn_SingleModifierFixState;
-	BOOL mb_LastSingleModifier;
+	DWORD dwControlKeyState = 0;
+	bool bWin = false, bApps = false;
+	bool bCaps = false, bNum = false, bScroll = false;
+	bool bLAlt = false, bRAlt = false;
+	bool bLCtrl = false, bRCtrl = false;
+	bool bLShift = false, bRShift = false;
+	DWORD mn_LastSingleModifier = 0, mn_SingleModifierFixState = 0;
+	BYTE mn_SingleModifierFixKey = 0;
+	BOOL mb_LastSingleModifier = FALSE;
 
-	UINT m_SkippedMsg; WPARAM m_SkippedMsgWParam; LPARAM m_SkippedMsgLParam;
+	UINT m_SkippedMsg = 0; WPARAM m_SkippedMsgWParam = 0; LPARAM m_SkippedMsgLParam = 0;
 
 	static bool mb_SkipOneAppsRelease;
 	static HHOOK mh_SkipOneAppsRelease;
 	static LRESULT CALLBACK SkipOneAppsReleaseHook(int code, WPARAM wParam, LPARAM lParam);
 
 public:
-	// true-обработали, false-пропустить в консоль
+	// true-processed, false-pass to console
 
 	// User (Keys)
 	static bool WINAPI key_MinimizeRestore(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
@@ -116,9 +117,11 @@ public:
 	static bool WINAPI key_ShowTabBar(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_ShowCaption(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_AlwaysOnTop(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
+	static bool WINAPI key_ResetTerminal(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	// System (predefined, fixed)
 	static bool WINAPI key_SystemMenu(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_TabMenu(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
+	static bool WINAPI key_EditMenu(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_ShowRealConsole(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_ForcedFullScreen(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 	static bool WINAPI key_SwitchGuiFocus(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);

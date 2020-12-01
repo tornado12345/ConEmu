@@ -58,6 +58,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/HkFunc.h"
+#include "../common/MModule.h"
 #include "../common/UnicodeChars.h"
 #include "../common/WThreads.h"
 #include "../ConEmu/version.h"
@@ -80,6 +81,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // используется (пока) только при обработке раскраски файлов
 #define IsTransparent(C) (((C) & 0xFF000000) == 0)
 #define SetTransparent(T) ((T) ? 0 : 0xFF000000)
+#define BareRgbColor(C) ((C) & 0x00FFFFFF)
 
 
 #define MAX_READ_BUF 16384
@@ -308,7 +310,7 @@ int WINAPI RequestLocalServer(/*[IN/OUT]*/RequestLocalServerParm* Parm)
 	HMODULE hHkDll = NULL;
 	RequestLocalServer_t fRequestLocalServer = NULL;
 	wchar_t *pszSlash, szFile[MAX_PATH+1] = {};
-	LPCWSTR pszSrvName = WIN3264TEST(L"ConEmuHk.dll",L"ConEmuHk64.dll");
+	LPCWSTR pszSrvName = ConEmuHk_DLL_3264;
 
 	GetModuleFileName(ghOurModule, szFile, MAX_PATH);
 	pszSlash = wcsrchr(szFile, L'\\');
@@ -753,8 +755,7 @@ WORD Far2ConEmuColor(const FarColor* Attributes, AnnotationInfo& t)
 	}
 	else
 	{
-		//n |= 0x07;
-		nForeColor = Attributes->ForegroundColor & 0x00FFFFFF;
+		nForeColor = BareRgbColor(Attributes->ForegroundColor);
 		Far3Color::Color2FgIndex(nForeColor, n);
 		t.fg_color = nForeColor;
 		t.fg_valid = TRUE;
@@ -767,7 +768,7 @@ WORD Far2ConEmuColor(const FarColor* Attributes, AnnotationInfo& t)
 	}
 	else
 	{
-		nBackColor = Attributes->BackgroundColor & 0x00FFFFFF;
+		nBackColor = BareRgbColor(Attributes->BackgroundColor);
 		Far3Color::Color2BgIndex(nBackColor, nBackColor==nForeColor, n);
 		t.bk_color = nBackColor;
 		t.bk_valid = TRUE;
@@ -1087,6 +1088,9 @@ BOOL WINAPI ReadOutput(FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD BufferCoor
 
 BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD BufferCoord, SMALL_RECT* WriteRegion)
 {
+	if (!Buffer || !WriteRegion)
+		return FALSE;
+
 	#ifdef _DEBUG
 	wchar_t szCall[100]; swprintf_c(szCall, L"ExtCon::WriteOutput({%i,%i}-{%i,%i})\n", WriteRegion->Left, WriteRegion->Top, WriteRegion->Right, WriteRegion->Bottom);
 	DEBUGSTRCALL(szCall);
@@ -1122,6 +1126,22 @@ BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD Buf
 	if (!GetBufferInfo(h, csbi, srWork))
 		return FALSE;
 
+	// A sign that Far starts command execution?
+	if (WriteRegion->Left == 0 && WriteRegion->Right > 0
+		&& WriteRegion->Top == -1 && WriteRegion->Bottom == -1)
+	{
+		SrvLogString_t fnSrvLogString;
+		MModule srv_dll(GetModuleHandle(ConEmuCD_DLL_3264));
+		if (srv_dll.GetProcAddress("PrivateEntry2", fnSrvLogString))
+		{
+			wchar_t log_info[120];
+			msprintf(log_info, std::size(log_info),
+				L"Far.exe: Start command execution? buffer={%ix%i} rect={%i,%i}-{%i,%i}",
+				csbi.dwSize.X, csbi.dwSize.Y, LogSRectCoords(srWork));
+			fnSrvLogString(log_info);
+		}
+	}
+
 	CHAR_INFO cDefWriteBuf[256];
 	CHAR_INFO *pcWriteBuf = NULL;
 	int nWindowWidth  = srWork.Right - srWork.Left + 1;
@@ -1144,10 +1164,11 @@ BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD Buf
 	SMALL_RECT rcWrite = *WriteRegion;
 	COORD MyBufferSize = {BufferSize.X, 1};
 	COORD MyBufferCoord = {BufferCoord.X, 0};
-	SHORT YShift = gbFarBufferMode ? (csbi.dwSize.Y - (srWork.Bottom - srWork.Top + 1)) : 0;
-	SHORT Y1 = WriteRegion->Top + YShift;
-	SHORT Y2 = WriteRegion->Bottom + YShift;
-	SHORT BufferShift = WriteRegion->Top + YShift;
+	const int YShift = gbFarBufferMode
+		? (static_cast<int>(csbi.dwSize.Y) - (srWork.Bottom - srWork.Top + 1)) : 0;
+	SHORT Y1 = static_cast<SHORT>(WriteRegion->Top + YShift);
+	SHORT Y2 = static_cast<SHORT>(WriteRegion->Bottom + YShift);
+	const SHORT BufferShift = static_cast<SHORT>(WriteRegion->Top + YShift);
 
 	if (Y2 >= csbi.dwSize.Y)
 	{
@@ -1218,8 +1239,7 @@ BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD Buf
 			}
 			else
 			{
-				//n |= 0x07;
-				nForeColor = pFar->Attributes.ForegroundColor & 0x00FFFFFF;
+				nForeColor = BareRgbColor(pFar->Attributes.ForegroundColor);
 				Far3Color::Color2FgIndex(nForeColor, n);
 				if (pTrueColor)
 				{
@@ -1249,7 +1269,7 @@ BOOL WINAPI WriteOutput(const FAR_CHAR_INFO* Buffer, COORD BufferSize, COORD Buf
 			}
 			else
 			{
-				nBackColor = pFar->Attributes.BackgroundColor & 0x00FFFFFF;
+				nBackColor = BareRgbColor(pFar->Attributes.BackgroundColor);
 				Far3Color::Color2BgIndex(nBackColor, nForeColor==nBackColor, n);
 				if (pTrueColor)
 				{
@@ -1386,7 +1406,7 @@ BOOL WINAPI WriteText(HANDLE hConsoleOutput, const AnnotationInfo* Attributes, c
 
 	if (!fnWriteConsoleW)
 	{
-		HANDLE hHooks = GetModuleHandle(WIN3264TEST(L"ConEmuHk.dll",L"ConEmuHk64.dll"));
+		HANDLE hHooks = GetModuleHandle(ConEmuHk_DLL_3264);
 		if (hHooks)
 		{
 			GetWriteConsoleW_t getf = (GetWriteConsoleW_t)GetProcAddress(hHooks, "GetWriteConsoleW");
@@ -1516,7 +1536,7 @@ struct ColorParam
 		if (Foreground)
 		{
 			*Transparent = IsTransparent(p->ForegroundColor);
-			UINT nClr = (p->ForegroundColor & 0x00FFFFFF);
+			uint32_t nClr = BareRgbColor(p->ForegroundColor);
 			if (p->Flags & FCF_FG_4BIT)
 			{
 				if (nClr < 16)
@@ -1535,7 +1555,7 @@ struct ColorParam
 		else // Background
 		{
 			*Transparent = IsTransparent(p->BackgroundColor);
-			UINT nClr = (p->BackgroundColor & 0x00FFFFFF);
+			uint32_t nClr = BareRgbColor(p->BackgroundColor);
 			if (p->Flags & FCF_BG_4BIT)
 			{
 				if (nClr < 16)
@@ -1551,7 +1571,7 @@ struct ColorParam
 	};
 	void Ref2Far(BOOL Transparent, COLORREF cr, BOOL Foreground, FarColor* p)
 	{
-		int Color = (cr & 0x00FFFFFF);
+		uint32_t color = BareRgbColor(cr);
 		
 		if (Foreground ? b4bitfore : b4bitback)
 		{
@@ -1571,7 +1591,7 @@ struct ColorParam
 				// дополнительную корректцию, чтобы "текст был читаем", а это
 				// здесь не нужно
 				Far3Color::Color2FgIndex(cr, nIndex, gcrPalette);
-				Color = nIndex;
+				color = nIndex;
 			}
 			//else
 			//{
@@ -1585,7 +1605,7 @@ struct ColorParam
 				p->Flags |= FCF_FG_4BIT;
 			else
 				p->Flags &= ~FCF_FG_4BIT; //TODO: Остальные флаги?
-			p->ForegroundColor = Color | SetTransparent(Transparent);
+			p->ForegroundColor = color | SetTransparent(Transparent);
 
 			if (bBold)
 				p->Flags |= FCF_FG_BOLD;
@@ -1606,7 +1626,7 @@ struct ColorParam
 				p->Flags |= FCF_BG_4BIT;
 			else
 				p->Flags &= ~FCF_BG_4BIT; //TODO: Остальные флаги?
-			p->BackgroundColor = Color | SetTransparent(Transparent);
+			p->BackgroundColor = color | SetTransparent(Transparent);
 		}
 	};
 };

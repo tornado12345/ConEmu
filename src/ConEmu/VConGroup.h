@@ -31,6 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "RefRelease.h"
 #include "../common/RConStartArgsEx.h"
 #include "../common/MArray.h"
+#include <functional>
 
 class CVirtualConsole;
 class CVConGuard;
@@ -39,7 +40,7 @@ struct AppSettings;
 
 
 // used with enum EnumVConFlags, callback for EnumVCon
-typedef bool (*EnumVConProc)(CVirtualConsole* pVCon, LPARAM lParam);
+using EnumVConProc = std::function<bool(CVirtualConsole* pVCon, LPARAM lParam)>;
 
 
 class CVConGroup : public CRefRelease
@@ -62,27 +63,27 @@ protected:
 
 	void SetResizeFlags();
 
-	CVConGroup* GetRootGroup();
+	CVConGroup* GetRootGroup() const;
 	static CVConGroup* GetRootOfVCon(CVirtualConsole* apVCon);
-	CVConGroup* GetAnotherGroup();
+	CVConGroup* GetAnotherGroup() const;
 	void MoveToParent(CVConGroup* apParent);
 	void RepositionVCon(RECT rcNewCon, bool bVisible);
-	void CalcSplitRect(UINT nSplitPercent10, RECT rcNewCon, RECT& rcCon1, RECT& rcCon2, RECT& rcSplitter);
-	void CalcSplitRootRect(RECT rcAll, RECT& rcCon, CVConGroup* pTarget = NULL);
+	void CalcSplitRect(UINT nSplitPercent10, RECT rcNewCon, RECT& rcCon1, RECT& rcCon2, RECT& rcSplitter) const;
+	void CalcSplitRootRect(RECT rcAll, RECT& rcCon, const CVConGroup* pTarget = nullptr) const;
 	#if 0
 	void CalcSplitConSize(COORD size, COORD& sz1, COORD& sz2);
 	#endif
 	void ShowAllVCon(int nShowCmd);
 	static void ShowActiveGroup(CVirtualConsole* pOldActive);
 
-	void GetAllTextSize(SIZE& sz, SIZE& Splits, bool abMinimal = false);
+	void GetAllTextSize(SIZE& sz, SIZE& splits, bool abMinimal = false);
 	void SetConsoleSizes(const COORD& size, const RECT& rcNewCon, bool abSync);
 
 	void StoreActiveVCon(CVirtualConsole* pVCon);
 	bool ReSizeSplitter(int iCells);
 	void OnPaintSplitter(HDC hdc, HBRUSH hbr);
 
-	CVConGroup* FindNextPane(const RECT& rcPrev, int nHorz /*= 0*/, int nVert /*= 0*/);
+	CVConGroup* FindNextPane(const RECT& rcPrev, int nHorz /*= 0*/, int nVert /*= 0*/) const;
 
 	static CVConGroup* mp_GroupSplitDragging;
 	static LPARAM ReSizeSplitterHelper(LPARAM lParam);
@@ -91,21 +92,21 @@ protected:
 	static void StopSplitDragging();
 
 private:
-	static CVirtualConsole* CreateVCon(RConStartArgsEx *args, CVirtualConsole*& ppVConI, int index);
+	static CVirtualConsole* CreateVCon(RConStartArgsEx& args, CVirtualConsole*& ppVConI, int index);
 
 	static CVConGroup* CreateVConGroup();
 	CVConGroup* SplitVConGroup(RConStartArgsEx::SplitType aSplitType = RConStartArgsEx::eSplitHorz/*eSplitVert*/, UINT anPercent10 = 500);
 
-	void PopulateSplitPanes(UINT nParent, UINT& nSplits, MArray<CVConGuard*>& VCons);
-	CVConGroup* GetLeafLeft();
-	CVConGroup* GetLeafRight();
+	void PopulateSplitPanes(MArray<CVConGuard*>& VCons) const;
+	CVConGroup* GetLeafLeft() const;
+	CVConGroup* GetLeafRight() const;
 
 public:
-	// Если rPanes==NULL - просто вернуть количество сплитов
+	// Если rPanes==nullptr - просто вернуть количество сплитов
 	int GetGroupPanes(MArray<CVConGuard*>* rPanes);
 	static void FreePanesArray(MArray<CVConGuard*> &rPanes);
 private:
-	static bool CloseQuery(MArray<CVConGuard*>* rpPanes, bool* rbMsgConfirmed /*= NULL*/, bool bForceKill = false, bool bNoGroup = false);
+	static bool CloseQuery(MArray<CVConGuard*>* rpPanes, bool* rbMsgConfirmed /*= nullptr*/, bool bForceKill = false, bool bNoGroup = false);
 
 	CVConGroup(CVConGroup *apParent);
 
@@ -128,7 +129,7 @@ public:
 public:
 	static void Initialize();
 	static void Deinitialize();
-	static CVirtualConsole* CreateCon(RConStartArgsEx *args, bool abAllowScripts = false, bool abForceCurConsole = false);
+	static CVirtualConsole* CreateCon(RConStartArgsEx& args, bool abAllowScripts = false, bool abForceCurConsole = false);
 	static void OnVConDestroyed(CVirtualConsole* apVCon);
 
 	static bool InCreateGroup();
@@ -141,7 +142,7 @@ public:
 	static bool isValid(CVirtualConsole* apVCon);
 	static bool isVConExists(int nIdx);
 	static bool isInGroup(CVirtualConsole* apVCon, CVConGroup* apGroup);
-	static bool isGroup(CVirtualConsole* apVCon, CVConGroup** rpRoot = NULL, CVConGuard* rpActiveVCon = NULL);
+	static bool isGroup(CVirtualConsole* apVCon, CVConGroup** rpRoot = nullptr, CVConGuard* rpActiveVCon = nullptr);
 	static bool isConSelectMode();
 	static bool isInCreateRoot();
 	static bool isDetached();
@@ -155,19 +156,19 @@ public:
 	static bool isEditor();
 	static bool isViewer();
 	static bool isFar(bool abPluginRequired=false);
-	static int isFarExist(CEFarWindowType anWindowType=fwt_Any, LPWSTR asName=NULL, CVConGuard* rpVCon=NULL);
-	static bool isVConHWND(HWND hChild, CVConGuard* rpVCon = NULL);
+	static int isFarExist(CEFarWindowType anWindowType=fwt_Any, LPWSTR asName=nullptr, CVConGuard* rpVCon=nullptr);
+	static bool isVConHWND(HWND hChild, CVConGuard* rpVCon = nullptr);
 	static bool isConsolePID(DWORD nPID);
 	static DWORD GetFarPID(bool abPluginRequired = false);
 	static void CheckTabValid(CTabID* apTab, bool& rbVConValid, bool& rbPidValid, bool& rbPassive);
 
 	static bool EnumVCon(EnumVConFlags what, EnumVConProc pfn, LPARAM lParam);
 
-	static int  GetActiveVCon(CVConGuard* pVCon = NULL, int* pAllCount = NULL);
+	static int  GetActiveVCon(CVConGuard* pVCon = nullptr, int* pAllCount = nullptr);
 	static int  GetVConIndex(CVirtualConsole* apVCon);
-	static bool GetVCon(int nIdx, CVConGuard* pVCon = NULL, bool bFromCycle = false);
-	static bool GetVConFromPoint(POINT ptScreen, CVConGuard* pVCon = NULL);
-	static bool GetProgressInfo(short* pnProgress, BOOL* pbActiveHasProgress, BOOL* pbWasError, BOOL* pbWasIndeterminate);
+	static bool GetVCon(int nIdx, CVConGuard* pVCon = nullptr, bool bFromCycle = false);
+	static bool GetVConFromPoint(POINT ptScreen, CVConGuard* pVCon = nullptr);
+	static bool GetProgressInfo(short& pnProgress, bool& pbActiveHasProgress, AnsiProgressStatus& state);
 
 	static void StopSignalAll();
 	static void DestroyAllVCon();
@@ -175,8 +176,8 @@ public:
 	static void OnAlwaysShowScrollbar(bool abSync = true);
 	static void OnUpdateScrollInfo();
 	static void OnUpdateFarSettings();
-	static void OnUpdateTextColorSettings(bool ChangeTextAttr = true, bool ChangePopupAttr = true, const AppSettings* apDistinct = NULL);
-	static bool OnCloseQuery(bool* rbMsgConfirmed = NULL);
+	static void OnUpdateTextColorSettings(bool ChangeTextAttr = true, bool ChangePopupAttr = true, const AppSettings* apDistinct = nullptr);
+	static bool OnCloseQuery(bool* rbMsgConfirmed = nullptr);
 	static bool DoCloseAllVCon(bool bMsgConfirmed = false);
 	static void CloseAllButActive(CVirtualConsole* apVCon/*may be null*/, CloseConsoleMode closeMode, bool abNoConfirm);
 	static void CloseGroup(CVirtualConsole* apVCon/*may be null*/, bool abKillActiveProcess = false);
@@ -224,18 +225,18 @@ public:
 	static BOOL AttachRequested(HWND ahConWnd, const CESERVER_REQ_STARTSTOP* pStartStop, CESERVER_REQ_SRVSTARTSTOPRET& pRet);
 	static int GetConCount(bool bNoDetached = false);
 	static int ActiveConNum();
-	static bool GetVConBySrvPID(DWORD anServerPID, DWORD anMonitorTID, CVConGuard* pVCon = NULL);
-	static bool GetVConByHWND(HWND hConWnd, HWND hDcWnd, CVConGuard* pVCon = NULL);
-	static bool GetVConByName(LPCWSTR asName, CVConGuard* rpVCon = NULL);
+	static bool GetVConBySrvPID(DWORD anServerPID, DWORD anMonitorTID, CVConGuard* pVCon = nullptr);
+	static bool GetVConByHWND(HWND hConWnd, HWND hDcWnd, CVConGuard* pVCon = nullptr);
+	static bool GetVConByName(LPCWSTR asName, CVConGuard* rpVCon = nullptr);
 
 	static void LogString(LPCSTR asText);
 	static void LogString(LPCWSTR asText);
-	static void LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = NULL);
+	static void LogInput(UINT uMsg, WPARAM wParam, LPARAM lParam, LPCWSTR pszTranslatedChars = nullptr);
 
 	static RECT CalcRect(enum ConEmuRect tWhat, RECT rFrom, enum ConEmuRect tFrom, CVirtualConsole* pVCon, enum ConEmuMargins tTabAction=CEM_TAB);
 	static bool PreReSize(unsigned WindowMode, RECT rcWnd, enum ConEmuRect tFrom = CER_MAIN, bool bSetRedraw = false);
 	static void SyncWindowToConsole(); // -- функция пустая, игнорируется
-	static void SyncConsoleToWindow(LPRECT prcNewWnd=NULL, bool bSync=false);
+	static void SyncConsoleToWindow(LPRECT prcNewWnd=nullptr, bool bSync=false);
 	static void LockSyncConsoleToWindow(bool abLockSync);
 	static void SetAllConsoleWindowsSize(RECT rcWorkspace, COORD size, bool bSetRedraw /*= false*/);
 	static void SyncAllConsoles2Window(RECT rcWorkspace, bool bSetRedraw = false);
@@ -261,7 +262,7 @@ public:
 	//static uint TextWidth();
 	//static uint TextHeight();
 
-	static RECT AllTextRect(SIZE* rpSplits = NULL, bool abMinimal = false);
+	static RECT AllTextRect(SIZE* rpSplits = nullptr, bool abMinimal = false);
 
 	static wchar_t* GetTasks();
 

@@ -50,7 +50,7 @@ CSetPgInfo::~CSetPgInfo()
 
 LRESULT CSetPgInfo::OnInitDialog(HWND hDlg, bool abInitial)
 {
-	CVirtualConsole* pVCon = NULL;
+	CVirtualConsole* pVCon = nullptr;
 	CVConGuard VCon;
 	if (CVConGroup::GetActiveVCon(&VCon) >= 0)
 		pVCon = VCon.VCon();
@@ -61,13 +61,6 @@ LRESULT CSetPgInfo::OnInitDialog(HWND hDlg, bool abInitial)
 
 	gpConEmu->UpdateSizes();
 
-	if (pVCon)
-	{
-		ConsoleInfoArg cursorInfo = {};
-		pVCon->RCon()->GetConsoleInfo(&cursorInfo);
-		FillCursorInfo(hDlg, &cursorInfo);
-	}
-
 	FillFontInfo(hDlg);
 
 	return 0;
@@ -75,7 +68,7 @@ LRESULT CSetPgInfo::OnInitDialog(HWND hDlg, bool abInitial)
 
 void CSetPgInfo::OnPostLocalize(HWND hDlg)
 {
-	CVirtualConsole* pVCon = NULL;
+	CVirtualConsole* pVCon = nullptr;
 	CVConGuard VCon;
 	if (CVConGroup::GetActiveVCon(&VCon) >= 0)
 		pVCon = VCon.VCon();
@@ -94,7 +87,7 @@ void CSetPgInfo::FillFontInfo(HWND hDlg)
 	CFontPtr font;
 	wchar_t szMain[32] = L"", szAlt[32] = L"";
 
-	if (gpFontMgr->QueryFont(fnt_Normal, NULL, font))
+	if (gpFontMgr->QueryFont(fnt_Normal, nullptr, font))
 		swprintf_c(szMain, L"%ix%ix%i", font->m_LF.lfHeight, font->m_LF.lfWidth, font->m_tm.tmAveCharWidth);
 	swprintf_c(szAlt, L"%ix%i", gpFontMgr->BorderFontHeight(), gpFontMgr->BorderFontWidth());
 
@@ -116,7 +109,7 @@ void CSetPgInfo::FillConsoleMode(HWND hDlg, CRealConsole* pRCon)
 	CEStr lsLng; gpLng->getControl(IDC_CONSOLE_STATES, lsLng, L"Console states");
 
 	// Final: "Console states (In=x98, Out=x03, win32)"
-	CEStr lsInfo(lsLng, L" (", szModes, L", ", szFlags, L")");
+	const CEStr lsInfo(lsLng, L" (", szModes, L", ", szFlags, L")");
 	SetDlgItemText(hDlg, IDC_CONSOLE_STATES, lsInfo);
 }
 
@@ -124,7 +117,7 @@ void CSetPgInfo::FillCursorInfo(HWND hDlg, const ConsoleInfoArg* pInfo)
 {
 	wchar_t szCursor[64];
 	swprintf_c(szCursor, L"%ix%i, %i %s",
-		(int)pInfo->crCursor.X, (int)pInfo->crCursor.Y,
+		static_cast<int>(pInfo->crCursor.X), static_cast<int>(pInfo->crCursor.Y),
 		pInfo->cInfo.dwSize, pInfo->cInfo.bVisible ? L"vis" : L"hid");
 	SetDlgItemText(hDlg, tCursorPos, szCursor);
 }

@@ -53,30 +53,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 
-// If you add some members - don't forget them in RConStartArgs::AssignFrom!
-RConStartArgs::RConStartArgs()
-{
-	Detached = NewConsole = crb_Undefined;
-	RunAsAdministrator = RunAsSystem = RunAsRestricted = RunAsNetOnly = crb_Undefined;
-	ForceUserDialog = BackgroundTab = ForegroungTab = NoDefaultTerm = ForceDosBox = ForceInherit = crb_Undefined;
-	eSplit = eSplitNone; nSplitValue = DefaultSplitValue; nSplitPane = 0;
-	aRecreate = cra_CreateTab;
-	pszSpecialCmd = pszStartupDir = pszUserName = pszDomain = pszRenameTab = NULL;
-	pszAddGuiArg = NULL;
-	pszIconFile = pszPalette = pszWallpaper = pszAnsiLog = NULL;
-	pszMntRoot = NULL;
-	BufHeight = crb_Undefined; nBufHeight = 0; LongOutputDisable = crb_Undefined;
-	OverwriteMode = crb_Undefined;
-	nPTY = 0;
-	InjectsDisable = crb_Undefined;
-	ForceNewWindow = crb_Undefined;
-	ForceHooksServer = crb_Undefined;
-	eConfirmation = eConfDefault;
-	szUserPassword[0] = 0;
-	UseEmptyPassword = crb_Undefined;
-}
-
-void RConStartArgs::CleanSecure()
+void RConStartArgs::CleanPermissions()
 {
 	SafeFree(pszUserName);
 	SafeFree(pszDomain);
@@ -102,7 +79,7 @@ RConStartArgs::~RConStartArgs()
 	SafeFree(pszMntRoot);
 	SafeFree(pszAnsiLog);
 
-	CleanSecure();
+	CleanPermissions();
 }
 
 
@@ -157,7 +134,7 @@ int RConStartArgs::ProcessNewConArg(bool bForceCurConsole /*= false*/)
 			L"ConEmuPortable.exe", L"ConEmuPortable",
 			L"DosKey", L"DosKey.exe",
 			NULL};
-		while (!pszStopAt && (pszTemp = NextArg(pszTemp, szExe)))
+		while (!pszStopAt && ((pszTemp = NextArg(pszTemp, szExe))))
 		{
 			if (szExe.ms_Val[0] != L'-')
 			{

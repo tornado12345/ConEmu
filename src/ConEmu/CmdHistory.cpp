@@ -54,7 +54,7 @@ void CommandHistory::FreeItems()
 	{
 		SafeFree(p);
 	}
-	Items.swap(MArray<wchar_t*>());
+	MArray<wchar_t*>().swap(Items);
 }
 
 // Return size in bytes
@@ -66,7 +66,7 @@ UINT CommandHistory::CreateMSZ(wchar_t*& rsMSZ)
 		return 0;
 	}
 
-	_ASSERTE(rsMSZ==NULL);
+	_ASSERTE(rsMSZ==nullptr);
 	if (Items.size() <= 0)
 	{
 		SafeFree(rsMSZ);
@@ -97,7 +97,7 @@ UINT CommandHistory::CreateMSZ(wchar_t*& rsMSZ)
 	rsMSZ = (wchar_t*)malloc(cchMax);
 	if (!rsMSZ)
 	{
-		_ASSERTE(rsMSZ!=NULL);
+		_ASSERTE(rsMSZ!=nullptr);
 		return 0;
 	}
 
@@ -210,17 +210,17 @@ LPCWSTR CommandHistory::Get(int index)
 	if (!this)
 	{
 		_ASSERTE(FALSE && "Was not initialized");
-		return NULL;
+		return nullptr;
 	}
 
 	if (index < 0 || index >= Items.size())
-		return NULL;
+		return nullptr;
 
 	LPCWSTR pszItem = Items[index];
 	if (!pszItem || !*pszItem)
 	{
 		_ASSERTE(pszItem && *pszItem);
-		return NULL;
+		return nullptr;
 	}
 
 	return pszItem;

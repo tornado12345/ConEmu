@@ -27,6 +27,9 @@
     <ClInclude Include="common\ConsoleAnnotation.h">
       <Filter>Headers</Filter>
     </ClInclude>
+    <ClInclude Include="common\ConsoleMessages.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
     <ClInclude Include="common\ConsoleTrueMod.h">
       <Filter>Headers</Filter>
     </ClInclude>
@@ -106,6 +109,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="common\Monitors.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="common\PaletteColors.h">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="common\PipeServer.h">

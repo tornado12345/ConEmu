@@ -46,10 +46,18 @@ bool operator!= (const CFontPtr &a, const CFontPtr &b)
 }
 
 
-CFontPtr::CFontPtr(CFont* apRef /*= NULL*/)
-	: mp_Ref(NULL)
+CFontPtr::CFontPtr()
+{
+}
+
+CFontPtr::CFontPtr(CFont* apRef)
 {
 	Attach(apRef);
+}
+
+CFontPtr::CFontPtr(const CFontPtr& aPtr)
+{
+	Attach(aPtr.Ptr());
 }
 
 CFontPtr::~CFontPtr()
@@ -59,7 +67,7 @@ CFontPtr::~CFontPtr()
 
 int CFontPtr::Release()
 {
-	CFont* p = NULL;
+	CFont* p = nullptr;
 	std::swap(p, mp_Ref);
 	int iRef = p ? p->Release() : 0;
 	return iRef;
@@ -75,13 +83,13 @@ bool CFontPtr::Attach(CFont* apRef)
 		SafeRelease(apRef);
 	}
 
-	return (mp_Ref != NULL);
+	return (mp_Ref != nullptr);
 }
 
 // Dereference
 CFont* CFontPtr::operator->() const
 {
-	_ASSERTE(mp_Ref!=NULL);
+	_ASSERTE(mp_Ref!=nullptr);
 	return mp_Ref;
 }
 

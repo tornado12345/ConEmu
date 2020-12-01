@@ -26,15 +26,20 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "ConEmuSrv.h"
+#include "ConsoleMain.h"
+#include "InjectRemote.h"
+#include "Infiltrate.h"
+
 #include "../common/MAssert.h"
 #include "../common/MProcessBits.h"
-#include "../common/WFiles.h"
-#include "../common/WModuleCheck.h"
-#include "Infiltrate.h"
-#include "../ConEmuHk/Injects.h"
-#include "../ConEmu/version.h"
 #include "../common/shlobj.h"
+#include "../common/WFiles.h"
+#include "../common/WObjects.h"
+#include "../common/WModuleCheck.h"
+#include "../ConEmu/version.h"
+#include "../ConEmuHk/Injects.h"
+
+#include <tlhelp32.h>
 
 // 0 - OK, иначе - ошибка
 // Здесь вызывается CreateRemoteThread
@@ -256,7 +261,7 @@ CINFILTRATE_EXIT_CODES PrepareHookModule(wchar_t (&szModule)[MAX_PATH+16])
 
 	wcscat_c(szNewPath, szAddName);
 
-	if ((bAlreadyExists = FileExists(szNewPath)) && FileCompare(szNewPath, szModule))
+	if (((bAlreadyExists = FileExists(szNewPath))) && FileCompare(szNewPath, szModule))
 	{
 		// OK, file exists and match the required
 	}
@@ -459,7 +464,7 @@ CINFILTRATE_EXIT_CODES InjectRemote(DWORD nRemotePID, bool abDefTermOnly /*= fal
 		goto wrap;
 	}
 	wcscpy_c(szKernelName, gfLoadLibrary.szModule);
-	CharLowerBuff(szKernelName, wcslen(szKernelName));
+	CharLowerBuff(szKernelName, static_cast<DWORD>(wcslen(szKernelName)));
 
 
 	LogString(L"CreateToolhelp32Snapshot(TH32CS_SNAPMODULE)");
@@ -602,7 +607,7 @@ CINFILTRATE_EXIT_CODES InjectRemote(DWORD nRemotePID, bool abDefTermOnly /*= fal
 
 
 	// Let's do the inject
-	_wcscpy_c(pszNamePtr, 16, is32bit ? L"ConEmuHk.dll" : L"ConEmuHk64.dll");
+	_wcscpy_c(pszNamePtr, 16, is32bit ? ConEmuHk_32_DLL : ConEmuHk_64_DLL);
 	if (!FileExists(szHooks))
 	{
 		iRc = CIR_ConEmuHkNotFound/*-250*/;

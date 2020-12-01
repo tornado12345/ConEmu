@@ -45,6 +45,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "VConGroup.h"
 #include "RealConsole.h"
 #include "TabBar.h"
+#include "../common/MFileLogEx.h"
 
 #if defined(__GNUC__) && (WINVER < 0x0601)
 	/*
@@ -115,7 +116,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Default constructor of the class.
 CGestures::CGestures()
-:   _dwArguments(0), _inRotate(false)
 {
 	DEBUGTEST(GESTUREINFO c = {sizeof(c)});
 	_isTabletPC = (GetSystemMetrics(SM_TABLETPC) != FALSE);
@@ -138,12 +138,13 @@ CGestures::~CGestures()
 
 void CGestures::StartGestureLog()
 {
-	if (!gpConEmu->mp_Log)
+	const auto pLogger = gpConEmu->GetLogger();
+	if (!pLogger)
 		return;
 
 	wchar_t szInfo[100];
 	swprintf_c(szInfo, L"Gestures: TabletPC=%u, Gestures=%u, Enabled=%u", (int)_isTabletPC, (int)_isGestures, (int)IsGesturesEnabled());
-	gpConEmu->LogString(szInfo);
+	pLogger->LogString(szInfo);
 }
 
 bool CGestures::IsGesturesEnabled()
@@ -229,7 +230,7 @@ bool CGestures::ProcessGestureMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 
 	if (!_isGestures)
 	{
-		_ASSERTE(_isGestures);
+		_ASSERTE(_isGestures);  // -V571
 		gpConEmu->LogString(L"Gesture message received but not allowed, skipping");
 		return false;
 	}
@@ -463,7 +464,7 @@ bool CGestures::ProcessGestureMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 void CGestures::SendRClick(HWND hWnd, const LONG ldx, const LONG ldy)
 {
 	CVConGuard VCon;
-	CRealConsole* pRCon = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : NULL;
+	CRealConsole* pRCon = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : nullptr;
 	if (pRCon)
 	{
 		POINT pt = {ldx, ldy};
@@ -526,7 +527,7 @@ bool CGestures::ProcessMove(HWND hWnd, const LONG ldx, const LONG ldy)
 	if (ldy)
 	{
 		CVConGuard VCon;
-		CRealConsole* pRCon = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : NULL;
+		CRealConsole* pRCon = (CVConGroup::GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : nullptr;
 		if (pRCon)
 		{
 			TODO("Если можно будет задавать разный шрифт для разных консолей - заменить gpSet->FontHeight()");
@@ -561,7 +562,7 @@ bool CGestures::ProcessRotate(HWND hWnd, const LONG lAngle, const LONG lOx, cons
 {
 	if (!gpConEmu->mp_TabBar)
 	{
-		_ASSERTE(gpConEmu->mp_TabBar!=NULL);
+		_ASSERTE(gpConEmu->mp_TabBar!=nullptr);
 		return false;
 	}
 

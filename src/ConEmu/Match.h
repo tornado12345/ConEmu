@@ -29,6 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include "../common/CmdLine.h"
+#include <functional>
 
 class CMatch;
 class CRealConsole;
@@ -59,10 +60,10 @@ public:
 	int mn_SrcFrom/*Cursor pos*/;
 
 protected:
-	CRealConsole* mp_RCon;
+	std::function<bool(LPCWSTR asSrc, CEStr& szFull)> GetFileFromConsole_;
 
 public:
-	CMatch(CRealConsole* apRCon);
+	CMatch(std::function<bool(LPCWSTR asSrc, CEStr& szFull)>&& GetFileFromConsole);
 	~CMatch();
 
 public:
@@ -82,13 +83,4 @@ protected:
 protected:
 	CEStr ms_FileCheck;
 	bool IsValidFile(LPCWSTR asFrom, int anLen, LPCWSTR pszInvalidChars, LPCWSTR pszSpacing, int& rnLen);
-
-public:
-	#ifdef _DEBUG
-	static void UnitTests();
-	void UnitTestMatch(ExpandTextRangeType etr, LPCWSTR asLine, int anLineLen, int anMatchStart, int anMatchEnd, LPCWSTR asMatchText);
-	void UnitTestNoMatch(ExpandTextRangeType etr, LPCWSTR asLine, int anLineLen, int anStart, int anEnd);
-	void UnitTestAlert(LPCWSTR asLine, LPCWSTR asExpected, LPCWSTR pszText);
-	void UnitMatchTestAlert();
-	#endif
 };

@@ -27,17 +27,13 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 
-#include "../common/defines.h"
-#include <WinError.h>
-#include <WinNT.h>
-#include <TCHAR.h>
-#include <limits>
+#include "ConsoleMain.h"
+#include <winerror.h>
+#include <winnt.h>
+#include <tchar.h>
 #include "../common/Common.h"
 #include "../common/ConEmuCheck.h"
 #include "../common/ConEmuColors3.h"
-#include "../common/CmdLine.h"
-#include "../common/ConsoleAnnotation.h"
-#include "../common/UnicodeChars.h"
 #include "../common/WConsole.h"
 #include "../common/WConsoleInfo.h"
 #include "../common/WErrGuard.h"
@@ -130,6 +126,11 @@ void SrvAnsi::DisplayParm::setBack256(const SrvAnsi::cbit val)
 void SrvAnsi::DisplayParm::setInverse(const bool val)
 {
 	_Inverse = val;
+	setDirty(true);
+}
+void SrvAnsi::DisplayParm::setCrossed(const bool val)
+{
+	_Crossed = val;
 	setDirty(true);
 }
 
@@ -298,8 +299,10 @@ void SrvAnsi::FirstAnsiCall(const BYTE* lpBuf, DWORD nNumberOfBytes)
 #endif
 }
 
-void SrvAnsi::InitAnsiLog(LPCWSTR asFilePath)
+void SrvAnsi::InitAnsiLog(LPCWSTR asFilePath, const bool LogAnsiCodes)
 {
+	gbAnsiLogCodes = LogAnsiCodes;
+
 	// Already initialized?
 	if (ghAnsiLogFile)
 		return;
@@ -351,20 +354,43 @@ void SrvAnsi::WriteAnsiLogFormat(const char* format, ...)
 	if (!ghAnsiLogFile || !format)
 		return;
 	ScopedObject(CLastErrorGuard);
+
+	WriteAnsiLogTime();
+
 	va_list argList;
 	va_start(argList, format);
 	char func_buffer[200] = "";
 	if (S_OK == StringCchVPrintfA(func_buffer, countof(func_buffer), format, argList))
 	{
+		// #Connector Detect active executable
 		char s_ExeName[80] = "connector";
 		//if (!*s_ExeName)
 		//	WideCharToMultiByte(CP_UTF8, 0, gsExeName, -1, s_ExeName, countof(s_ExeName)-1, nullptr, nullptr);
 
 		char log_string[300] = "";
-		msprintf(log_string, countof(log_string), "\x1B]9;11;\"%s: %s\"\x1B\\", s_ExeName, func_buffer);
+		msprintf(log_string, countof(log_string), "\x1B]9;11;\"%s: %s\"\x7", s_ExeName, func_buffer);
 		WriteAnsiLogUtf8(log_string, (DWORD)strlen(log_string));
 	}
 	va_end(argList);
+}
+
+void SrvAnsi::WriteAnsiLogTime()
+{
+	const DWORD min_diff = 500;
+	const DWORD cur_tick = GetTickCount();
+	const DWORD cur_diff = cur_tick - last_write_tick_;
+
+	if (!last_write_tick_ || (cur_diff >= min_diff))
+	{
+		last_write_tick_ = cur_tick;
+		SYSTEMTIME st = {};
+		GetLocalTime(&st);
+		char time_str[40];
+		// We should NOT use WriteAnsiLogFormat here!
+		msprintf(time_str, std::size(time_str), "\x1B]9;11;\"%02u:%02u:%02u.%03u\"\x7",
+			st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+		WriteAnsiLogUtf8(time_str, strlen(time_str));
+	}
 }
 
 bool SrvAnsi::WriteAnsiLogUtf8(const char* lpBuffer, DWORD nChars)
@@ -388,6 +414,8 @@ void SrvAnsi::WriteAnsiLogW(LPCWSTR lpBuffer, DWORD nChars)
 		return;
 
 	ScopedObject(CLastErrorGuard);
+
+	WriteAnsiLogTime();
 
 	// Cygwin (in RealConsole mode, not connector) don't write CR+LF to screen,
 	// it uses SetConsoleCursorPosition instead after receiving '\n' from readline
@@ -434,7 +462,7 @@ void SrvAnsi::GetFeatures(bool* pbAnsiAllowed, bool* pbSuppressBells) const
 		CESERVER_CONSOLE_MAPPING_HDR* pMap = GetConMap();
 		if (pMap)
 		{
-			//if (!::LoadSrvMapping(ghConWnd, *pMap) || !pMap->bProcessAnsi)
+			//if (!::LoadSrvMapping(gState.realConWnd, *pMap) || !pMap->bProcessAnsi)
 			//	bAnsiAllowed = false;
 			//else
 			//	bAnsiAllowed = true;
@@ -552,7 +580,7 @@ void SrvAnsi::ReSetDisplayParm(bool bReset, bool bApply)
 
 		if (Text256)
 		{
-			if (Text256 == 2)
+			if (Text256 == clr24b)
 			{
 				attr.flags |= condata::Attribute::fFore24b;
 				attr.crForeColor = TextColor&0xFFFFFF;
@@ -590,12 +618,14 @@ void SrvAnsi::ReSetDisplayParm(bool bReset, bool bApply)
 			attr.flags |= condata::Attribute::fItalic;
 		if (gDisplayParm.getUnderline())
 			attr.attr.attr |= COMMON_LVB_UNDERSCORE;
+		if (gDisplayParm.getCrossed())
+			attr.flags |= condata::Attribute::fCrossed;
 		if (gDisplayParm.getInverse())
 			attr.attr.attr |= COMMON_LVB_REVERSE_VIDEO;
 
 		if (Back256)
 		{
-			if (Back256 == 2)
+			if (Back256 == clr24b)
 			{
 				attr.flags |= condata::Attribute::fBack24b;
 				attr.crBackColor = BackColor&0xFFFFFF;
@@ -1010,15 +1040,22 @@ void SrvAnsi::ChangeTermMode(TermModeCommand mode, DWORD value, DWORD nPID /*= 0
 	}
 }
 
-void SrvAnsi::StartXTermMode(bool bStart)
+void SrvAnsi::StartXTermMode(const bool bStart)
 {
 	// May be triggered by ConEmuT, official Vim builds and in some other cases
 	//_ASSERTEX((gXTermAltBuffer.Flags & xtb_AltBuffer) && (gbWasXTermOutput!=bStart));
 	_ASSERTEX(gbWasXTermOutput!=bStart);
 
+	StartXTermOutput(bStart);
+
+	// Remember last mode and pass to server
+	ChangeTermMode(tmc_TerminalType, bStart ? te_xterm : te_win32);
+}
+
+void SrvAnsi::StartXTermOutput(const bool bStart)
+{
 	// Remember last mode
 	gbWasXTermOutput = bStart;
-	ChangeTermMode(tmc_TerminalType, bStart ? te_xterm : te_win32);
 }
 
 void SrvAnsi::RefreshXTermModes()

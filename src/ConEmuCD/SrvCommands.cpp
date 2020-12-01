@@ -35,169 +35,31 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEBUGSTRSIZE(x) DEBUGSTR(x)
 
 //#define SHOW_INJECT_MSGBOX
+//#define SHOW_FAR_PLUGIN_LOADED_MSGBOX
 
-#include "../common/defines.h"
+#include "ConsoleMain.h"
 #include "ConEmuSrv.h"
-#include "../common/CmdLine.h"
-#include "../common/ConsoleAnnotation.h"
 #include "../common/ConsoleMixAttr.h"
 #include "../common/ConsoleRead.h"
 #include "../common/EmergencyShow.h"
-#include "../common/execute.h"
-#include "../common/HkFunc.h"
 #include "../common/MArray.h"
 #include "../common/MMap.h"
 #include "../common/MSectionSimple.h"
-#include "../common/MWow64Disable.h"
-#include "../common/ProcessSetEnv.h"
-#include "../common/ProcessData.h"
 #include "../common/RConStartArgs.h"
-#include "../common/SetEnvVar.h"
 #include "../common/StartupEnvEx.h"
-#include "../common/WCodePage.h"
 #include "../common/WConsole.h"
-#include "../common/WFiles.h"
-#include "../common/WThreads.h"
 #include "../common/WUser.h"
 #include "../ConEmu/version.h"
-#include "../ConEmuHk/Injects.h"
 #include "Actions.h"
 #include "ConAnsi.h"
 #include "ConProcess.h"
-#include "ConsoleHelp.h"
-#include "GuiMacro.h"
-#include "Debugger.h"
-#include "StartEnv.h"
-#include "UnicodeTest.h"
+#include "ConsoleArgs.h"
+#include "ConsoleState.h"
+#include "RunMode.h"
+#include "../common/WErrGuard.h"
 
 
 /* ********************************** */
-
-struct AltServerStartStop
-{
-	bool AltServerChanged; // = false;
-	bool ForceThawAltServer; // = false;
-	bool bPrevFound;
-	DWORD nAltServerWasStarted; // = 0
-	DWORD nAltServerWasStopped; // = 0;
-	DWORD nCurAltServerPID; // = gpSrv->dwAltServerPID;
-	HANDLE hAltServerWasStarted; // = NULL;
-	AltServerInfo info; // = {};
-};
-
-void OnAltServerChanged(int nStep, StartStopType nStarted, DWORD nAltServerPID, CESERVER_REQ_STARTSTOP* pStartStop, AltServerStartStop& AS)
-{
-	if (nStep == 1)
-	{
-		if (nStarted == sst_AltServerStart)
-		{
-			// Перевести нить монитора в режим ожидания завершения AltServer, инициализировать gpSrv->dwAltServerPID, gpSrv->hAltServer
-			AS.nAltServerWasStarted = nAltServerPID;
-			if (pStartStop)
-				AS.hAltServerWasStarted = (HANDLE)(DWORD_PTR)pStartStop->hServerProcessHandle;
-			AS.AltServerChanged = true;
-		}
-		else
-		{
-			AS.bPrevFound = gpSrv->AltServers.Get(nAltServerPID, &AS.info, true/*Remove*/);
-
-			// Сначала проверяем, не текущий ли альт.сервер закрывается
-			if (gpSrv->dwAltServerPID && (nAltServerPID == gpSrv->dwAltServerPID))
-			{
-				// Поскольку текущий сервер завершается - то сразу сбросим PID (его морозить уже не нужно)
-				AS.nAltServerWasStopped = nAltServerPID;
-				gpSrv->dwAltServerPID = 0;
-				// Переключаемся на "старый" (если был)
-				if (AS.bPrevFound && AS.info.nPrevPID)
-				{
-					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-					_ASSERTE(AS.info.hPrev!=NULL);
-					// Перевести нить монитора в обычный режим, закрыть gpSrv->hAltServer
-					// Активировать альтернативный сервер (повторно), отпустить его нити чтения
-					AS.AltServerChanged = true;
-					AS.nAltServerWasStarted = AS.info.nPrevPID;
-					AS.hAltServerWasStarted = AS.info.hPrev;
-					AS.ForceThawAltServer = true;
-				}
-				else
-				{
-					// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-					_ASSERTE(AS.info.hPrev==NULL);
-					AS.AltServerChanged = true;
-				}
-			}
-			else
-			{
-				// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-				_ASSERTE(((nAltServerPID == gpSrv->dwAltServerPID) || !gpSrv->dwAltServerPID || ((nStarted != sst_AltServerStop) && (nAltServerPID != gpSrv->dwAltServerPID) && !AS.bPrevFound)) && "Expected active alt.server!");
-			}
-		}
-	}
-	else if (nStep == 2)
-	{
-		if (AS.AltServerChanged)
-		{
-			if (AS.nAltServerWasStarted)
-			{
-				AltServerWasStarted(AS.nAltServerWasStarted, AS.hAltServerWasStarted, AS.ForceThawAltServer);
-			}
-			else if (AS.nCurAltServerPID && (nAltServerPID == AS.nCurAltServerPID))
-			{
-				if (gpSrv->hAltServerChanged)
-				{
-					// Чтобы не подраться между потоками - закрывать хэндл только в RefreshThread
-					gpSrv->hCloseAltServer = gpSrv->hAltServer;
-					gpSrv->dwAltServerPID = 0;
-					gpSrv->hAltServer = NULL;
-					// В RefreshThread ожидание хоть и небольшое (100мс), но лучше передернуть
-					SetEvent(gpSrv->hAltServerChanged);
-				}
-				else
-				{
-					gpSrv->dwAltServerPID = 0;
-					SafeCloseHandle(gpSrv->hAltServer);
-					_ASSERTE(gpSrv->hAltServerChanged!=NULL);
-				}
-			}
-
-			if (!ghConEmuWnd || !IsWindow(ghConEmuWnd))
-			{
-				_ASSERTE((ghConEmuWnd==NULL) && "ConEmu GUI was terminated? Invalid ghConEmuWnd");
-			}
-			else
-			{
-				CESERVER_REQ *pGuiIn = NULL, *pGuiOut = NULL;
-				int nSize = sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_STARTSTOP);
-				pGuiIn = ExecuteNewCmd(CECMD_CMDSTARTSTOP, nSize);
-
-				if (!pGuiIn)
-				{
-					_ASSERTE(pGuiIn!=NULL && "Memory allocation failed");
-				}
-				else
-				{
-					if (pStartStop)
-						pGuiIn->StartStop = *pStartStop;
-					pGuiIn->StartStop.dwPID = AS.nAltServerWasStarted ? AS.nAltServerWasStarted : AS.nAltServerWasStopped;
-					pGuiIn->StartStop.hServerProcessHandle = NULL; // для GUI смысла не имеет
-					pGuiIn->StartStop.nStarted = AS.nAltServerWasStarted ? sst_AltServerStart : sst_AltServerStop;
-					if (pGuiIn->StartStop.nStarted == sst_AltServerStop)
-					{
-						// Если это был последний процесс в консоли, то главный сервер тоже закрывается
-						// Переоткрывать пайпы в ConEmu нельзя
-						pGuiIn->StartStop.bMainServerClosing = gbQuit || (WaitForSingleObject(ghExitQueryEvent,0) == WAIT_OBJECT_0);
-					}
-
-					pGuiOut = ExecuteGuiCmd(ghConWnd, pGuiIn, ghConWnd);
-
-					_ASSERTE(pGuiOut!=NULL && "Can not switch GUI to alt server?"); // успешное выполнение?
-					ExecuteFreeResult(pGuiOut);
-					ExecuteFreeResult(pGuiIn);
-				}
-			}
-		}
-	}
-}
 
 // Far process console resizes only after any mouse event
 // (Probably, to avoid artifacts/problems in "far /w" mode?)
@@ -232,9 +94,9 @@ bool TerminateOneProcess(DWORD nPID, DWORD& nErrCode)
 
 	if (gpSrv && gpSrv->pConsole)
 	{
-		if (nPID == gpSrv->dwRootProcess)
+		if (nPID == gpWorker->RootProcessId())
 		{
-			hProcess = gpSrv->hRootProcess;
+			hProcess = gpWorker->RootProcessHandle();
 			bNeedClose = FALSE;
 		}
 	}
@@ -299,7 +161,7 @@ bool TerminateProcessGroup(int nCount, LPDWORD pPID, DWORD& nErrCode)
 
 		for (int i = 0; i < nCount; i++)
 		{
-			if (pPID[i] == gpSrv->dwRootProcess)
+			if (pPID[i] == gpWorker->RootProcessId())
 				continue;
 
 			hProcess = OpenProcess(PROCESS_TERMINATE|PROCESS_SET_QUOTA, FALSE, pPID[i]);
@@ -378,7 +240,7 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 	MCHKHEAP;
 
 	// Need to block all requests to output buffer in other threads
-	MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
+	MSectionLockSimple csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
 
 	DWORD nTick1 = 0, nTick2 = 0, nTick3 = 0, nTick4 = 0, nTick5 = 0;
 	DWORD nWasSetSize = -1;
@@ -395,10 +257,10 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (nBufferHeight == (USHORT)-1)
 		{
 			// Для 'far /w' нужно оставить высоту буфера!
-			if (in.SetSize.size.Y < gpSrv->sbi.dwSize.Y
-			        && gpSrv->sbi.dwSize.Y > (gpSrv->sbi.srWindow.Bottom - gpSrv->sbi.srWindow.Top + 1))
+			if ((in.SetSize.size.Y < gpWorker->GetSbi().dwSize.Y)
+				&& gpWorker->GetSbi().dwSize.Y >= SRectHeight(gpWorker->GetSbi().srWindow))
 			{
-				nBufferHeight = gpSrv->sbi.dwSize.Y;
+				nBufferHeight = gpWorker->GetSbi().dwSize.Y;
 			}
 			else
 			{
@@ -441,7 +303,7 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 		{
 			// Сохранить данные ВСЕЙ консоли
 			PRINT_COMSPEC(L"Storing long output\n", 0);
-			CmdOutputStore();
+			WorkerServer::Instance().CmdOutputStore();
 			PRINT_COMSPEC(L"Storing long output (done)\n", 0);
 		}
 
@@ -453,25 +315,20 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 			gpSrv->bInSyncResize = TRUE;
 		}
 
-		#if 0
-		// Блокировка при прокрутке, значение используется только "виртуально" в CorrectVisibleRect
-		gpSrv->TopLeft = in.SetSize.TopLeft;
-		#endif
-
 		nTick1 = GetTickCount();
 		csRead.Unlock();
 		WARNING("Если указан dwFarPID - это что-ли два раза подряд выполнится?");
 		// rNewRect по идее вообще не нужен, за блокировку при прокрутке отвечает nSendTopLine
-		nWasSetSize = SetConsoleSize(nBufferHeight, crNewSize, rNewRect, szCmdName, bForceWriteLog);
+		nWasSetSize = gpWorker->SetConsoleSize(nBufferHeight, crNewSize, rNewRect, szCmdName, bForceWriteLog);
 		WARNING("!! Не может ли возникнуть конфликт с фаровским фиксом для убирания полос прокрутки?");
 		nTick2 = GetTickCount();
 
 		// вернуть блокировку
-		csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
+		csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
 
 		if (in.hdr.nCmd == CECMD_SETSIZENOSYNC)
 		{
-			if (gpSrv->nActiveFarPID)
+			if (WorkerServer::Instance().GetLastActiveFarPid())
 			{
 				ForceFarResize();
 			}
@@ -486,9 +343,6 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 				// Во избежание каких-то накладок FAR (по крайней мере с /w)
 				// стал ресайзить панели только после дерганья мышкой над консолью
 
-				// Need to block all requests to output buffer in other threads
-				MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
-
 				ForceFarResize();
 
 				csRead.Unlock();
@@ -500,7 +354,7 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 				//pPlgIn = ExecuteNewCmd(CMD_SETSIZE, sizeof(CESERVER_REQ_HDR)+sizeof(nHILO));
 				pPlgIn = ExecuteNewCmd(CMD_REDRAWFAR, sizeof(CESERVER_REQ_HDR));
 				//pPlgIn->dwData[0] = nHILO;
-				pPlgOut = ExecuteCmd(szPipeName, pPlgIn, 500, ghConWnd);
+				pPlgOut = ExecuteCmd(szPipeName, pPlgIn, 500, gState.realConWnd_);
 
 				if (pPlgOut) ExecuteFreeResult(pPlgOut);
 			}
@@ -513,10 +367,10 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 			csRead.Unlock();
 
 			// Передернуть RefreshThread - перечитать консоль
-			ReloadFullConsoleInfo(FALSE); // вызовет Refresh в Refresh thread
+			WorkerServer::Instance().ReloadFullConsoleInfo(FALSE); // вызовет Refresh в Refresh thread
 
 			// вернуть блокировку
-			csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
+			csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
 		}
 
 		MCHKHEAP;
@@ -524,7 +378,8 @@ BOOL cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (in.hdr.nCmd == CECMD_CMDSTARTED)
 		{
 			// Восстановить текст скрытой (прокрученной вверх) части консоли
-			CmdOutputRestore(false);
+			// #LongConsoleOutput This does not work
+			WorkerServer::Instance().CmdOutputRestore(false);
 		}
 	}
 
@@ -601,11 +456,11 @@ BOOL cmd_Attach2Gui(CESERVER_REQ& in, CESERVER_REQ** out)
 	BOOL lbRc = FALSE;
 
 	// If command comes from GUI - update GUI HWND
-	// Else - gpSrv->hGuiWnd will be set to NULL and suitable HWND will be found in Attach2Gui
-	gpSrv->hGuiWnd = FindConEmuByPID(in.hdr.nSrcPID);
+	// Else - gState.hGuiWnd will be set to NULL and suitable HWND will be found in Attach2Gui
+	gState.hGuiWnd = FindConEmuByPID(in.hdr.nSrcPID);
 
 	// Может придти из Attach2Gui() плагина
-	HWND hDc = Attach2Gui(ATTACH2GUI_TIMEOUT);
+	HWND hDc = WorkerServer::Instance().Attach2Gui(ATTACH2GUI_TIMEOUT);
 
 	if (hDc != NULL)
 	{
@@ -615,12 +470,12 @@ BOOL cmd_Attach2Gui(CESERVER_REQ& in, CESERVER_REQ** out)
 		if (*out != NULL)
 		{
 			// Чтобы не отображалась "Press any key to close console"
-			DisableAutoConfirmExit();
+			gState.DisableAutoConfirmExit();
 			//
 			(*out)->dwData[0] = LODWORD(hDc); //-V205 // Дескриптор окна
 			lbRc = TRUE;
 
-			gpSrv->bWasReattached = TRUE;
+			gState.bWasReattached_ = TRUE;
 			if (gpSrv->hRefreshEvent)
 			{
 				SetEvent(gpSrv->hRefreshEvent);
@@ -639,30 +494,28 @@ BOOL cmd_FarLoaded(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 
-	#if 0
+	#ifdef SHOW_FAR_PLUGIN_LOADED_MSGBOX
 	wchar_t szDbg[512], szExe[MAX_PATH], szTitle[512];
 	GetModuleFileName(NULL, szExe, countof(szExe));
 	swprintf_c(szTitle, L"cmd_FarLoaded: %s", PointToName(szExe));
 	swprintf_c(szDbg,
 		L"cmd_FarLoaded was received\nServerPID=%u, name=%s\nFarPID=%u\nRootPID=%u\nDisablingConfirm=%s",
-		GetCurrentProcessId(), PointToName(szExe), in.hdr.nSrcPID, gpSrv->dwRootProcess,
-		((gbAutoDisableConfirmExit || (gnConfirmExitParm == 1)) && gpSrv->dwRootProcess == in.dwData[0]) ? L"YES" :
-		gbAlwaysConfirmExit ? L"AlreadyOFF" : L"NO");
+		GetCurrentProcessId(), PointToName(szExe), in.hdr.nSrcPID, gpWorker->RootProcessId(),
+		((gState.autoDisableConfirmExit_ || (gpConsoleArgs->confirmExitParm_ == 1)) && gpWorker->RootProcessId() == in.dwData[0]) ? L"YES" :
+		gState.alwaysConfirmExit_ ? L"AlreadyOFF" : L"NO");
 	MessageBox(NULL, szDbg, szTitle, MB_SYSTEMMODAL);
 	#endif
 
-	// gnConfirmExitParm==1 получается, когда консоль запускалась через "-new_console"
-	// Если плагин фара загрузился - думаю можно отключить подтверждение закрытия консоли
-	if ((gbAutoDisableConfirmExit || (gnConfirmExitParm == RConStartArgs::eConfAlways))
-		&& gpSrv->dwRootProcess == in.dwData[0])
+	// If far.exe was started and "ConEmu plugin" was successfully loaded
+	// we can disable "Press Enter or Esc to exit" confirmation as Far "works properly"
+	if (gpWorker->RootProcessId() == in.dwData[0])
 	{
-		// FAR нормально запустился, считаем что все ок и подтверждения закрытия консоли не потребуется
-		DisableAutoConfirmExit(TRUE);
+		gState.DisableAutoConfirmExit(true);
 	}
 
-	int nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(DWORD);
-	*out = ExecuteNewCmd(CECMD_FARLOADED,nOutSize);
-	if (*out != NULL)
+	const DWORD nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(DWORD);
+	*out = ExecuteNewCmd(CECMD_FARLOADED, nOutSize);
+	if (*out != nullptr)
 	{
 		(*out)->dwData[0] = GetCurrentProcessId();
 		lbRc = TRUE;
@@ -677,7 +530,7 @@ BOOL cmd_PostConMsg(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	HWND hSendWnd = (HWND)in.Msg.hWnd;
 
-	if ((in.Msg.nMsg == WM_CLOSE) && (hSendWnd == ghConWnd))
+	if ((in.Msg.nMsg == WM_CLOSE) && (hSendWnd == gState.realConWnd_))
 	{
 		// Чтобы при закрытии не _мелькало_ "Press Enter to Close console"
 		gbInShutdown = TRUE;
@@ -820,45 +673,9 @@ BOOL cmd_GetAliases(CESERVER_REQ& in, CESERVER_REQ** out)
 
 BOOL cmd_FarDetached(CESERVER_REQ& in, CESERVER_REQ** out)
 {
-	BOOL lbRc = FALSE;
+	const BOOL lbRc = FALSE;
 
-	// После детача в фаре команда (например dir) схлопнется, чтобы
-	// консоль неожиданно не закрылась...
-	gbAutoDisableConfirmExit = FALSE;
-	gbAlwaysConfirmExit = TRUE;
-
-	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
-	UINT nPrevCount = gpSrv->processes->nProcessCount;
-	_ASSERTE(in.hdr.nSrcPID!=0);
-	DWORD nPID = in.hdr.nSrcPID;
-	DWORD nPrevAltServerPID = gpSrv->dwAltServerPID;
-
-	BOOL lbChanged = gpSrv->processes->ProcessRemove(in.hdr.nSrcPID, nPrevCount, CS);
-
-	MSectionLock CsAlt;
-	CsAlt.Lock(gpSrv->csAltSrv, TRUE, 1000);
-
-	AltServerStartStop AS = {};
-	AS.nCurAltServerPID = gpSrv->dwAltServerPID;
-
-	OnAltServerChanged(1, sst_AltServerStop, nPID, NULL, AS);
-
-	// ***
-	if (lbChanged)
-		gpSrv->processes->ProcessCountChanged(TRUE, nPrevCount, CS);
-	CS.Unlock();
-	// ***
-
-	// После Unlock-а, зовем функцию
-	if (AS.AltServerChanged)
-	{
-		OnAltServerChanged(2, sst_AltServerStop, in.hdr.nSrcPID, NULL, AS);
-	}
-
-	// Обновить мэппинг
-	UpdateConsoleMapHeader(L"CECMD_FARDETACHED");
-
-	CsAlt.Unlock();
+	WorkerServer::Instance().OnFarDetached(in.hdr.nSrcPID);
 
 	return lbRc;
 }
@@ -874,13 +691,14 @@ BOOL cmd_OnActivation(CESERVER_REQ& in, CESERVER_REQ** out)
 		// Принудить RefreshThread перечитать статус активности консоли
 		gpSrv->nLastConsoleActiveTick = 0;
 
+		auto& server = WorkerServer::Instance();
 
-		if (gpSrv->dwAltServerPID && (gpSrv->dwAltServerPID != gnSelfPID))
+		if (server.GetAltServerPid() && (server.GetAltServerPid() != gnSelfPID))
 		{
 			CESERVER_REQ* pAltIn = ExecuteNewCmd(CECMD_ONACTIVATION, sizeof(CESERVER_REQ_HDR));
 			if (pAltIn)
 			{
-				CESERVER_REQ* pAltOut = ExecuteSrvCmd(gpSrv->dwAltServerPID, pAltIn, ghConWnd);
+				CESERVER_REQ* pAltOut = ExecuteSrvCmd(server.GetAltServerPid(), pAltIn, gState.realConWnd_);
 				ExecuteFreeResult(pAltIn);
 				ExecuteFreeResult(pAltOut);
 			}
@@ -889,7 +707,7 @@ BOOL cmd_OnActivation(CESERVER_REQ& in, CESERVER_REQ** out)
 		{
 			// Warning: If refresh thread is in an AltServerStop
 			// transaction, ReloadFullConsoleInfo with (TRUE) will deadlock.
-			ReloadFullConsoleInfo(FALSE);
+			WorkerServer::Instance().ReloadFullConsoleInfo(FALSE);
 			// Force refresh thread to cycle
 			SetEvent(gpSrv->hRefreshEvent);
 		}
@@ -904,7 +722,7 @@ BOOL cmd_SetWindowPos(CESERVER_REQ& in, CESERVER_REQ** out)
 	BOOL lbWndRc = FALSE, lbShowRc = FALSE;
 	DWORD nErrCode[2] = {};
 
-	if ((in.SetWndPos.hWnd == ghConWnd) && gpLogSize)
+	if ((in.SetWndPos.hWnd == gState.realConWnd_) && gpLogSize)
 		LogSize(NULL, 0, ":SetWindowPos.before");
 
 	if (!(in.SetWndPos.uFlags & (SWP_NOMOVE|SWP_NOSIZE)))
@@ -924,7 +742,7 @@ BOOL cmd_SetWindowPos(CESERVER_REQ& in, CESERVER_REQ** out)
 		nErrCode[1] = lbShowRc ? 0 : GetLastError();
 	}
 
-	if ((in.SetWndPos.hWnd == ghConWnd) && gpLogSize)
+	if ((in.SetWndPos.hWnd == gState.realConWnd_) && gpLogSize)
 		LogSize(NULL, 0, ":SetWindowPos.after");
 
 	// Результат
@@ -981,7 +799,7 @@ BOOL cmd_SetWindowRgn(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 
-	MySetWindowRgn(&in.SetWndRgn);
+	WorkerServer::Instance().MySetWindowRgn(&in.SetWndRgn);
 
 	return lbRc;
 }
@@ -1005,7 +823,7 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 	//		if (apiGetConsoleFontSize(hOutput, curSizeY, curSizeX, sFontName) && curSizeY && curSizeX)
 	//		{
 	//			COORD crLargest = MyGetLargestConsoleWindowSize(hOutput);
-	//			HMONITOR hMon = MonitorFromWindow(ghConWnd, MONITOR_DEFAULTTOPRIMARY);
+	//			HMONITOR hMon = MonitorFromWindow(gState.realConWnd, MONITOR_DEFAULTTOPRIMARY);
 	//			MONITORINFO mi = {sizeof(mi)};
 	//			int nMaxX = 0, nMaxY = 0;
 	//			if (GetMonitorInfo(hMon, &mi))
@@ -1061,14 +879,14 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 	//	}
 	//}
 
-	gpSrv->bWasDetached = TRUE;
+	gState.bWasDetached_ = TRUE;
 	#ifdef _DEBUG
 	g_IgnoreSetLargeFont = true;
 	#endif
-	ghConEmuWnd = NULL;
-	SetConEmuWindows(NULL, NULL, NULL);
-	gnConEmuPID = 0;
-	UpdateConsoleMapHeader(L"CECMD_DETACHCON");
+	gState.conemuWnd_ = NULL;
+	WorkerServer::Instance().SetConEmuWindows(nullptr, nullptr, nullptr);
+	gState.conemuPid_ = 0;
+	WorkerServer::Instance().UpdateConsoleMapHeader(L"CECMD_DETACHCON");
 
 	HWND hGuiApp = NULL;
 	if (in.DataSize() >= sizeof(DWORD))
@@ -1082,29 +900,28 @@ BOOL cmd_DetachCon(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		if (hGuiApp)
 			PostMessage(hGuiApp, WM_CLOSE, 0, 0);
-		PostMessage(ghConWnd, WM_CLOSE, 0, 0);
+		PostMessage(gState.realConWnd_, WM_CLOSE, 0, 0);
 	}
 	else
 	{
 		// Без мелькания консольного окошка почему-то пока не получается
 		// Наверх выносится ConEmu вместо "отцепленного" GUI приложения
-		EmergencyShow(ghConWnd, (int)in.dwData[2], (int)in.dwData[3]);
+		EmergencyShow(gState.realConWnd_, (int)in.dwData[2], (int)in.dwData[3]);
 	}
 
 	if (hGuiApp != NULL)
 	{
-		DisableAutoConfirmExit(FALSE);
+		gState.DisableAutoConfirmExit(FALSE);
 
-		SafeCloseHandle(gpSrv->hRootProcess);
-		SafeCloseHandle(gpSrv->hRootThread);
+		gpWorker->CloseRootProcessHandles();
 
-		//apiShowWindow(ghConWnd, SW_SHOWMINIMIZED);
+		//apiShowWindow(gState.realConWnd, SW_SHOWMINIMIZED);
 		apiSetForegroundWindow(hGuiApp);
 
 		SetTerminateEvent(ste_CmdDetachCon);
 	}
 
-	gbAttachMode = am_None;
+	gState.attachMode_ = am_None;
 
 	int nOutSize = sizeof(CESERVER_REQ_HDR);
 	*out = ExecuteNewCmd(CECMD_DETACHCON,nOutSize);
@@ -1117,26 +934,28 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 
-	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
+	MSectionLock CS; CS.Lock(gpWorker->Processes().csProc);
 
-	UINT nPrevCount = gpSrv->processes->nProcessCount;
+	const UINT nPrevCount = gpWorker->Processes().nProcessCount;
 	BOOL lbChanged = FALSE;
 
-	_ASSERTE(in.StartStop.dwPID!=0);
-	DWORD nPID = in.StartStop.dwPID;
-	DWORD nPrevAltServerPID = gpSrv->dwAltServerPID;
+	auto& server = WorkerServer::Instance();
 
-	if (!gpSrv->processes->nProcessStartTick && (gpSrv->dwRootProcess == in.StartStop.dwPID))
+	_ASSERTE(in.StartStop.dwPID!=0);
+	const DWORD nPID = in.StartStop.dwPID;
+	const DWORD nPrevAltServerPID = server.GetAltServerPid();
+
+	if (!gpWorker->Processes().nProcessStartTick && (gpWorker->RootProcessId() == in.StartStop.dwPID))
 	{
-		gpSrv->processes->nProcessStartTick = GetTickCount();
+		gpWorker->Processes().nProcessStartTick = GetTickCount();
 	}
 
 	MSectionLock CsAlt;
 	if (((in.StartStop.nStarted == sst_AltServerStop) || (in.StartStop.nStarted == sst_AppStop))
-		&& in.StartStop.dwPID && (in.StartStop.dwPID == gpSrv->dwAltServerPID))
+		&& in.StartStop.dwPID && (in.StartStop.dwPID == server.GetAltServerPid()))
 	{
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-		_ASSERTE(GetCurrentThreadId() != gpSrv->dwRefreshThread);
+		// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
+		_ASSERTE(GetCurrentThreadId() != server.GetRefreshThreadId());
 		CsAlt.Lock(gpSrv->csAltSrv, TRUE, 1000);
 	}
 
@@ -1145,44 +964,44 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 	switch (in.StartStop.nStarted)
 	{
 		case sst_ServerStart:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStart,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AltServerStart:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStart,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ServerStop:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ServerStop,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AltServerStop:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AltServerStop,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ComspecStart:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStart,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_ComspecStop:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(ComspecStop,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AppStart:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStart,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStart,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_AppStop:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(AppStop,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_App16Start:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Start,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Start,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		case sst_App16Stop:
-			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Stop,%i,PID=%u)\n", in.hdr.nCreateTick, in.StartStop.dwPID);
+			swprintf_c(szDbg, L"SRV received CECMD_CMDSTARTSTOP(App16Stop,%i,PID=%u)", in.hdr.nCreateTick, in.StartStop.dwPID);
 			break;
 		default:
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+			// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
 			_ASSERTE(in.StartStop.nStarted==sst_ServerStart && "Unknown StartStop code!");
 	}
 
 	if (gpLogSize) { LogString(szDbg); } else { DEBUGSTRCMD(szDbg); }
 	DEBUGSTARTSTOPBOX(szDbg);
 
-	// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+	// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
 	_ASSERTE(in.StartStop.dwPID!=0);
 
 
@@ -1190,43 +1009,43 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 	/*
 	bool AltServerChanged = false;
 	DWORD nAltServerWasStarted = 0, nAltServerWasStopped = 0;
-	DWORD nCurAltServerPID = gpSrv->dwAltServerPID;
+	DWORD nCurAltServerPID = server.GetAltServerPid();
 	HANDLE hAltServerWasStarted = NULL;
 	bool ForceThawAltServer = false;
 	AltServerInfo info = {};
 	*/
 	AltServerStartStop AS = {};
-	AS.nCurAltServerPID = gpSrv->dwAltServerPID;
+	AS.nCurAltServerPID = server.GetAltServerPid();
 
 
 	if (in.StartStop.nStarted == sst_AltServerStart)
 	{
-		// Перевести нить монитора в режим ожидания завершения AltServer, инициализировать gpSrv->dwAltServerPID, gpSrv->hAltServer
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+		// Перевести нить монитора в режим ожидания завершения AltServer, инициализировать server.GetAltServerPid(), gpSrv->hAltServer
+		// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
 		_ASSERTE(in.StartStop.hServerProcessHandle!=0);
 
-		OnAltServerChanged(1, sst_AltServerStart, in.StartStop.dwPID, &in.StartStop, AS);
+		server.OnAltServerChanged(1, sst_AltServerStart, in.StartStop.dwPID, &in.StartStop, AS);
 
 	}
 	else if ((in.StartStop.nStarted == sst_ComspecStart)
 			|| (in.StartStop.nStarted == sst_AppStart))
 	{
 		// Добавить процесс в список
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-		_ASSERTE(gpSrv->processes->pnProcesses[0] == gnSelfPID);
-		lbChanged = gpSrv->processes->ProcessAdd(nPID, CS);
+		// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
+		_ASSERTE(gpWorker->Processes().pnProcesses[0] == gnSelfPID);
+		lbChanged = gpWorker->Processes().ProcessAdd(nPID, CS);
 	}
 	else if ((in.StartStop.nStarted == sst_AltServerStop)
 			|| (in.StartStop.nStarted == sst_ComspecStop)
 			|| (in.StartStop.nStarted == sst_AppStop))
 	{
 		// Issue 623: Не удалять из списка корневой процесс _сразу_, пусть он "отвалится" обычным образом
-		if (nPID != gpSrv->dwRootProcess)
+		if (nPID != gpWorker->RootProcessId())
 		{
 			// Удалить процесс из списка
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
-			_ASSERTE(gpSrv->processes->pnProcesses[0] == gnSelfPID);
-			lbChanged = gpSrv->processes->ProcessRemove(nPID, nPrevCount, CS);
+			// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
+			_ASSERTE(gpWorker->Processes().pnProcesses[0] == gnSelfPID);
+			lbChanged = gpWorker->Processes().ProcessRemove(nPID, nPrevCount, CS);
 		}
 		else
 		{
@@ -1234,9 +1053,9 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 			{
 				// В консоли был успешный вызов ReadConsole/ReadConsoleInput.
 				// Отключить "Press enter to close console".
-				if (gbAutoDisableConfirmExit && (gnConfirmExitParm == 0))
+				if (gState.autoDisableConfirmExit_ && (gpConsoleArgs->confirmExitParm_ == 0))
 				{
-					DisableAutoConfirmExit(FALSE);
+					gState.DisableAutoConfirmExit(false);
 				}
 			}
 		}
@@ -1246,32 +1065,32 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 		// Если это закрылся AltServer
 		if (nAltPID)
 		{
-			OnAltServerChanged(1, in.StartStop.nStarted, nAltPID, NULL, AS);
+			server.OnAltServerChanged(1, in.StartStop.nStarted, nAltPID, NULL, AS);
 
-			// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+			// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
 			_ASSERTE(in.StartStop.nStarted==sst_ComspecStop || in.StartStop.nOtherPID==AS.info.nPrevPID);
 		}
 	}
 	else
 	{
-		// _ASSERTE могут приводить к ошибкам блокировки gpSrv->processes->csProc в других потоках. Но ассертов быть не должно )
+		// _ASSERTE могут приводить к ошибкам блокировки gpWorker->Processes().csProc в других потоках. Но ассертов быть не должно )
 		_ASSERTE(in.StartStop.nStarted==sst_AppStart || in.StartStop.nStarted==sst_AppStop || in.StartStop.nStarted==sst_ComspecStart || in.StartStop.nStarted==sst_ComspecStop);
 	}
 
 	// ***
 	if (lbChanged)
-		gpSrv->processes->ProcessCountChanged(TRUE, nPrevCount, CS);
+		gpWorker->Processes().ProcessCountChanged(TRUE, nPrevCount, CS);
 	CS.Unlock();
 	// ***
 
 	// После Unlock-а, зовем функцию
 	if (AS.AltServerChanged)
 	{
-		OnAltServerChanged(2, in.StartStop.nStarted, in.StartStop.dwPID, &in.StartStop, AS);
+		server.OnAltServerChanged(2, in.StartStop.nStarted, in.StartStop.dwPID, &in.StartStop, AS);
 	}
 
 	// Обновить мэппинг
-	UpdateConsoleMapHeader(L"CECMD_CMDSTARTSTOP");
+	WorkerServer::Instance().UpdateConsoleMapHeader(L"CECMD_CMDSTARTSTOP");
 
 	CsAlt.Unlock();
 
@@ -1281,16 +1100,16 @@ BOOL cmd_CmdStartStop(CESERVER_REQ& in, CESERVER_REQ** out)
 	if (*out != NULL)
 	{
 		(*out)->StartStopRet.bWasBufferHeight = (gnBufferHeight != 0);
-		(*out)->StartStopRet.hWnd = ghConEmuWnd;
-		(*out)->StartStopRet.hWndDc = ghConEmuWndDC;
-		(*out)->StartStopRet.hWndBack = ghConEmuWndBack;
-		(*out)->StartStopRet.dwPID = gnConEmuPID;
+		(*out)->StartStopRet.hWnd = gState.conemuWnd_;
+		(*out)->StartStopRet.hWndDc = gState.conemuWndDC_;
+		(*out)->StartStopRet.hWndBack = gState.conemuWndBack_;
+		(*out)->StartStopRet.dwPID = gState.conemuPid_;
 		(*out)->StartStopRet.nBufferHeight = gnBufferHeight;
-		(*out)->StartStopRet.nWidth = gpSrv->sbi.dwSize.X;
-		(*out)->StartStopRet.nHeight = (gpSrv->sbi.srWindow.Bottom - gpSrv->sbi.srWindow.Top + 1);
-		_ASSERTE(gnRunMode==RM_SERVER);
+		(*out)->StartStopRet.nWidth = gpWorker->GetSbi().dwSize.X;
+		(*out)->StartStopRet.nHeight = (gpWorker->GetSbi().srWindow.Bottom - gpWorker->GetSbi().srWindow.Top + 1);
+		_ASSERTE(gState.runMode_==RunMode::Server);
 		(*out)->StartStopRet.dwMainSrvPID = GetCurrentProcessId();
-		(*out)->StartStopRet.dwAltSrvPID = gpSrv->dwAltServerPID;
+		(*out)->StartStopRet.dwAltSrvPID = server.GetAltServerPid();
 		if (in.StartStop.nStarted == sst_AltServerStart)
 		{
 			(*out)->StartStopRet.dwPrevAltServerPID = nPrevAltServerPID;
@@ -1306,10 +1125,8 @@ BOOL cmd_SetFarPID(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 
-	gpSrv->nActiveFarPID = in.hdr.nSrcPID;
-
-	// Will update mapping using MainServer if this is Alternative
-	UpdateConsoleMapHeader(L"CECMD_SETFARPID");
+	// Will also update mapping using MainServer if this is Alternative
+	WorkerServer::Instance().SetFarPid(in.hdr.nSrcPID);
 
 	return lbRc;
 }
@@ -1321,7 +1138,7 @@ BOOL cmd_GuiChanged(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	if (gpSrv && gpSrv->pConsole)
 	{
-		ReloadGuiSettings(&in.GuiInfo);
+		WorkerServer::Instance().ReloadGuiSettings(&in.GuiInfo);
 	}
 
 	return lbRc;
@@ -1337,19 +1154,20 @@ BOOL cmd_TerminatePid(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	BOOL lbRc = FALSE;
 	DWORD nErrCode = 0;
-	DWORD nCount = in.dwData[0];
-	LPDWORD pPID = (LPDWORD)&(in.dwData[1]);
+	const DWORD nCount = in.dwData[0];
+	// ReSharper disable once CppLocalVariableMayBeConst
+	LPDWORD pPid = reinterpret_cast<LPDWORD>(&(in.dwData[1]));
 
 	if (nCount == 1)
-		lbRc = TerminateOneProcess(pPID[0], nErrCode);
+		lbRc = TerminateOneProcess(pPid[0], nErrCode);
 	else
-		lbRc = TerminateProcessGroup(nCount, pPID, nErrCode);
+		lbRc = TerminateProcessGroup(nCount, pPid, nErrCode);
 
 
 	if (lbRc)
 	{
-		// Иначе если прихлопывается процесс - будет "Press enter to close console"
-		DisableAutoConfirmExit();
+		// To avoid "Press enter to close console" when process is killed
+		gState.DisableAutoConfirmExit();
 	}
 
 	int nOutSize = sizeof(CESERVER_REQ_HDR) + 2*sizeof(DWORD);
@@ -1378,11 +1196,11 @@ BOOL cmd_AffinityPriority(CESERVER_REQ& in, CESERVER_REQ** out)
 	DWORD_PTR nAffinity = (DWORD_PTR)in.qwData[0];
 	DWORD nPriority = (DWORD)in.qwData[1];
 
-	MSectionLock CS; CS.Lock(gpSrv->processes->csProc);
-	gpSrv->processes->CheckProcessCount(TRUE);
-	for (UINT i = 0; i < gpSrv->processes->nProcessCount; i++)
+	MSectionLock CS; CS.Lock(gpWorker->Processes().csProc);
+	gpWorker->Processes().CheckProcessCount(TRUE);
+	for (UINT i = 0; i < gpWorker->Processes().nProcessCount; i++)
 	{
-		DWORD nPID = gpSrv->processes->pnProcesses[i];
+		DWORD nPID = gpWorker->Processes().pnProcesses[i];
 		if (nPID == gnSelfPID) continue;
 
 		HANDLE hProcess = OpenProcess(PROCESS_SET_INFORMATION, FALSE, nPID);
@@ -1436,11 +1254,11 @@ BOOL cmd_Pause(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 	case CEPause_On:
 		SetConEmuFlags(gpSrv->pConsole->ConState.Flags, CECI_Paused, CECI_Paused);
-		bOk = apiPauseConsoleOutput(ghConWnd, true);
+		bOk = apiPauseConsoleOutput(gState.realConWnd_, true);
 		break;
 	case CEPause_Off:
 		SetConEmuFlags(gpSrv->pConsole->ConState.Flags, CECI_Paused, CECI_None);
-		bOk = apiPauseConsoleOutput(ghConWnd, false);
+		bOk = apiPauseConsoleOutput(gState.realConWnd_, false);
 		break;
 	}
 
@@ -1564,19 +1382,19 @@ BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 	}
 	else
 	{
-		_ASSERTEX((in.AttachGuiApp.nPID == gpSrv->dwRootProcess || in.AttachGuiApp.nPID == gpSrv->Portable.nPID) && gpSrv->dwRootProcess && in.AttachGuiApp.nPID);
+		_ASSERTEX((in.AttachGuiApp.nPID == gpWorker->RootProcessId() || in.AttachGuiApp.nPID == gpSrv->Portable.nPID) && gpWorker->RootProcessId() && in.AttachGuiApp.nPID);
 
 		wchar_t szInfo[MAX_PATH*2];
 
 		// Вызывается два раза. Первый (при запуске exe) ahGuiWnd==NULL, второй - после фактического создания окна
-		if (gbAttachMode || (gpSrv->hRootProcessGui == NULL))
+		if (gState.attachMode_ || (gpWorker->RootProcessGui() == NULL))
 		{
 			swprintf_c(szInfo, L"GUI application (PID=%u) was attached to ConEmu:\n%s\n",
 				in.AttachGuiApp.nPID, in.AttachGuiApp.sAppFilePathName);
 			_wprintf(szInfo);
 		}
 
-		if (in.AttachGuiApp.hAppWindow && (gbAttachMode || (gpSrv->hRootProcessGui != in.AttachGuiApp.hAppWindow)))
+		if (in.AttachGuiApp.hAppWindow && (gState.attachMode_ || (gpWorker->RootProcessGui() != in.AttachGuiApp.hAppWindow)))
 		{
 			wchar_t szTitle[MAX_PATH] = {};
 			GetWindowText(in.AttachGuiApp.hAppWindow, szTitle, countof(szTitle));
@@ -1590,15 +1408,15 @@ BOOL cmd_GuiAppAttached(CESERVER_REQ& in, CESERVER_REQ** out)
 
 		if (in.AttachGuiApp.hAppWindow == NULL)
 		{
-			gpSrv->hRootProcessGui = (HWND)-1;
+			gpWorker->SetRootProcessGui(GUI_NOT_CREATED_YET);
 		}
 		else
 		{
-			gpSrv->hRootProcessGui = in.AttachGuiApp.hAppWindow;
+			gpWorker->SetRootProcessGui(in.AttachGuiApp.hAppWindow);
 		}
 		// Смысла в подтверждении нет - GUI приложение в консоль ничего не выводит
-		gbAlwaysConfirmExit = FALSE;
-		gpSrv->processes->CheckProcessCount(TRUE);
+		gState.alwaysConfirmExit_ = FALSE;
+		gpWorker->Processes().CheckProcessCount(TRUE);
 		lbRc = TRUE;
 	}
 
@@ -1696,88 +1514,84 @@ BOOL cmd_FreezeAltServer(CESERVER_REQ& in, CESERVER_REQ** out)
 	{
 		_ASSERTE(gpSrv!=NULL);
 	}
+	else if (in.DataSize() < (2 * sizeof(in.dwData[0])))
+	{
+		_ASSERTE(FALSE && "DataSize should be 2*DWORD");
+	}
 	else
 	{
 		// dwData[0]=1-Freeze, 0-Thaw; dwData[1]=New Alt server PID
-		wchar_t szLog[80];
+		wchar_t szLog[80] = L"";
+
+		auto& server = WorkerServer::Instance();
 
 		if (gpLogSize)
 		{
 			if (in.dwData[0] == 1)
-				swprintf_c(szLog, L"AltServer: freeze requested, new AltServer=%u", in.dwData[1]);
+				swprintf_c(szLog, L"AltServer: freeze requested, new AltServer=%u", in.dwData[1]);  // NOLINT(clang-diagnostic-array-bounds)
 			else
-				swprintf_c(szLog, L"AltServer: thaw requested, prev AltServer=%u", gpSrv->nPrevAltServer);
+				swprintf_c(szLog, L"AltServer: thaw requested, prev AltServer=%u", server.GetPrevAltServerPid());
 			LogString(szLog);
 		}
 
 		if (in.dwData[0] == 1)
 		{
-			gpSrv->nPrevAltServer = in.dwData[1];
+			server.SetPrevAltServerPid(in.dwData[1]);  // NOLINT(clang-diagnostic-array-bounds)
 
-			FreezeRefreshThread();
+			WorkerServer::Instance().FreezeRefreshThread();
 		}
 		else
 		{
-			std::swap(nPrevAltServer, gpSrv->nPrevAltServer);
+			nPrevAltServer = server.GetPrevAltServerPid();
+			server.SetPrevAltServerPid(0);
 
-			ThawRefreshThread();
+			WorkerServer::Instance().ThawRefreshThread();
 
-			if (gnRunMode == RM_ALTSERVER)
+			if (gState.runMode_ == RunMode::AltServer)
 			{
-				// OK, GUI will be informed by RM_SERVER itself
+				// OK, GUI will be informed by RunMode::RM_SERVER itself
 			}
 			else
 			{
-				swprintf_c(szLog, L"AltServer: Wrong gnRunMode=%u", gnRunMode);
+				swprintf_c(szLog, L"AltServer: Wrong gpStatus->runMode_=%u", gState.runMode_);
 				LogString(szLog);
-				_ASSERTE(gnRunMode == RM_ALTSERVER);
+				_ASSERTE(gState.runMode_ == RunMode::AltServer);
 			}
 		}
 
 		lbRc = TRUE;
 	}
 
-	int nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(DWORD)*2;
+	const size_t nOutSize = sizeof(CESERVER_REQ_HDR) + sizeof(DWORD) * 2;
 	*out = ExecuteNewCmd(CECMD_FREEZEALTSRV, nOutSize);
 
-	if (*out != NULL)
+	if (*out != nullptr)
 	{
 		(*out)->dwData[0] = lbRc;
-		(*out)->dwData[1] = nPrevAltServer; // Informational
+		(*out)->dwData[1] = nPrevAltServer; // Informational  // NOLINT(clang-diagnostic-array-bounds)
 	}
 
 	return TRUE;
 }
 
-BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
+namespace {
+// hOutput - our console output handle
+// max_height - 0 for unlimited, >0 for detected dynamic height
+BOOL LoadFullConsoleData(HANDLE hOutput, WORD max_height, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
-	//DWORD nPrevAltServer = 0;
-
-	// В Win7 закрытие дескриптора в ДРУГОМ процессе - закрывает консольный буфер ПОЛНОСТЬЮ!!!
-	// В итоге, буфер вывода telnet'а схлопывается!
-	if (gpSrv->bReopenHandleAllowed)
-	{
-		ConOutCloseHandle();
-	}
-
-	// Need to block all requests to output buffer in other threads
-	MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
 
 	CONSOLE_SCREEN_BUFFER_INFO lsbi = {{0,0}};
 	// !!! Нас интересует реальное положение дел в консоли,
 	//     а не скорректированное функцией MyGetConsoleScreenBufferInfo
-	if (!GetConsoleScreenBufferInfo(ghConOut, &lsbi))
+	if (!GetConsoleScreenBufferInfo(hOutput, &lsbi))
 	{
-		//CS.RelockExclusive();
-		//SafeFree(gpStoredOutput);
 		return FALSE; // Не смогли получить информацию о консоли...
 	}
 	// Support dynamic height - do not load all 32K lines
-	if (in.DataSize() >= sizeof(DWORD))
+	if (max_height && (static_cast<WORD>(lsbi.dwSize.Y) > max_height))
 	{
-		if (static_cast<WORD>(lsbi.dwSize.Y) > in.dwData[0])
-			lsbi.dwSize.Y = LOWORD(in.dwData[0]);
+		lsbi.dwSize.Y = max_height;
 	}
 
 	CESERVER_CONSAVE_MAP* pData = NULL;
@@ -1790,7 +1604,8 @@ BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
 		COORD BufSize = {lsbi.dwSize.X, lsbi.dwSize.Y};
 		SMALL_RECT ReadRect = {0, 0, lsbi.dwSize.X-1, lsbi.dwSize.Y-1};
 
-		lbRc = MyReadConsoleOutput(ghConOut, pData->Data, BufSize, ReadRect);
+		// #PTY Use proper server implementation
+		lbRc = WorkerServer::Instance().MyReadConsoleOutput(hOutput, pData->Data, BufSize, ReadRect);
 
 		if (lbRc)
 		{
@@ -1802,7 +1617,7 @@ BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
 			// Еще раз считать информацию по консоли (курсор положение и прочее...)
 			// За время чтения данных - они могли прокрутиться вверх
 			CONSOLE_SCREEN_BUFFER_INFO lsbi2 = {{0,0}};
-			if (GetConsoleScreenBufferInfo(ghConOut, &lsbi2))
+			if (GetConsoleScreenBufferInfo(hOutput, &lsbi2))
 			{
 				// Обновим только курсор, а то юзер может получить черный экран, вместо ожидаемого текста
 				// Если во время "dir c:\ /s" запросить AltConsole - получаем черный экран.
@@ -1817,34 +1632,84 @@ BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
 	return lbRc;
 }
 
+BOOL LoadConsoleMapData(CESERVER_REQ** out)
+{
+	BOOL lbRc = FALSE;
+	CONSOLE_SCREEN_BUFFER_INFO lsbi = {{0,0}};
+	CESERVER_CONSAVE_MAPHDR* pMapHdr = NULL;
+	CESERVER_CONSAVE_MAP* pMapData = NULL;
+	if (!WorkerServer::Instance().CmdOutputOpenMap(lsbi, pMapHdr, pMapData))
+		return FALSE;
+	// #AltBuffer try to detect max used row
+	const size_t max_cells = std::min<DWORD>(lsbi.dwSize.X * lsbi.dwSize.Y, pMapData->MaxCellCount);
+	const size_t max_cells_cb = (max_cells * sizeof(pMapData->Data[0]));
+	const size_t cbReplySize = sizeof(CESERVER_CONSAVE_MAP) + max_cells_cb;
+	*out = ExecuteNewCmd(CECMD_CONSOLEFULL, cbReplySize);
+
+	if ((*out) != NULL)
+	{
+		auto pData = (CESERVER_CONSAVE_MAP*)*out;
+		pData->info = lsbi;
+		pData->Succeeded = lbRc;
+		pData->MaxCellCount = lsbi.dwSize.X * lsbi.dwSize.Y;
+		pData->CurrentIndex = pMapData->CurrentIndex;
+		memmove_s(pData->Data, max_cells_cb, pMapData->Data, max_cells_cb);
+		lbRc = TRUE;
+	}
+	return lbRc;
+}
+
+BOOL LoadFullConsoleDataReal(CESERVER_REQ& in, CESERVER_REQ** out)
+{
+	BOOL lbRc = FALSE;
+
+	// В Win7 закрытие дескриптора в ДРУГОМ процессе - закрывает консольный буфер ПОЛНОСТЬЮ!!!
+	// В итоге, буфер вывода telnet'а схлопывается!
+	if (WorkerServer::Instance().IsReopenHandleAllowed())
+	{
+		WorkerServer::Instance().ConOutCloseHandle();
+	}
+
+	return LoadFullConsoleData(ghConOut, (in.DataSize() >= sizeof(DWORD)) ? LOWORD(in.dwData[0]) : 0, out);
+}
+}  // namespace
+
+BOOL cmd_LoadFullConsoleData(CESERVER_REQ& in, CESERVER_REQ** out)
+{
+	// Need to block all requests to output buffer in other threads
+	MSectionLockSimple csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
+
+	BOOL alt_screen = (in.DataSize() >= 2 * sizeof(DWORD)) ? in.dwData[1] : FALSE;
+	if (!alt_screen)
+		return LoadFullConsoleDataReal(in, out);
+	else if (gPrimaryBuffer.HasHandle())
+		return LoadFullConsoleData(gPrimaryBuffer, gnPrimaryBufferLastRow, out);
+	else
+		return LoadConsoleMapData(out);
+}
+
 BOOL cmd_SetFullScreen(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = FALSE;
 	//ghConOut
 
-	typedef BOOL (WINAPI* SetConsoleDisplayMode_t)(HANDLE, DWORD, PCOORD);
-	SetConsoleDisplayMode_t _SetConsoleDisplayMode = (SetConsoleDisplayMode_t)GetProcAddress(GetModuleHandle(L"kernel32.dll"), "SetConsoleDisplayMode");
-
-	size_t cbReplySize = sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_FULLSCREEN);
+	const size_t cbReplySize = sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_FULLSCREEN);
 	*out = ExecuteNewCmd(CECMD_SETFULLSCREEN, cbReplySize);
 
 	// Need to block all requests to output buffer in other threads
-	MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
+	MSectionLockSimple csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
 
-	if ((*out) != NULL)
+	if ((*out) != nullptr)
 	{
-		if (!_SetConsoleDisplayMode)
+		CLastErrorGuard lastErrorGuard;
+		if (!gpWorker->EnterHwFullScreen(&(*out)->FullScreenRet.crNewSize))
 		{
-			(*out)->FullScreenRet.bSucceeded = FALSE;
-			(*out)->FullScreenRet.nErrCode = ERROR_INVALID_FUNCTION;
+			(*out)->FullScreenRet.bSucceeded = false;
+			(*out)->FullScreenRet.nErrCode = GetLastError();
 		}
 		else
 		{
-			(*out)->FullScreenRet.bSucceeded = _SetConsoleDisplayMode(ghConOut, 1/*CONSOLE_FULLSCREEN_MODE*/, &(*out)->FullScreenRet.crNewSize);
-			if (!(*out)->FullScreenRet.bSucceeded)
-				(*out)->FullScreenRet.nErrCode = GetLastError();
-			else
-				gpSrv->pfnWasFullscreenMode = pfnGetConsoleDisplayMode;
+			(*out)->FullScreenRet.bSucceeded = true;
 		}
 		lbRc = TRUE;
 	}
@@ -1866,7 +1731,7 @@ BOOL cmd_SetConColors(CESERVER_REQ& in, CESERVER_REQ** out)
 	LogString(L"CECMD_SETCONCOLORS: Received");
 
 	// Need to block all requests to output buffer in other threads
-	MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
+	MSectionLockSimple csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
 
 	size_t cbReplySize = sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_SETCONSOLORS);
 	*out = ExecuteNewCmd(CECMD_SETCONCOLORS, cbReplySize);
@@ -1885,7 +1750,7 @@ BOOL cmd_SetConColors(CESERVER_REQ& in, CESERVER_REQ** out)
 			(*out)->SetConColor.NewTextAttributes = csbi5.wAttributes;
 		}
 
-		if (gnOsVer >= 0x600)
+		if (IsWin6())
 		{
 			LogString(L"CECMD_SETCONCOLORS: acquiring CONSOLE_SCREEN_BUFFER_INFOEX");
 			MY_CONSOLE_SCREEN_BUFFER_INFOEX csbi6 = {sizeof(csbi6)};
@@ -1909,14 +1774,14 @@ BOOL cmd_SetConColors(CESERVER_REQ& in, CESERVER_REQ** out)
 					csbi6.wPopupAttributes = in.SetConColor.NewPopupAttributes;
 					if (bPopupChanged)
 					{
-						BOOL bIsVisible = IsWindowVisible(ghConWnd);
+						BOOL bIsVisible = IsWindowVisible(gState.realConWnd_);
 						LogString(L"CECMD_SETCONCOLORS: applying CONSOLE_SCREEN_BUFFER_INFOEX");
 						bOk = apiSetConsoleScreenBufferInfoEx(ghConOut, &csbi6);
 						bNeedRepaint = FALSE;
-						if (!bIsVisible && IsWindowVisible(ghConWnd))
+						if (!bIsVisible && IsWindowVisible(gState.realConWnd_))
 						{
 							LogString(L"CECMD_SETCONCOLORS: RealConsole was shown unexpectedly");
-							apiShowWindow(ghConWnd, SW_HIDE);
+							apiShowWindow(gState.realConWnd_, SW_HIDE);
 						}
 						if (bOk)
 						{
@@ -1974,7 +1839,8 @@ BOOL cmd_SetConColors(CESERVER_REQ& in, CESERVER_REQ** out)
 		{
 			// Считать из консоли текущие атрибуты (построчно/поблочно)
 			// И там, где они совпадают с OldText - заменить на in.SetConColor.NewTextAttributes
-			RefillConsoleAttributes(csbi5, OldText, in.SetConColor.NewTextAttributes);
+			// #Refill Pass current DynamicHeight into
+			gpWorker->RefillConsoleAttributes(csbi5, OldText, in.SetConColor.NewTextAttributes);
 		}
 
 		(*out)->SetConColor.ReFillConsole = bOk;
@@ -2014,11 +1880,15 @@ BOOL cmd_AltBuffer(CESERVER_REQ& in, CESERVER_REQ** out)
 	CONSOLE_SCREEN_BUFFER_INFO lsbi = {};
 
 	// Need to block all requests to output buffer in other threads
-	MSectionLockSimple csRead; csRead.Lock(&gpSrv->csReadConsoleInfo, LOCK_READOUTPUT_TIMEOUT);
-
+	MSectionLockSimple csRead = gpWorker->LockConsoleReaders(LOCK_READOUTPUT_TIMEOUT);
+	if (!csRead.IsLocked())
+	{
+		LogString("cmd_AltBuffer: csReadConsoleInfo.Lock failed");
+		lbRc = FALSE;
+	}
 	// !!! Нас интересует реальное положение дел в консоли,
 	//     а не скорректированное функцией MyGetConsoleScreenBufferInfo
-	if (!GetConsoleScreenBufferInfo(ghConOut, &lsbi))
+	else if (!GetConsoleScreenBufferInfo(ghConOut, &lsbi))
 	{
 		LogString("cmd_AltBuffer: GetConsoleScreenBufferInfo failed");
 		lbRc = FALSE;
@@ -2038,28 +1908,24 @@ BOOL cmd_AltBuffer(CESERVER_REQ& in, CESERVER_REQ** out)
 			LogString(szInfo);
 		}
 
-
-		if (in.AltBuf.AbFlags & abf_SaveContents)
-		{
-			CmdOutputStore();
-		}
-
-
+		//do resize of the active screeen buffer (as usual)
 		//cmd_SetSizeXXX_CmdStartedFinished(CESERVER_REQ& in, CESERVER_REQ** out)
 		//CECMD_SETSIZESYNC
-		if (in.AltBuf.AbFlags & (abf_BufferOn|abf_BufferOff))
+		auto do_resize_buffer = [&in, &lsbi, &csRead]()
 		{
+			bool lbRc = true;
 			CESERVER_REQ* pSizeOut = NULL;
-			CESERVER_REQ* pSizeIn = ExecuteNewCmd(CECMD_SETSIZESYNC, sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_SETSIZE));
+			CESERVER_REQ* pSizeIn = ExecuteNewCmd(CECMD_SETSIZESYNC, sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_SETSIZE));
 			if (!pSizeIn)
 			{
-				lbRc = FALSE;
+				lbRc = false;
 			}
 			else
 			{
 				pSizeIn->hdr = in.hdr; // Как-бы фиктивно пришло из приложения
 				pSizeIn->hdr.nCmd = CECMD_SETSIZESYNC;
-				pSizeIn->hdr.cbSize = sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_SETSIZE);
+				// we have to restore proper size, reverted two lines above
+				pSizeIn->hdr.cbSize = (sizeof(CESERVER_REQ_HDR) + sizeof(CESERVER_REQ_SETSIZE));
 
 				//pSizeIn->SetSize.rcWindow.Left = pSizeIn->SetSize.rcWindow.Top = 0;
 				//pSizeIn->SetSize.rcWindow.Right = lsbi.srWindow.Right - lsbi.srWindow.Left;
@@ -2082,7 +1948,7 @@ BOOL cmd_AltBuffer(CESERVER_REQ& in, CESERVER_REQ** out)
 
 				if (!cmd_SetSizeXXX_CmdStartedFinished(*pSizeIn, &pSizeOut))
 				{
-					lbRc = FALSE;
+					lbRc = false;
 				}
 				else
 				{
@@ -2093,12 +1959,73 @@ BOOL cmd_AltBuffer(CESERVER_REQ& in, CESERVER_REQ** out)
 				ExecuteFreeResult(pSizeIn);
 				ExecuteFreeResult(pSizeOut);
 			}
-		}
+			return lbRc;
+		};
 
-
-		if (in.AltBuf.AbFlags & abf_RestoreContents)
+		// In Windows 7 we have to use legacy mode
+		if (!WorkerServer::Instance().IsReopenHandleAllowed()
+			|| !(in.AltBuf.AbFlags & abf_Connector))
 		{
-			CmdOutputRestore(true/*Simple*/);
+			if (in.AltBuf.AbFlags & abf_SaveContents)
+				WorkerServer::Instance().CmdOutputStore();
+			if (in.AltBuf.AbFlags & (abf_BufferOn|abf_BufferOff))
+				lbRc = do_resize_buffer();
+			if (in.AltBuf.AbFlags & abf_RestoreContents)
+				WorkerServer::Instance().CmdOutputRestore(true/*Simple*/);
+		}
+		// Switch console buffer handles
+		else if (in.AltBuf.AbFlags & (abf_SaveContents|abf_RestoreContents))
+		{
+			static bool alt_buffer_set = false;
+			_ASSERTE(!!(in.AltBuf.AbFlags & abf_BufferOff) == !!(in.AltBuf.AbFlags & abf_SaveContents));
+			_ASSERTE(!!(in.AltBuf.AbFlags & abf_BufferOn) == !!(in.AltBuf.AbFlags & abf_RestoreContents));
+			_ASSERTE(!!(in.AltBuf.AbFlags & abf_BufferOff) != !!(in.AltBuf.AbFlags & abf_BufferOn));
+
+			if ((in.AltBuf.AbFlags & abf_BufferOff) && !alt_buffer_set)
+			{
+				SECURITY_ATTRIBUTES sec = {sizeof(sec), nullptr, TRUE};
+				if (gPrimaryBuffer.SetHandle(::GetStdHandle(STD_OUTPUT_HANDLE), MConHandle::StdMode::Output)
+					&& gAltBuffer.SetHandle(::CreateConsoleScreenBuffer(
+						GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, &sec, CONSOLE_TEXTMODE_BUFFER, nullptr)
+						, MConHandle::StdMode::None)
+					&& SetConsoleActiveScreenBuffer(gAltBuffer)
+					)
+				{
+					ghConOut.SetHandlePtr(gAltBuffer);
+					if ((lbRc = do_resize_buffer()))
+					{
+						gnPrimaryBufferLastRow = in.AltBuf.BufferHeight;
+						alt_buffer_set = true;
+					}
+					else
+					{
+						SetConsoleActiveScreenBuffer(gPrimaryBuffer);
+						ghConOut.SetHandlePtr(nullptr);
+						gPrimaryBuffer.Close();
+						gAltBuffer.Close();
+					}
+				}
+				else
+				{
+					gPrimaryBuffer.Close();
+					gAltBuffer.Close();
+				}
+			}
+			else if ((in.AltBuf.AbFlags & abf_BufferOn) && alt_buffer_set)
+			{
+				SetConsoleActiveScreenBuffer(gPrimaryBuffer);
+				ghConOut.SetHandlePtr(nullptr);
+				gPrimaryBuffer.Close();
+				gAltBuffer.Close();
+				alt_buffer_set = false;
+				gnPrimaryBufferLastRow = 0;
+				lbRc = do_resize_buffer();
+			}
+		}
+		// Only buffer height change was requested
+		else if (in.AltBuf.AbFlags & (abf_BufferOn|abf_BufferOff))
+		{
+			lbRc = do_resize_buffer();
 		}
 	}
 
@@ -2171,7 +2098,7 @@ BOOL cmd_UpdConMapHdr(CESERVER_REQ& in, CESERVER_REQ** out)
 
 			if (gpSrv->pConsoleMap)
 			{
-				FixConsoleMappingHdr(&in.ConInfo);
+				WorkerServer::Instance().FixConsoleMappingHdr(&in.ConInfo);
 				gpSrv->pConsoleMap->SetFrom(&in.ConInfo);
 			}
 
@@ -2281,14 +2208,14 @@ BOOL cmd_PortableStarted(CESERVER_REQ& in, CESERVER_REQ** out)
 	if (in.DataSize() == sizeof(gpSrv->Portable))
 	{
 		gpSrv->Portable = in.PortableStarted;
-		gpSrv->processes->CheckProcessCount(TRUE);
+		gpWorker->Processes().CheckProcessCount(TRUE);
 		// For example, CommandPromptPortable.exe starts cmd.exe
 		CESERVER_REQ* pIn = ExecuteNewCmd(CECMD_PORTABLESTART, sizeof(CESERVER_REQ_HDR)+sizeof(CESERVER_REQ_PORTABLESTARTED));
 		if (pIn)
 		{
 			pIn->PortableStarted = in.PortableStarted;
 			pIn->PortableStarted.hProcess = NULL; // hProcess is valid for our server only
-			CESERVER_REQ* pOut = ExecuteGuiCmd(ghConWnd, pIn, ghConWnd);
+			CESERVER_REQ* pOut = ExecuteGuiCmd(gState.realConWnd_, pIn, gState.realConWnd_);
 			ExecuteFreeResult(pOut);
 			ExecuteFreeResult(pIn);
 		}
@@ -2351,7 +2278,7 @@ BOOL cmd_SetTopLeft(CESERVER_REQ& in, CESERVER_REQ** out)
 			{
 				bool bChange = false;
 				SMALL_RECT srNew = csbi.srWindow;
-				int height = srNew.Bottom - srNew.Top + 1;
+				const int height = srNew.Bottom - srNew.Top + 1;
 
 				// In some cases we can do physical scrolling
 				if ((in.ReqConInfo.TopLeft.y >= 0)
@@ -2363,7 +2290,7 @@ BOOL cmd_SetTopLeft(CESERVER_REQ& in, CESERVER_REQ** out)
 						&& (csbi.dwCursorPosition.Y < (in.ReqConInfo.TopLeft.y + height)))
 					)
 				{
-					int shiftY = in.ReqConInfo.TopLeft.y - srNew.Top;
+					const int shiftY = in.ReqConInfo.TopLeft.y - srNew.Top;
 					srNew.Top = in.ReqConInfo.TopLeft.y;
 					srNew.Bottom += shiftY;
 					bChange = true;
@@ -2381,9 +2308,9 @@ BOOL cmd_SetTopLeft(CESERVER_REQ& in, CESERVER_REQ** out)
 		_ASSERTE(FALSE && "Invalid SetTopLeft data");
 	}
 
-	size_t cbReplySize = sizeof(CESERVER_REQ_HDR);
+	const size_t cbReplySize = sizeof(CESERVER_REQ_HDR);
 	*out = ExecuteNewCmd(CECMD_SETTOPLEFT, cbReplySize);
-	lbRc = ((*out) != NULL);
+	lbRc = ((*out) != nullptr);
 
 	return lbRc;
 }
@@ -2411,7 +2338,7 @@ BOOL cmd_LockStation(CESERVER_REQ& in, CESERVER_REQ** out)
 {
 	BOOL lbRc = TRUE;
 
-	gpSrv->bStationLocked = TRUE;
+	gState.bStationLocked_ = TRUE;
 
 	LogSize(NULL, 0, ":CECMD_LOCKSTATION");
 
@@ -2425,7 +2352,7 @@ BOOL cmd_UnlockStation(CESERVER_REQ& in, CESERVER_REQ** out, bool bProcessed)
 {
 	BOOL lbRc = TRUE;
 
-	gpSrv->bStationLocked = FALSE;
+	gState.bStationLocked_ = FALSE;
 
 	LogString("CECMD_UNLOCKSTATION");
 
@@ -2463,7 +2390,7 @@ BOOL cmd_GetRootInfo(CESERVER_REQ& in, CESERVER_REQ** out)
 
 	if (*out)
 	{
-		gpSrv->processes->GetRootInfo(*out);
+		gpWorker->Processes().GetRootInfo(*out);
 	}
 
 	lbRc = ((*out) != NULL);
@@ -2517,30 +2444,21 @@ BOOL cmd_WriteText(CESERVER_REQ& in, CESERVER_REQ** out)
 bool ProcessAltSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out, BOOL& lbRc)
 {
 	bool lbProcessed = false;
+	auto& server = WorkerServer::Instance();
 	// Если крутится альтернативный сервер - команду нужно выполнять в нем
-	if (gpSrv->dwAltServerPID && (gpSrv->dwAltServerPID != gnSelfPID))
+	if (server.GetAltServerPid() && (server.GetAltServerPid() != gnSelfPID))
 	{
-		HANDLE hSave = NULL, hDup = NULL; DWORD nDupError = (DWORD)-1;
+		HANDLE hSave = nullptr, hDup = nullptr; DWORD nDupError = static_cast<DWORD>(-1);
 		if ((in.hdr.nCmd == CECMD_SETCONSCRBUF) && (in.DataSize() >= sizeof(in.SetConScrBuf)) && in.SetConScrBuf.bLock)
 		{
-			if (gpSrv->hAltServer)
-			{
-				hSave = in.SetConScrBuf.hRequestor;
-				if (!hSave)
-					nDupError = (DWORD)-3;
-				else if (!DuplicateHandle(GetCurrentProcess(), hSave, gpSrv->hAltServer, &hDup, 0, FALSE, DUPLICATE_SAME_ACCESS))
-					nDupError = GetLastError();
-				else
-					in.SetConScrBuf.hRequestor = hDup;
-			}
-			else
-			{
-				nDupError = (DWORD)-2;
-			}
+			hSave = in.SetConScrBuf.hRequestor;
+			nDupError = server.DuplicateHandleForAltServer(in.SetConScrBuf.hRequestor, hDup);
+			if (nDupError == 0)
+				in.SetConScrBuf.hRequestor = hDup;
 		}
 
-		(*out) = ExecuteSrvCmd(gpSrv->dwAltServerPID, &in, ghConWnd);
-		lbProcessed = ((*out) != NULL);
+		(*out) = ExecuteSrvCmd(server.GetAltServerPid(), &in, gState.realConWnd_);
+		lbProcessed = ((*out) != nullptr);
 		lbRc = lbProcessed;
 
 		if (hSave)
@@ -2549,7 +2467,7 @@ bool ProcessAltSrvCommand(CESERVER_REQ& in, CESERVER_REQ** out, BOOL& lbRc)
 			if (lbProcessed)
 				SafeCloseHandle(hSave);
 		}
-		UNREFERENCED_PARAMETER(nDupError);
+		std::ignore = nDupError;
 	}
 	return lbProcessed;
 }
@@ -2565,17 +2483,17 @@ BOOL cmd_StartXTerm(CESERVER_REQ& in, CESERVER_REQ** out)
 	// may be reseted unexpectedly due to "process termination"
 	if (in.DataSize() >= 3*sizeof(DWORD))
 	{
-		gpSrv->processes->StartStopXTermMode((TermModeCommand)in.dwData[0], in.dwData[1], in.dwData[2]);
+		gpWorker->Processes().StartStopXTermMode((TermModeCommand)in.dwData[0], in.dwData[1], in.dwData[2]);
 
 		if (in.DataSize() >= 4*sizeof(DWORD))
 		{
 			gpSrv->pConsole->hdr.stdConBlockingPID = in.dwData[3];
-			UpdateConsoleMapHeader(L"CECMD_STARTXTERM");
+			WorkerServer::Instance().UpdateConsoleMapHeader(L"CECMD_STARTXTERM");
 		}
 	}
 
 	// Inform the GUI
-	CESERVER_REQ* pGuiOut = ExecuteGuiCmd(ghConWnd, &in, ghConWnd);
+	CESERVER_REQ* pGuiOut = ExecuteGuiCmd(gState.realConWnd_, &in, gState.realConWnd_);
 	ExecuteFreeResult(pGuiOut);
 
 	*out = ExecuteNewCmd(CECMD_STARTXTERM, sizeof(CESERVER_REQ_HDR));

@@ -2,19 +2,20 @@
 -*.cmd
 *.dat
 
-github-release-downloads.ps1
-PortableApps_Sums.ps1
-
 ConEmuPortable*.exe
 ConEmuPortableRarInfo.txt
 Portable_Test
 BartPE
+
+av_scan_release.*
 
 Deploy.cmd
 Deploy_msi.cmd
 MinGW_deploy.cmd
 PortableApps_Config.cmd
 PortableApps_Update.txt
+sign_any.cmd
+user_env.cmd
 
 downloads-*.txt
 downloads-*.json

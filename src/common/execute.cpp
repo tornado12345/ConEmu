@@ -31,9 +31,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Common.h"
 #include "CmdLine.h"
 #include "EnvVar.h"
-#include "Execute.h"
+#include "execute.h"
 #include "WObjects.h"
-#include <TlHelp32.h>
+#include <tlhelp32.h>
 
 
 
@@ -796,10 +796,10 @@ bool FindImageSubsystem(const wchar_t *Module, /*wchar_t* pstrDest,*/ DWORD& Ima
 
 	//string strFullName=Module;
 	LPCWSTR ModuleExt = PointToExt(Module);
-	//wchar_t *strPathExt/*[32767]*/ = NULL; //(L".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WSH");
-	wchar_t *strPathEnv/*[32767]*/ = NULL;
-	wchar_t *strExpand/*[32767]*/ = NULL;  int cchstrExpand = 32767;
-	wchar_t *strTmpName/*[32767]*/ = NULL; int cchstrTmpName = 32767;
+	//wchar_t *strPathExt/*[MAX_WIDE_PATH_LENGTH]*/ = NULL; //(L".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WSH");
+	wchar_t *strPathEnv/*[MAX_WIDE_PATH_LENGTH]*/ = NULL;
+	wchar_t *strExpand/*[MAX_WIDE_PATH_LENGTH]*/ = NULL;  int cchstrExpand = 32767;
+	wchar_t *strTmpName/*[MAX_WIDE_PATH_LENGTH]*/ = NULL; int cchstrTmpName = 32767;
 	wchar_t *pszFilePart = NULL;
 	//DWORD nPathExtLen = 0;
 	LPCWSTR pszPathExtEnd = NULL;

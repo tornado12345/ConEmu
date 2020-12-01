@@ -100,7 +100,7 @@ void pauseReadInput(DWORD pid)
 	// Don't try again to open process
 	gBlockInputProcess.pid = pid;
 	if (!h || h == INVALID_HANDLE_VALUE)
-		return;
+		return; // -V773
 	std::swap(h, gBlockInputProcess.handle);
 	SafeCloseHandle(h);
 }
@@ -344,6 +344,11 @@ int stopConnector(/*[IN/OUT]*/RequestTermConnectorParm& Parm)
 	return 0;
 }
 
+}
+
+bool isConnectorStarted()
+{
+	return Connector::gbWasStarted;
 }
 
 /// exported function, connector entry point

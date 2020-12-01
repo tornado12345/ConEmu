@@ -30,13 +30,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 
-#include <Windows.h>
-#include <WinCon.h>
+#include <windows.h>
+#include <wincon.h>
 
 
 /*  Global  */
 extern bool    gbConEmuCProcess;
 extern DWORD   gnSelfPID;
+extern wchar_t gsConEmuBaseDir[MAX_PATH + 1]; // "%ConEmuBaseDir%"
 extern wchar_t gsExeName[80];       // Only exe name of current process
 extern CEActiveAppFlags gnExeFlags; // cygwin/msys/clink and so on...
 /*  ConEmu/Console */
@@ -222,7 +223,7 @@ extern DWORD gnTimeEnvVarLastCheck;
 extern wchar_t gszTimeEnvVarSave[32];
 /* ************ Hooking time functions ************ */
 
-void GuiSetProgress(WORD st, WORD pr, LPCWSTR pszName = NULL);
+void GuiSetProgress(AnsiProgressStatus st, WORD pr, LPCWSTR pszName = NULL);
 
 #if defined(__GNUC__)
 extern "C" {
@@ -231,7 +232,7 @@ extern "C" {
 	FARPROC WINAPI GetWriteConsoleW();
 	int WINAPI RequestLocalServer(/*[IN/OUT]*/RequestLocalServerParm* Parm);
 	FARPROC WINAPI GetLoadLibraryW();
-	BOOL WINAPI RequestTrampolines(HMODULE hModule);
+	BOOL WINAPI RequestTrampolines(LPCWSTR asModule, HMODULE hModule);
 #if defined(__GNUC__)
 };
 #endif

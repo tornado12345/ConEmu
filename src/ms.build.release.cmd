@@ -29,6 +29,11 @@ for /f "usebackq tokens=1* delims=: " %%i in (`tools\vswhere -latest -requires M
   if /i "%%i"=="installationPath" set VSInstallDir=%%j
 )
 if not defined VSInstallDir (
+  if exist "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools" (
+    set "VSInstallDir=C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools"
+  )
+)
+if not defined VSInstallDir (
   echo Visual Studio 2017 not found
   exit /b 1
 )
@@ -79,7 +84,7 @@ exit /b 1
 set "build_flag=%x32_build_flag%"
 call "%VSInstallDir%\VC\Auxiliary\Build\vcvars32.bat"
 cd /d "%~dp0"
-msbuild CE.sln %build_multi% /p:Configuration=Release,Platform=Win32 /t:%target%
+msbuild CE.sln %build_multi% /p:Configuration=Release,Platform=Win32,XPDeprecationWarning=false /t:%target%
 if errorlevel 1 goto err
 del "%build_flag%" > nul
 echo Success > "%build_flag%.success"

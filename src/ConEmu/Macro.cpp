@@ -31,90 +31,42 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SHOWDEBUGSTR
 
 #include "Header.h"
+#include "../common/EnvVar.h"
 #include "../common/MGuiMacro.h"
 #include "../common/MStrEsc.h"
+#include "../common/MStrSafe.h"
+#include "../common/ProcessSetEnv.h"
 #include "../common/WFiles.h"
 
-#include "RealConsole.h"
-#include "VirtualConsole.h"
-#include "Options.h"
-#include "OptionsClass.h"
-#include "TrayIcon.h"
-#include "ConEmu.h"
-#include "TabBar.h"
-#include "TrayIcon.h"
-#include "ConEmuPipe.h"
-#include "Macro.h"
-#include "VConGroup.h"
-#include "Menu.h"
+#include <set>
+
 #include "AboutDlg.h"
 #include "Attach.h"
-#include "SetDlgButtons.h"
+#include "ConEmu.h"
+#include "ConEmuPipe.h"
+#include "Inside.h"
+#include "Macro.h"
+#include "MacroImpl.h"
+#include "Menu.h"
+#include "Options.h"
+#include "OptionsClass.h"
+#include "RealConsole.h"
 #include "SetCmdTask.h"
 #include "SetColorPalette.h"
+#include "SetDlgButtons.h"
+#include "SystemEnvironment.h"
+#include "TabBar.h"
+#include "TrayIcon.h"
+#include "TrayIcon.h"
+#include "VConGroup.h"
+#include "VirtualConsole.h"
 
 
 /* ********************************* */
 /* ****** Forward definitions ****** */
 /* ********************************* */
-class CRealConsole;
-
-struct GuiMacro;
-struct GuiMacroArg;
-
-enum GuiMacroArgType
-{
-	gmt_Int,
-	gmt_Hex,
-	gmt_Str,
-	gmt_VStr,
-	gmt_Fn, // Reserved
-};
-
-struct GuiMacroArg
-{
-	GuiMacroArgType Type;
-
-	#ifdef _WIN64
-	DWORD Pad;
-	#endif
-
-	int Int;
-	LPWSTR Str;
-	GuiMacro* Macro;
-};
-
-struct GuiMacro
-{
-	size_t  cbSize;
-	LPCWSTR szFunc;
-	wchar_t chFuncTerm; // L'(', L':', L' ' - delimiter between func name and arguments
-
-	size_t  argc;
-	GuiMacroArg* argv; // No need to release mem, buffer allocated for the full GuiMacro data
-
-	wchar_t* AsString();
-	bool GetIntArg(size_t idx, int& val);
-	bool GetStrArg(size_t idx, LPWSTR& val);
-	bool GetRestStrArgs(size_t idx, LPWSTR& val);
-	bool IsIntArg(size_t idx);
-	bool IsStrArg(size_t idx);
-};
-
 namespace ConEmuMacro
 {
-	/* ****************************** */
-	/* ****** Helper functions ****** */
-	/* ****************************** */
-	LPWSTR GetNextString(LPWSTR& rsArguments, LPWSTR& rsString, bool bColonDelim, bool& bEndBracket);
-	LPWSTR GetNextInt(LPWSTR& rsArguments, GuiMacroArg& rnValue);
-	void SkipWhiteSpaces(LPWSTR& rsString);
-	GuiMacro* GetNextMacro(LPWSTR& asString, bool abConvert, wchar_t** rsErrMsg);
-	#ifdef _DEBUG
-	bool gbUnitTest = false;
-	#endif
-	LPWSTR Int2Str(UINT nValue, bool bSigned);
-
 	typedef LPWSTR (*MacroFunction)(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 
 	struct SyncExecMacroParm
@@ -153,6 +105,9 @@ namespace ConEmuMacro
 	LPWSTR Debug(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// Detach
 	LPWSTR Detach(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
+	// Environment variables
+	LPWSTR EnvironmentReload(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
+	LPWSTR EnvironmentList(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// Найти окно и активировать его. // int nWindowType/*Panels=1, Viewer=2, Editor=3*/, LPWSTR asName
 	LPWSTR FindEditor(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	LPWSTR FindFarWindow(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
@@ -208,6 +163,8 @@ namespace ConEmuMacro
 	LPWSTR Select(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// SetDpi(dpi)
 	LPWSTR SetDpi(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
+	// SetFocus
+	LPWSTR SetFocus(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// SetOption("<Name>",<Value>)
 	LPWSTR SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin);
 	// SetParentHWND(<NewParentHWND>)
@@ -279,6 +236,8 @@ namespace ConEmuMacro
 		{Copy, {L"Copy"}},
 		{Debug, {L"Debug"}, gmf_MainThread},
 		{Detach, {L"Detach"}, gmf_MainThread},
+		{EnvironmentReload, {L"EnvironmentReload", L"EnvReload"}, gmf_MainThread},
+		{EnvironmentList, {L"EnvironmentList", L"EnvList"}},
 		{FindEditor, {L"FindEditor"}},
 		{FindFarWindow, {L"FindFarWindow"}},
 		{FindViewer, {L"FindViewer"}},
@@ -307,6 +266,7 @@ namespace ConEmuMacro
 		{Scroll, {L"Scroll"}, gmf_MainThread},
 		{Select, {L"Select"}},
 		{SetDpi, {L"SetDpi"}, gmf_MainThread},
+		{SetFocus, {L"SetFocus"}, gmf_MainThread},
 		{SetOption, {L"SetOption"}, gmf_MainThread},
 		{SetParentHWND, {L"SetParentHWND"}, gmf_MainThread},
 		{Settings, {L"Settings"}, gmf_MainThread},
@@ -330,217 +290,9 @@ namespace ConEmuMacro
 		{Write, {L"Write"}},
 		{Zoom, {L"Zoom"}, gmf_MainThread},
 		// End
-		{NULL}
+		{nullptr}
 	};
 };
-
-
-
-// bAutoString==true : auto convert of gmt_String to gmt_VString
-wchar_t* GuiMacro::AsString()
-{
-	if (!szFunc || !*szFunc)
-	{
-		_ASSERTE(szFunc && *szFunc);
-		return lstrdup(L"");
-	}
-
-	// Можно использовать EscapeChar, только нужно учесть,
-	// что кавычки ВНУТРИ Arg.Str нужно эскейпить...
-
-	size_t cchTotal = _tcslen(szFunc) + 5;
-
-	wchar_t** pszArgs = NULL;
-
-	if (argc > 0)
-	{
-		wchar_t szNum[12];
-		pszArgs = (wchar_t**)calloc(argc, sizeof(wchar_t*));
-		if (!pszArgs)
-		{
-			_ASSERTE(FALSE && "Memory allocation failed");
-			return lstrdup(L"");
-		}
-
-		for (size_t i = 0; i < argc; i++)
-		{
-			switch (argv[i].Type)
-			{
-			case gmt_Int:
-				swprintf_c(szNum, L"%i", argv[i].Int);
-				pszArgs[i] = lstrdup(szNum);
-				cchTotal += _tcslen(szNum)+1;
-				break;
-			case gmt_Hex:
-				swprintf_c(szNum, L"0x%08X", (DWORD)argv[i].Int);
-				pszArgs[i] = lstrdup(szNum);
-				cchTotal += _tcslen(szNum)+1;
-				break;
-			case gmt_Str:
-				// + " ... ", + escaped (4x len in maximum for "\xFF" form)
-				pszArgs[i] = (wchar_t*)malloc((3+(argv[i].Str ? _tcslen(argv[i].Str)*4 : 0))*sizeof(*argv[i].Str));
-				if (pszArgs[i])
-				{
-					LPCWSTR pszSrc = argv[i].Str;
-					LPWSTR pszDst = pszArgs[i];
-					// Start
-					*(pszDst++) = L'"';
-					// Loop
-					while (*pszSrc)
-					{
-						EscapeChar(true, pszSrc, pszDst);
-					}
-					// Done
-					*(pszDst++) = L'"'; *(pszDst++) = 0;
-					cchTotal += _tcslen(pszArgs[i])+1;
-				}
-				break;
-			case gmt_VStr:
-				// + @" ... ", + escaped (double len in maximum)
-				pszArgs[i] = (wchar_t*)malloc((4+(argv[i].Str ? _tcslen(argv[i].Str)*2 : 0))*sizeof(*argv[i].Str));
-				if (pszArgs[i])
-				{
-					LPCWSTR pszSrc = argv[i].Str;
-					LPWSTR pszDst = pszArgs[i];
-					// Start
-					*(pszDst++) = L'@'; *(pszDst++) = L'"';
-					// Loop
-					while (*pszSrc)
-					{
-						if (*pszSrc == L'"')
-							*(pszDst++) = L'"';
-						*(pszDst++) = *(pszSrc++);
-					}
-					// Done
-					*(pszDst++) = L'"'; *(pszDst++) = 0;
-					cchTotal += _tcslen(pszArgs[i])+1;
-				}
-				break;
-			default:
-				_ASSERTE(FALSE && "Argument type not supported");
-			}
-		}
-	}
-
-	wchar_t* pszBuf = (wchar_t*)malloc(cchTotal*sizeof(*pszBuf));
-	if (!pszBuf)
-	{
-		for (size_t i = 0; i < argc; i++)
-		{
-			SafeFree(pszArgs[i]);
-		}
-		SafeFree(pszArgs);
-		_ASSERTE(FALSE && "Memory allocation failed");
-		return lstrdup(L"");
-	}
-
-	wchar_t* pszDst = pszBuf;
-	_wcscpy_c(pszDst, cchTotal, szFunc);
-	pszDst += _tcslen(pszDst);
-	//if (argc == 0)
-	//	goto done;
-
-	*(pszDst++) = L'(';
-
-	for (size_t i = 0; i < argc; i++)
-	{
-		if (i)
-			*(pszDst++) = L',';
-
-		if (pszArgs[i])
-		{
-			_wcscpy_c(pszDst, cchTotal, pszArgs[i]);
-			pszDst += _tcslen(pszDst);
-			free(pszArgs[i]);
-		}
-	}
-
-	// Done
-	*(pszDst++) = L')';
-//done:
-	*(pszDst++) = 0;
-	#ifdef _DEBUG
-	size_t cchUsed = (pszDst - pszBuf);
-	_ASSERTE(cchUsed <= cchTotal);
-	#endif
-
-
-	if (pszArgs)
-	{
-		free(pszArgs);
-	}
-	return pszBuf;
-}
-
-bool GuiMacro::GetIntArg(size_t idx, int& val)
-{
-	if ((idx >= argc)
-		|| (argv[idx].Type != gmt_Int && argv[idx].Type != gmt_Hex))
-	{
-		val = 0;
-		return false;
-	}
-
-	val = argv[idx].Int;
-	return true;
-}
-
-bool GuiMacro::GetStrArg(size_t idx, LPWSTR& val)
-{
-	// It it is detected as "Int" but we need "Str" - return it as string
-	if ((idx >= argc)
-		|| (argv[idx].Type != gmt_Str && argv[idx].Type != gmt_VStr && argv[idx].Type != gmt_Int))
-	{
-		val = NULL;
-		return false;
-	}
-
-	val = argv[idx].Str;
-	return (val != NULL);
-}
-
-bool GuiMacro::GetRestStrArgs(size_t idx, LPWSTR& val)
-{
-	if (!GetStrArg(idx, val))
-		return false;
-	if (!IsStrArg(idx+1))
-		return true; // No more string arguments!
-	// Concatenate string (memory was allocated continuously for all arguments)
-	LPWSTR pszEnd = val + _tcslen(val);
-	for (size_t i = idx+1; i < argc; i++)
-	{
-		LPWSTR pszAdd;
-		if (!GetStrArg(i, pszAdd))
-			break;
-		size_t iLen = _tcslen(pszAdd);
-		if (pszEnd < pszAdd)
-			wmemmove(pszEnd, pszAdd, iLen+1);
-		pszEnd += iLen;
-	}
-	// Trim argument list, there is only one returned string left...
-	argc = idx+1;
-	return true;
-}
-
-bool GuiMacro::IsIntArg(size_t idx)
-{
-	if ((idx >= argc)
-		|| (argv[idx].Type != gmt_Int && argv[idx].Type != gmt_Hex))
-	{
-		return false;
-	}
-	return true;
-}
-
-bool GuiMacro::IsStrArg(size_t idx)
-{
-	if ((idx >= argc)
-		|| (argv[idx].Type != gmt_Str && argv[idx].Type != gmt_VStr))
-	{
-		return false;
-	}
-	return true;
-}
 
 
 
@@ -561,11 +313,11 @@ LPWSTR ConEmuMacro::ConvertMacro(LPCWSTR asMacro, BYTE FromVersion, bool bShowEr
 	if (!pszBuf)
 	{
 		_ASSERTE(FALSE && "Memory allocation failed");
-		return NULL;
+		return nullptr;
 	}
 
 	wchar_t* pszMacro = pszBuf;
-	wchar_t* pszError = NULL;
+	wchar_t* pszError = nullptr;
 	GuiMacro* pMacro = GetNextMacro(pszMacro, true, &pszError);
 	free(pszBuf);
 
@@ -605,265 +357,6 @@ LPWSTR ConEmuMacro::ConvertMacro(LPCWSTR asMacro, BYTE FromVersion, bool bShowEr
 	return pszCvt;
 }
 
-GuiMacro* ConEmuMacro::GetNextMacro(LPWSTR& asString, bool abConvert, wchar_t** rsErrMsg)
-{
-	// Skip white-spaces
-	SkipWhiteSpaces(asString);
-
-	if (!asString || !*asString)
-	{
-		if (rsErrMsg)
-			*rsErrMsg = lstrdup(L"Empty Macro");
-		return NULL;
-	}
-
-	if (*asString == L'"')
-	{
-		if (rsErrMsg)
-		{
-			*rsErrMsg = lstrmerge(
-				L"Invalid Macro, remove surrounding quotes:\r\n",
-				asString,
-				NULL);
-		}
-		return NULL;
-	}
-
-	// Extract function name
-
-	wchar_t szFunction[64] = L"", chTerm = 0;
-	bool lbFuncOk = false;
-
-	for (size_t i = 0; i < (countof(szFunction)-1); i++)
-	{
-		chTerm = asString[i];
-		szFunction[i] = chTerm;
-
-		if (chTerm < L' ' || chTerm > L'z')
-		{
-			if (chTerm == 0)
-			{
-				lbFuncOk = (i > 0);
-				szFunction[i] = 0;
-				asString = asString + i;
-			}
-
-			break;
-		}
-
-		// Don't use ‘switch(){}’ here, because of further break-s
-		if (chTerm == L':' || chTerm == L'(' || chTerm == L' ')
-		{
-			// Skip white-spaces
-			if (chTerm == L':' || chTerm == L'(')
-			{
-				asString = asString+i+1;
-
-				SkipWhiteSpaces(asString);
-			}
-			else
-			{
-				asString = asString+i;
-
-				SkipWhiteSpaces(asString);
-
-				if (*asString == L'(')
-				{
-					chTerm = *asString;
-					asString++;
-				}
-			}
-
-			lbFuncOk = true;
-			szFunction[i] = 0;
-			break;
-		}
-		else if (chTerm == L';')
-		{
-			// Function without any args
-			lbFuncOk = (i > 0);
-			szFunction[i] = 0;
-			asString = asString + i;
-			break;
-		}
-	}
-
-	if (!lbFuncOk)
-	{
-		if (chTerm || (!asString || (*asString != 0)))
-		{
-			_ASSERTE(chTerm || (asString && (*asString == 0)));
-			if (rsErrMsg)
-			{
-				*rsErrMsg = lstrmerge(
-					L"Invalid Macro, can't get function name:\r\n",
-					asString,
-					NULL);
-			}
-			return NULL;
-		}
-
-		if (rsErrMsg)
-		{
-			*rsErrMsg = lstrmerge(
-				L"Invalid Macro, too long function name:\r\n",
-				asString,
-				NULL);
-		}
-		return NULL;
-	}
-
-	// Подготовить аргументы (отрезать закрывающую скобку)
-	bool bEndBracket = (chTerm == L'(');
-
-	// Аргументы
-	MArray<GuiMacroArg> Args;
-	size_t cbAddSize = 0;
-	wchar_t szArgErr[32] = {};
-
-	while (*asString)
-	{
-		GuiMacroArg a = {};
-
-		// Пропустить white-space
-		SkipWhiteSpaces(asString);
-
-		// Last arg?
-		if (!*asString
-			|| (bEndBracket && (asString[0] == L')'))
-			|| (!bEndBracket && (asString[0] == L';')))
-		{
-			// Skip macro end token ans WhiteSpaces
-			while (*asString && wcschr(L"); \t\r\n", *asString))
-				asString++;
-			// OK
-			break;
-		}
-
-		if ((asString[0] == L'-' || asString[0] == L'/') && (lstrcmpni(asString+1, L"GuiMacro", 8) == 0))
-		{
-			asString += 9;
-			SkipWhiteSpaces(asString);
-			// That will be next macro
-			break;
-		}
-
-		bool bIntArg = false;
-		if (isDigit(asString[0]) || (asString[0] == L'-') || (asString[0] == L'+'))
-		{
-			a.Type = (asString[0] == L'0' && (asString[1] == L'x' || asString[1] == L'X')) ? gmt_Hex : gmt_Int;
-
-			// If it fails - just use as string
-			bIntArg = (GetNextInt(asString, a) != NULL);
-		}
-
-		if (!bIntArg)
-		{
-			// Delimiter was ':' and argument was specified without quotas - return it "as is" to the end of macro string
-			// Otherwise, if there are no ‘"’ or ‘@"’ - use powershell style (one word == one string arg)
-
-			bool lbCvtVbt = false;
-			a.Type = (asString[0] == L'@' && asString[1] == L'"') ? gmt_VStr : gmt_Str;
-
-			_ASSERTE(asString[0]!=L':');
-
-			if (abConvert && (asString[0] == L'"'))
-			{
-				// Старые макросы хранились как "Verbatim" но без префикса
-				*(--asString) = L'@';
-				lbCvtVbt = true;
-				a.Type = gmt_VStr;
-			}
-
-
-
-			if (!GetNextString(asString, a.Str, (chTerm == L':'), bEndBracket))
-			{
-				swprintf_c(szArgErr, L"Argument #%u failed (string)", Args.size()+1);
-				if (rsErrMsg)
-					*rsErrMsg = lstrdup(szArgErr);
-				return NULL;
-			}
-
-			if (lbCvtVbt)
-			{
-				_ASSERTE(a.Type == gmt_VStr);
-				// Если строка содержит из спец-символов ТОЛЬКО "\" (пути)
-				// то ее удобнее показывать как "Verbatim", иначе - C-String
-				// Однозначно показывать как C-String нужно те строки, которые
-				// содержат переводы строк, Esc, табуляции и пр.
-				bool bSlash = false, bEsc = false;
-				CheckStrForSpecials(a.Str, &bSlash, &bEsc);
-				if (!(bEsc || bSlash) || bEsc)
-					a.Type = gmt_Str;
-			}
-
-			cbAddSize += (_tcslen(a.Str)+1) * sizeof(*a.Str);
-		}
-
-		Args.push_back(a);
-	}
-
-	// Создать GuiMacro*
-	size_t cbAllSize = sizeof(GuiMacro)
-		+ (_tcslen(szFunction)+1) * sizeof(*szFunction)
-		+ Args.size() * sizeof(GuiMacroArg)
-		+ cbAddSize;
-	GuiMacro* pMacro = (GuiMacro*)malloc(cbAllSize);
-	if (!pMacro)
-	{
-		_ASSERTE(pMacro != NULL);
-		return NULL;
-	}
-
-	pMacro->cbSize = cbAllSize;
-
-	LPBYTE ptrTail = (LPBYTE)(pMacro + 1);
-
-	// Fill GuiMacro*
-
-	// Function name
-	size_t cchLen = _tcslen(szFunction)+1;
-	_wcscpy_c((wchar_t*)ptrTail, cchLen, szFunction);
-	pMacro->szFunc = (wchar_t*)ptrTail;
-	ptrTail += cchLen * sizeof(*pMacro->szFunc);
-
-	pMacro->chFuncTerm = chTerm;
-
-	pMacro->argc = Args.size();
-	pMacro->argv = (GuiMacroArg*)ptrTail;
-	ptrTail += Args.size() * (sizeof(GuiMacroArg));
-
-	for (size_t i = 0; i < pMacro->argc; i++)
-	{
-		pMacro->argv[i] = Args[i];
-		if (pMacro->argv[i].Type == gmt_Int || pMacro->argv[i].Type == gmt_Hex)
-		{
-			// Дополнительная память не выделяется
-		}
-		else if (pMacro->argv[i].Type == gmt_Str || pMacro->argv[i].Type == gmt_VStr)
-		{
-			_ASSERTE(pMacro->argv[i].Str);
-			cchLen = _tcslen(pMacro->argv[i].Str)+1;
-			_wcscpy_c((wchar_t*)ptrTail, cchLen, pMacro->argv[i].Str);
-			pMacro->argv[i].Str = (wchar_t*)ptrTail;
-			ptrTail += cchLen * sizeof(*pMacro->argv[i].Str);
-		}
-		else
-		{
-			_ASSERTE(FALSE && "TODO: Copy memory contents!");
-		}
-	}
-
-	#ifdef _DEBUG
-	size_t cbUsedSize = ptrTail - (LPBYTE)pMacro;
-	_ASSERTE(cbUsedSize <= cbAllSize);
-	#endif
-
-	// Done
-	return pMacro;
-}
-
 CRealConsole* ConEmuMacro::ChangeContext(CRealConsole* apRCon, UINT nTabIndex, UINT nSplitIndex, CVConGuard& VCon, LPWSTR& pszError)
 {
 	if (!nTabIndex && !nSplitIndex)
@@ -878,7 +371,7 @@ CRealConsole* ConEmuMacro::ChangeContext(CRealConsole* apRCon, UINT nTabIndex, U
 		// Special (non-active) tab or split was selected
 		if (nTabIndex)
 		{
-			gpConEmu->mp_TabBar->GetVConFromTab(nTabIndex-1, &VConTab, NULL);
+			gpConEmu->mp_TabBar->GetVConFromTab(nTabIndex-1, &VConTab, nullptr);
 		}
 		else if (apRCon)
 		{
@@ -887,11 +380,11 @@ CRealConsole* ConEmuMacro::ChangeContext(CRealConsole* apRCon, UINT nTabIndex, U
 		if (!VConTab.VCon())
 		{
 			pszError = lstrdup(L"InvalidTabIndex");;
-			return NULL;
+			return nullptr;
 		}
 
 		// And split
-		CVConGroup* pGr = NULL;
+		CVConGroup* pGr = nullptr;
 		if (nSplitIndex && CVConGroup::isGroup(VConTab.VCon(), &pGr))
 		{
 			MArray<CVConGuard*> Panes;
@@ -900,14 +393,14 @@ CRealConsole* ConEmuMacro::ChangeContext(CRealConsole* apRCon, UINT nTabIndex, U
 			{
 				CVConGroup::FreePanesArray(Panes);
 				pszError = lstrdup(L"InvalidSplitIndex");
-				return NULL;
+				return nullptr;
 			}
 			VConSplit.Attach(Panes[nSplitIndex-1]->VCon());
 			CVConGroup::FreePanesArray(Panes);
 			if (!VConSplit.VCon())
 			{
 				pszError = lstrdup(L"InvalidSplit");
-				return NULL;
+				return nullptr;
 			}
 			VCon.Attach(VConSplit.VCon());
 		}
@@ -920,100 +413,23 @@ CRealConsole* ConEmuMacro::ChangeContext(CRealConsole* apRCon, UINT nTabIndex, U
 	if (!VCon.VCon())
 	{
 		pszError = lstrdup(L"NoActiveCon");
-		return NULL;
+		return nullptr;
 	}
 
 	return VCon->RCon();
 }
 
 
-#ifdef _DEBUG
-void ConEmuMacro::UnitTests()
-{
-	gbUnitTest = true;
-
-	wchar_t szMacro[] = L"Function1 +1 \"Arg2\" -3 -guimacro Function2(@\"Arg1\"\"\\n999\",0x999); Function3: \"abc\\t\\e\\\"\\\"\\n999\"; Function4 abc def; InvalidArg(9q)";
-	LPWSTR pszString = szMacro;
-
-	GuiMacro* p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Function1")==0);
-	_ASSERTE(p && p->argc==3 && p->argv[0].Int==1 && lstrcmp(p->argv[1].Str,L"Arg2")==0 && p->argv[2].Int==-3);
-	SafeFree(p);
-
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Function2")==0);
-	_ASSERTE(p && p->argc==2 && lstrcmp(p->argv[0].Str,L"Arg1\"\\n999")==0 && p->argv[1].Int==0x999);
-	SafeFree(p);
-
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Function3")==0);
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str,L"abc\t\x1B\"\"\n999")==0);
-	SafeFree(p);
-
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Function4")==0);
-	_ASSERTE(p && p->argc==2 && lstrcmp(p->argv[0].Str,L"abc")==0 && lstrcmp(p->argv[1].Str,L"def")==0);
-	SafeFree(p);
-
-	p = GetNextMacro(pszString, false, NULL);
-	// InvalidArg(9q)
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str, L"9q")==0);
-	SafeFree(p);
-
-	// Test some invalid declarations
-	wcscpy_c(szMacro, L"VeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLongFunction(0);");
-	pszString = szMacro;
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p==NULL);
-	SafeFree(p);
-
-	wcscpy_c(szMacro, L"InvalidArg 1 abc d\"e fgh; Function2(\"\"\"\\n0);");
-	pszString = szMacro;
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"InvalidArg")==0);
-	_ASSERTE(p && p->argc==4 && p->argv[0].Int == 1 && lstrcmp(p->argv[1].Str,L"abc")==0 && lstrcmp(p->argv[2].Str,L"d\"e")==0 && lstrcmp(p->argv[3].Str,L"fgh")==0);
-	_ASSERTE(pszString && lstrcmp(pszString, L"Function2(\"\"\"\\n0);") == 0);
-	SafeFree(p);
-
-	wcscpy_c(szMacro, L"InvalidArg:abc\";\"");
-	pszString = szMacro;
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"InvalidArg")==0);
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str,L"abc\";\"")==0);
-	SafeFree(p);
-
-	wchar_t szMacro2[] = L"Print(abc)";
-	pszString = szMacro2;
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Print")==0);
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str,L"abc")==0);
-	SafeFree(p);
-
-	wchar_t szMacro3[] = L"Print(abc);Print(\"def\")";
-	pszString = szMacro3;
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Print")==0);
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str,L"abc")==0);
-	SafeFree(p);
-	p = GetNextMacro(pszString, false, NULL);
-	_ASSERTE(p && lstrcmp(p->szFunc,L"Print")==0);
-	_ASSERTE(p && p->argc==1 && lstrcmp(p->argv[0].Str,L"def")==0);
-	SafeFree(p);
-
-	gbUnitTest = false;
-}
-#endif
-
 
 // Общая функция, для обработки любого известного макроса
-LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFromPlugin /*= false*/, CESERVER_REQ_GUIMACRO* Opt /*= NULL*/)
+LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFromPlugin /*= false*/, CESERVER_REQ_GUIMACRO* Opt /*= nullptr*/)
 {
 	CRealConsole* pMacroRCon = apRCon;
 	CVConGuard VConTab;
 
 	if (Opt && (Opt->nTabIndex || Opt->nSplitIndex))
 	{
-		LPWSTR pszError = NULL;
+		LPWSTR pszError = nullptr;
 		pMacroRCon = ChangeContext(pMacroRCon, Opt->nTabIndex, Opt->nSplitIndex, VConTab, pszError);
 		if (!pMacroRCon)
 		{
@@ -1021,20 +437,20 @@ LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFr
 		}
 	}
 
-	wchar_t* pszErr = NULL;
+	wchar_t* pszErr = nullptr;
 	GuiMacro* p = GetNextMacro(asMacro, false, &pszErr);
 	if (!p)
 	{
 		return pszErr ? pszErr : lstrdup(L"Invalid Macro");
 	}
 
-	LPWSTR pszAllResult = NULL;
+	LPWSTR pszAllResult = nullptr;
 
 	bool bIsMainThread = isMainThread();
 
 	while (p)
 	{
-		LPWSTR pszResult = NULL;
+		LPWSTR pszResult = nullptr;
 		LPCWSTR pszFunction = p->szFunc;
 		_ASSERTE(pszFunction && !wcschr(pszFunction,L';'));
 		// To force execution of that function when RCon successfully starts
@@ -1046,7 +462,7 @@ LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFr
 		}
 
 		// Поехали
-		MacroFunction pfn = NULL;
+		MacroFunction pfn = nullptr;
 		for (size_t f = 0; Functions[f].pfn && !pfn; f++)
 		{
 			for (size_t n = 0; (n < countof(Functions[f].Alias)) && Functions[f].Alias[n]; n++)
@@ -1101,7 +517,7 @@ LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFr
 			}
 		}
 
-		if (pszResult == NULL)
+		if (pszResult == nullptr)
 		{
 			_ASSERTE(FALSE && "MacroFunction must returns anything");
 			pszResult = lstrdup(L"");
@@ -1117,7 +533,7 @@ LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFr
 			wchar_t* pszAll = lstrmerge(pszAllResult, L";", pszResult);
 			if (!pszAll)
 			{
-				_ASSERTE(pszAll!=NULL);
+				_ASSERTE(pszAll!=nullptr);
 				free(pszResult);
 				break;
 			}
@@ -1127,7 +543,7 @@ LPWSTR ConEmuMacro::ExecuteMacro(LPWSTR asMacro, CRealConsole* apRCon, bool abFr
 		}
 
 		free(p);
-		p = GetNextMacro(asMacro, false, NULL/*&pszErr*/);
+		p = GetNextMacro(asMacro, false, nullptr/*&pszErr*/);
 	}
 
 	// Fin
@@ -1151,273 +567,12 @@ LRESULT ConEmuMacro::ExecuteMacroSync(WPARAM wParam, LPARAM lParam)
 	return (LRESULT)pszResult;
 }
 
-
-// Helper to concatenate macros.
-// They must be ‘concatenatable’, example: Print("abc"); Print("Qqq")
-// But following WILL NOT work: Print: Abd qqq
-LPCWSTR ConEmuMacro::ConcatMacro(LPWSTR& rsMacroList, LPCWSTR asAddMacro)
-{
-	if (!asAddMacro || !*asAddMacro)
-	{
-		return rsMacroList;
-	}
-
-	if (!rsMacroList || !*rsMacroList)
-	{
-		SafeFree(rsMacroList);
-		rsMacroList = lstrdup(asAddMacro);
-	}
-	else
-	{
-		lstrmerge(&rsMacroList, L"; ", asAddMacro);
-	}
-
-	return rsMacroList;
-}
-
-
-void ConEmuMacro::SkipWhiteSpaces(LPWSTR& rsString)
-{
-	if (!rsString)
-	{
-		_ASSERTE(rsString!=NULL);
-		return;
-	}
-
-	// Skip white-spaces
-	while (*rsString == L' ' || *rsString == L'\t' || *rsString == L'\r' || *rsString == L'\n')
-		rsString++;
-}
-
-/* ***  Функции для парсера параметров  *** */
-
-// Get next numerical argument (dec or hex)
-// Delimiter - comma or space
-LPWSTR ConEmuMacro::GetNextInt(LPWSTR& rsArguments, GuiMacroArg& rnValue)
-{
-	LPWSTR pszArg = NULL, pszEnd = NULL;
-	rnValue.Str = rsArguments;
-	rnValue.Int = 0; // Reset
-
-	SkipWhiteSpaces(rsArguments);
-
-	if (!rsArguments || !*rsArguments)
-		return NULL;
-
-	// Результат
-	pszArg = rsArguments;
-
-	#ifdef _DEBUG
-	// Returns all digits
-	LPCWSTR pszTestEnd = rsArguments;
-	if (*pszTestEnd == L'-' || *pszTestEnd == L'+')
-		pszTestEnd++;
-	if (pszTestEnd[0] == L'0' && (pszTestEnd[1] == L'x' || pszTestEnd[1] == L'X'))
-	{
-		pszTestEnd += 2;
-		while (isHexDigit(*pszTestEnd))
-			pszTestEnd++;
-	} else {
-		while (isDigit(*pszTestEnd))
-			pszTestEnd++;
-	}
-	#endif
-
-	// TODO: Support 64-bit integers?
-
-	// Hex value?
-	if (pszArg[0] == L'0' && (pszArg[1] == L'x' || pszArg[1] == L'X'))
-		rnValue.Int = wcstol(pszArg+2, &pszEnd, 16);
-	else
-		rnValue.Int = wcstol(pszArg, &pszEnd, 10);
-
-	_ASSERTE(pszEnd == pszTestEnd);
-
-	if (pszEnd && *pszEnd)
-	{
-		// Check, if next symbol is correct delimiter
-		if (wcschr(L" \t\r\n),;", *pszEnd) == NULL)
-		{
-			// We'll use it as string
-			return NULL;
-		}
-		rsArguments = pszEnd;
-		SkipWhiteSpaces(rsArguments);
-		if (*rsArguments == L',')
-			rsArguments++;
-	}
-	else
-	{
-		rsArguments = pszEnd;
-	}
-	return pszArg;
-}
-// Получить следующий строковый параметр
-LPWSTR ConEmuMacro::GetNextString(LPWSTR& rsArguments, LPWSTR& rsString, bool bColonDelim, bool& bEndBracket)
-{
-	rsString = NULL; // Сброс
-
-	if (!rsArguments || !*rsArguments)
-		return NULL;
-
-	#ifdef _DEBUG
-	LPWSTR pszArgStart = rsArguments;
-	LPWSTR pszArgEnd = rsArguments+_tcslen(rsArguments);
-	#endif
-
-	// Пропустить white-space
-	SkipWhiteSpaces(rsArguments);
-
-	LPCWSTR pszSrc = NULL;
-
-	// C-style strings
-	if (rsArguments[0] == L'"')
-	{
-		rsString = rsArguments+1;
-		pszSrc = rsString;
-		LPWSTR pszDst = rsString;
-		while (*pszSrc && (*pszSrc != L'"'))
-		{
-			EscapeChar(false, pszSrc, pszDst);
-		}
-		_ASSERTE((*pszSrc == L'"') || (*pszSrc == 0));
-		rsArguments = (wchar_t*)((*pszSrc == L'"') ? (pszSrc+1) : pszSrc);
-		_ASSERTE(rsArguments>pszDst || (rsArguments==pszDst && *rsArguments==0));
-		*pszDst = 0;
-	}
-	// C-style strings, but quotes are escaped by '\' (may come from ConEmu -GuiMacro "...")
-	else if (rsArguments[0] == L'\\' && rsArguments[1] == L'"')
-	{
-		rsString = rsArguments+2;
-		pszSrc = rsString;
-		LPWSTR pszDst = rsString;
-		wchar_t szTemp[2], *pszTemp;
-		while (*pszSrc && (*pszSrc != L'"'))
-		{
-			if ((pszSrc[0] == L'\\') && pszSrc[1])
-			{
-				if (pszSrc[1] == L'"')
-				{
-					pszSrc++;
-					break;
-				}
-				else if (pszSrc[2])
-				{
-					DEBUGTEST(LPCWSTR pszStart = pszSrc);
-					pszTemp = szTemp;
-					EscapeChar(false, pszSrc, pszTemp);
-					EscapeChar(false, pszSrc, pszTemp);
-					_ASSERTE((pszTemp==(szTemp+2)) && (pszSrc==(pszStart+3) || pszSrc==(pszStart+4)));
-					pszTemp = szTemp;
-					LPCWSTR pszReent = szTemp;
-					EscapeChar(false, pszReent, pszDst);
-				}
-				else
-				{
-					EscapeChar(false, pszSrc, pszTemp);
-				}
-			}
-			else
-			{
-				EscapeChar(false, pszSrc, pszDst);
-			}
-		}
-		_ASSERTE((*pszSrc == L'"') || (*pszSrc == 0));
-		rsArguments = (wchar_t*)((*pszSrc == L'"') ? (pszSrc+1) : pszSrc);
-		_ASSERTE(rsArguments>pszDst || (rsArguments==pszDst && *rsArguments==0));
-		*pszDst = 0;
-	}
-	// "verbatim string"
-	else if ((rsArguments[0] == L'@') && (rsArguments[1] == L'"'))
-	{
-		rsString = rsArguments+2;
-
-		pszSrc = rsString;
-		LPWSTR pszDst = rsString;
-		while (*pszSrc)
-		{
-			if (pszSrc[0] == L'"')
-			{
-				if (pszSrc[1] != L'"')
-				{
-					break;
-				}
-				else
-				{
-					pszSrc++;
-				}
-			}
-
-			*(pszDst++) = *(pszSrc++);
-		}
-		_ASSERTE((*pszSrc == L'"') || (*pszSrc == 0));
-		rsArguments = (wchar_t*)((*pszSrc == L'"') ? (pszSrc+1) : pszSrc);
-		_ASSERTE(rsArguments>pszDst || (rsArguments==pszDst && *rsArguments==0));
-		*pszDst = 0;
-	}
-	else if (!bColonDelim)
-	{
-		// Powershell style (one word == one string arg)
-		_ASSERTE(*rsArguments != L' ');
-		rsString = rsArguments;
-		rsArguments = wcspbrk(rsString+1, bEndBracket ? L" )" : L" ");
-		if (rsArguments)
-		{
-			if (*rsArguments == L')')
-			{
-				// Print(abc);Print("def")
-				*rsArguments = 0;
-				if (*(rsArguments+1))
-				{
-					rsArguments++;
-					bEndBracket = false;
-				}
-			}
-			else if (*(rsArguments-1) == L';')
-			{
-				*(rsArguments-1) = 0;
-				*rsArguments = L';'; // replace space with function-delimiter
-			}
-			else
-			{
-				*(rsArguments++) = 0;
-			}
-		}
-		else
-		{
-			rsArguments = rsString + _tcslen(rsString);
-		}
-	}
-	else
-	{
-		_ASSERTE(gbUnitTest | (bColonDelim && "String without quotas!"));
-		rsString = rsArguments;
-		rsArguments = rsArguments + _tcslen(rsArguments);
-		goto wrap;
-	}
-
-	if (*rsArguments)
-	{
-		_ASSERTE(rsArguments>=pszArgStart && rsArguments<pszArgEnd);
-
-		SkipWhiteSpaces(rsArguments);
-		if (*rsArguments == L',')
-			rsArguments++;
-
-		_ASSERTE(rsArguments>=pszArgStart && rsArguments<=pszArgEnd);
-	}
-
-wrap:
-	// Тут уже NULL-а не будет, допускаются пустые строки ("")
-	_ASSERTE(rsString!=NULL);
-	return rsString;
-}
 /* ***  Теперь - собственно макросы  *** */
 
 // Диалог About(["Tab"])
 LPWSTR ConEmuMacro::About(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszPageName = NULL;
+	LPWSTR pszPageName = nullptr;
 	if (p->IsStrArg(0))
 		p->GetStrArg(0, pszPageName);
 
@@ -1428,8 +583,8 @@ LPWSTR ConEmuMacro::About(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 LPWSTR ConEmuMacro::AffinityPriority(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszRc = NULL;
-	LPWSTR pszAffinity = NULL, pszPriority = NULL;
+	LPWSTR pszRc = nullptr;
+	LPWSTR pszAffinity = nullptr, pszPriority = nullptr;
 
 	p->GetStrArg(0, pszAffinity);
 	p->GetStrArg(1, pszPriority);
@@ -1486,7 +641,7 @@ LPWSTR ConEmuMacro::IsConEmu(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugi
 // Проверка, видима ли RealConsole
 LPWSTR ConEmuMacro::IsRealVisible(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 
 	if (apRCon && IsWindowVisible(apRCon->ConWnd()))
 		pszResult = lstrdup(L"Yes");
@@ -1499,7 +654,7 @@ LPWSTR ConEmuMacro::IsRealVisible(GuiMacro* p, CRealConsole* apRCon, bool abFrom
 // Проверка, активна ли RealConsole
 LPWSTR ConEmuMacro::IsConsoleActive(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 
 	if (apRCon && apRCon->isActive(false))
 		pszResult = lstrdup(L"Yes");
@@ -1528,7 +683,7 @@ LPWSTR ConEmuMacro::Break(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 LPWSTR ConEmuMacro::Close(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	int nCmd = 0, nFlags = 0;
 
 	if (p->GetIntArg(0, nCmd))
@@ -1590,9 +745,9 @@ LPWSTR ConEmuMacro::Close(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			case 5:
 				CVConGroup::CloseAllButActive(apRCon->VCon(), CVConGroup::CloseSimple, (nFlags & 1)==1); break;
 			case 8:
-				CVConGroup::CloseAllButActive(NULL, CVConGroup::CloseSimple, (nFlags & 1)==1); break;
+				CVConGroup::CloseAllButActive(nullptr, CVConGroup::CloseSimple, (nFlags & 1)==1); break;
 			case 9:
-				CVConGroup::CloseAllButActive(NULL, CVConGroup::CloseZombie, (nFlags & 1)==1); break;
+				CVConGroup::CloseAllButActive(nullptr, CVConGroup::CloseZombie, (nFlags & 1)==1); break;
 			case 11:
 				CVConGroup::CloseAllButActive(apRCon->VCon(), CVConGroup::Close2Right, (nFlags & 1)==1); break;
 			}
@@ -1623,7 +778,7 @@ LPWSTR ConEmuMacro::Close(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 LPWSTR ConEmuMacro::Debug(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int iAction = 0;
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	if (apRCon)
 	{
 		p->GetIntArg(0, iAction);
@@ -1651,7 +806,7 @@ LPWSTR ConEmuMacro::Debug(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 LPWSTR ConEmuMacro::Detach(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	if (apRCon)
 	{
 		int iOptions = 0;
@@ -1664,7 +819,7 @@ LPWSTR ConEmuMacro::Detach(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 LPWSTR ConEmuMacro::Unfasten(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	if (apRCon)
 	{
 		apRCon->Unfasten();
@@ -1695,10 +850,84 @@ LPWSTR ConEmuMacro::Context(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 	return lstrdup(L"");
 }
 
+LPWSTR ConEmuMacro::EnvironmentReload(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
+{
+	gpConEmu->ReloadEnvironmentVariables();
+	return lstrdup(L"OK");
+}
+
+namespace {
+void AppendExpandedValue(CEStrConcat& ss, const bool expandable, const wchar_t* data)
+{
+	if (expandable)
+	{
+		CEStr value(ExpandEnvStr(data));
+		if (!value.IsEmpty())
+		{
+			ss.Append(value.c_str(L""));
+			return;
+		}
+	}
+	ss.Append(data);
+}
+};
+
+LPWSTR ConEmuMacro::EnvironmentList(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
+{
+	CEStrConcat ss;
+
+	// Pairs `name=value` from registry
+	std::shared_ptr<SystemEnvironment> data_ptr = gpConEmu->GetEnvironmentVariables();
+	const auto& data = data_ptr->env_data;
+	for (const auto& key : data_ptr->GetKeys())
+	{
+		const auto& v = data.at(key);
+		ss.Append(v.name.c_str());
+		ss.Append(L"=");
+		AppendExpandedValue(ss, v.expandable, v.data.c_str());
+		ss.Append(L"\n");
+	}
+
+	// Pairs `name=value` from ConEmu settings
+	if (gpSet->psEnvironmentSet)
+	{
+		CProcessEnvCmd env;
+		env.AddLines(gpSet->psEnvironmentSet, true);
+
+		class Apply : public CStartEnvBase
+		{
+		private:
+			CEStrConcat& ss_;
+		public:
+			Apply(CEStrConcat& ss) : ss_(ss) {}
+			void Alias(LPCWSTR asName, LPCWSTR asValue) override {}
+			void ChCp(LPCWSTR asCP) override {}
+			void Echo(LPCWSTR asSwitches, LPCWSTR asText) override {}
+			void Title(LPCWSTR asTitle) override {}
+			void Type(LPCWSTR asSwitches, LPCWSTR asFile) override {}
+			void Set(LPCWSTR asName, LPCWSTR asValue) override
+			{
+				if (asName && *asName && asValue)
+				{
+					ss_.Append(asName);
+					ss_.Append(L"=");
+					AppendExpandedValue(ss_, true, asValue);
+					ss_.Append(L"\n");
+				}
+			}
+		};
+
+		Apply apply(ss);
+		env.Apply(&apply);
+	}
+
+	return ss.GetData().Detach();
+}
+
 // Найти окно и активировать его. // LPWSTR asName
 LPWSTR ConEmuMacro::FindEditor(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszName = NULL;
+	LPWSTR pszName = nullptr;
 
 	if (!p->GetStrArg(0, pszName))
 		return lstrdup(L"");
@@ -1712,7 +941,7 @@ LPWSTR ConEmuMacro::FindEditor(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 // Найти окно и активировать его. // LPWSTR asName
 LPWSTR ConEmuMacro::FindViewer(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszName = NULL;
+	LPWSTR pszName = nullptr;
 
 	if (!p->GetStrArg(0, pszName))
 		return lstrdup(L"");
@@ -1727,7 +956,7 @@ LPWSTR ConEmuMacro::FindViewer(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 LPWSTR ConEmuMacro::FindFarWindow(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int nWindowType = 0;
-	LPWSTR pszName = NULL;
+	LPWSTR pszName = nullptr;
 
 	if (!p->GetIntArg(0, nWindowType))
 		return lstrdup(L"InvalidArg");
@@ -1776,7 +1005,7 @@ LPWSTR ConEmuMacro::FindFarWindowHelper(
 // Диалог Wiki(["Page"])
 LPWSTR ConEmuMacro::Wiki(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszPage = NULL;
+	LPWSTR pszPage = nullptr;
 	p->GetStrArg(0, pszPage);
 
 	ConEmuAbout::OnInfo_OnlineWiki(pszPage);
@@ -1787,7 +1016,7 @@ LPWSTR ConEmuMacro::Wiki(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // Fullscreen
 LPWSTR ConEmuMacro::WindowFullscreen(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszRc = WindowMode(NULL, NULL, false);
+	LPWSTR pszRc = WindowMode(nullptr, nullptr, false);
 
 	gpConEmu->DoFullScreen();
 
@@ -1797,7 +1026,7 @@ LPWSTR ConEmuMacro::WindowFullscreen(GuiMacro* p, CRealConsole* apRCon, bool abF
 // WindowMaximize
 LPWSTR ConEmuMacro::WindowMaximize(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszRc = WindowMode(NULL, NULL, false);
+	LPWSTR pszRc = WindowMode(nullptr, nullptr, false);
 
 	int nStyle = 0; //
 	p->GetIntArg(0, nStyle);
@@ -1806,10 +1035,10 @@ LPWSTR ConEmuMacro::WindowMaximize(GuiMacro* p, CRealConsole* apRCon, bool abFro
 	{
 	case 1:
 		// By width
-		gpConEmu->ChandeTileMode(cwc_TileWidth); break;
+		gpConEmu->ChangeTileMode(cwc_TileWidth); break;
 	case 2:
 		// By height
-		gpConEmu->ChandeTileMode(cwc_TileHeight); break;
+		gpConEmu->ChangeTileMode(cwc_TileHeight); break;
 	default:
 		gpConEmu->DoMaximizeRestore();
 	}
@@ -1820,7 +1049,7 @@ LPWSTR ConEmuMacro::WindowMaximize(GuiMacro* p, CRealConsole* apRCon, bool abFro
 // Минимизировать окно (можно насильно в трей) // [int nForceToTray=0/1]
 LPWSTR ConEmuMacro::WindowMinimize(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszRc = WindowMode(NULL, NULL, false);
+	LPWSTR pszRc = WindowMode(nullptr, nullptr, false);
 
 	int nForceToTray = 0;
 	p->GetIntArg(0, nForceToTray);
@@ -1837,8 +1066,8 @@ LPWSTR ConEmuMacro::WindowMinimize(GuiMacro* p, CRealConsole* apRCon, bool abFro
 // Вернуть текущий/новый статус: NOR/MAX/FS/MIN/TSA/TLEFT/TRIGHT/THEIGHT
 LPWSTR ConEmuMacro::WindowMode(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPCWSTR pszRc = NULL;
-	LPWSTR pszMode = NULL;
+	LPCWSTR pszRc = nullptr;
+	LPWSTR pszMode = nullptr;
 
 	LPCWSTR sFS  = L"FS";
 	LPCWSTR sMAX = L"MAX";
@@ -1847,6 +1076,7 @@ LPWSTR ConEmuMacro::WindowMode(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 	LPCWSTR sNOR = L"NOR";
 	LPCWSTR sTileLeft = L"TLEFT";
 	LPCWSTR sTileRight = L"TRIGHT";
+	LPCWSTR sTileWidth = L"TWIDTH";
 	LPCWSTR sTileHeight = L"THEIGHT";
 	LPCWSTR sMonitorPrev = L"MPREV";
 	LPCWSTR sMonitorNext = L"MNEXT";
@@ -1879,6 +1109,8 @@ LPWSTR ConEmuMacro::WindowMode(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 				Cmd = cwc_TileLeft;
 			else if (lstrcmpi(pszMode, sTileRight) == 0)
 				Cmd = cwc_TileRight;
+			else if (lstrcmpi(pszMode, sTileWidth) == 0)
+				Cmd = cwc_TileWidth;
 			else if (lstrcmpi(pszMode, sTileHeight) == 0)
 				Cmd = cwc_TileHeight;
 			else if (lstrcmpi(pszMode, sMonitorPrev) == 0)
@@ -1914,7 +1146,7 @@ LPWSTR ConEmuMacro::WindowMode(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 	case cwc_TileRight:
 	case cwc_TileHeight:
 	case cwc_TileWidth:
-		gpConEmu->ChandeTileMode(Cmd);
+		gpConEmu->ChangeTileMode(Cmd);
 		break;
 	case cwc_PrevMonitor:
 	case cwc_NextMonitor:
@@ -1957,7 +1189,7 @@ LPWSTR ConEmuMacro::WindowMode(GuiMacro* p, CRealConsole* apRCon, bool abFromPlu
 // Change window pos and size, same as ‘Apply’ button in the ‘Size & Pos’ page of the Settings dialog
 LPWSTR ConEmuMacro::WindowPosSize(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszX = NULL, pszY = NULL, pszW = NULL, pszH = NULL;
+	LPWSTR pszX = nullptr, pszY = nullptr, pszW = nullptr, pszH = nullptr;
 
 	p->GetStrArg(0, pszX);
 	p->GetStrArg(1, pszY);
@@ -2007,14 +1239,14 @@ LPWSTR ConEmuMacro::Menu(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // MsgBox(ConEmu,asText,asTitle,anType) // LPWSTR asText [, LPWSTR asTitle[, int anType]]
 LPWSTR ConEmuMacro::MsgBox(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszText = NULL, pszTitle = NULL;
+	LPWSTR pszText = nullptr, pszTitle = nullptr;
 	int nButtons = 0;
 
 	if (p->GetStrArg(0, pszText))
 		if (p->GetStrArg(1, pszTitle))
 			p->GetIntArg(2, nButtons);
 
-	int nRc = ::MsgBox(pszText ? pszText : L"", nButtons, pszTitle ? pszTitle : L"ConEmu Macro", NULL, false);
+	int nRc = ::MsgBox(pszText ? pszText : L"", nButtons, pszTitle ? pszTitle : L"ConEmu Macro", nullptr, false);
 
 	switch(nRc)
 	{
@@ -2034,7 +1266,7 @@ LPWSTR ConEmuMacro::MsgBox(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			return lstrdup(L"Yes");
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 LPWSTR ConEmuMacro::Flash(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
@@ -2106,7 +1338,7 @@ LPWSTR ConEmuMacro::FontSetSize(GuiMacro* p, CRealConsole* apRCon, bool abFromPl
 // <FontName>[,<Height>[,<Width>]]
 LPWSTR ConEmuMacro::FontSetName(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszFontName = NULL;
+	LPWSTR pszFontName = nullptr;
 	int nHeight = 0, nWidth = 0;
 
 	if (p->GetStrArg(0, pszFontName))
@@ -2135,7 +1367,7 @@ LPWSTR ConEmuMacro::Copy(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	bool bCopy = false;
 	CECopyMode CopyMode;
 	CEStr szDstBuf;
-	LPWSTR pszDstFile = NULL;
+	LPWSTR pszDstFile = nullptr;
 
 	if (p->GetIntArg(0, nWhat))
 	{
@@ -2150,7 +1382,7 @@ LPWSTR ConEmuMacro::Copy(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			// Cygwin style path?
 			if (wcschr(pszTemp, L'/'))
 			{
-				if (MakeWinPath(pszTemp, apRCon ? apRCon->GetMntPrefix() : NULL, szDstBuf))
+				if (MakeWinPath(pszTemp, apRCon ? apRCon->GetMntPrefix() : nullptr, szDstBuf))
 					pszDstFile = szDstBuf.ms_Val;
 			}
 		}
@@ -2181,7 +1413,7 @@ wrap:
 LPWSTR ConEmuMacro::Paste(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int nCommand = 0;
-	LPWSTR pszText = NULL;
+	LPWSTR pszText = nullptr;
 
 	if (!apRCon)
 		return lstrdup(L"InvalidArg");
@@ -2192,7 +1424,7 @@ LPWSTR ConEmuMacro::Paste(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 		bool bNoConfirm = (nCommand & 2) != 0;
 		PosixPasteMode ppm = pxm_Intact;
 
-		wchar_t* pszChooseBuf = NULL;
+		wchar_t* pszChooseBuf = nullptr;
 
 		if (!(nCommand >= 0 && nCommand <= 10))
 		{
@@ -2207,12 +1439,12 @@ LPWSTR ConEmuMacro::Paste(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 				if (!((nCommand >= 4) && (nCommand <= 7)))
 					return lstrdup(L"InvalidArg");
 				else
-					pszText = NULL;
+					pszText = nullptr;
 			}
 		}
 		else
 		{
-			pszText = NULL;
+			pszText = nullptr;
 		}
 
 		if ((nCommand >= 4) && (nCommand <= 7))
@@ -2221,7 +1453,7 @@ LPWSTR ConEmuMacro::Paste(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			LPCWSTR pszDefPath = apRCon->GetConsoleCurDir(szDir, true);
 
 			if ((nCommand == 4) || (nCommand == 6))
-				pszChooseBuf = SelectFile(L"Choose file pathname for paste", pszText, pszDefPath, ghWnd, NULL, sff_AutoQuote|((nCommand == 6)?sff_Cygwin:sff_Default));
+				pszChooseBuf = SelectFile(L"Choose file pathname for paste", pszText, pszDefPath, ghWnd, nullptr, sff_AutoQuote|((nCommand == 6)?sff_Cygwin:sff_Default));
 			else
 				pszChooseBuf = SelectFolder(L"Choose folder path for paste", pszText?pszText:pszDefPath, ghWnd, sff_AutoQuote|((nCommand == 6)?sff_Cygwin:sff_Default));
 
@@ -2256,7 +1488,7 @@ LPWSTR ConEmuMacro::Paste(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 LPWSTR ConEmuMacro::Pause(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int nCommand = 0;
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 
 	p->GetIntArg(0, nCommand);
 
@@ -2328,8 +1560,8 @@ LPWSTR ConEmuMacro::PasteFile(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 {
 	bool bOk = false;
 	int nCommand = 0;
-	LPWSTR pszFile = NULL;
-	wchar_t* ptrBuf = NULL;
+	LPWSTR pszFile = nullptr;
+	wchar_t* ptrBuf = nullptr;
 	DWORD nBufSize = 0, nErrCode = 0;
 
 	if (!apRCon)
@@ -2340,7 +1572,7 @@ LPWSTR ConEmuMacro::PasteFile(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 		CEPasteMode PasteMode = (nCommand & 1) ? pm_FirstLine : pm_Standard;
 		bool bNoConfirm = (nCommand & 2) != 0;
 
-		wchar_t* pszChooseBuf = NULL;
+		wchar_t* pszChooseBuf = nullptr;
 
 		if (!(nCommand >= 0 && nCommand <= 10))
 		{
@@ -2349,7 +1581,7 @@ LPWSTR ConEmuMacro::PasteFile(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 
 		if (!p->GetStrArg(1, pszFile) || !pszFile || !*pszFile)
 		{
-			pszChooseBuf = SelectFile(L"Choose file for paste", NULL, NULL, NULL, NULL, sff_Default);
+			pszChooseBuf = SelectFile(L"Choose file for paste", nullptr, nullptr, nullptr, nullptr, sff_Default);
 			if (!pszChooseBuf)
 				return lstrdup(L"NoFileSelected");
 			pszFile = pszChooseBuf;
@@ -2364,7 +1596,7 @@ LPWSTR ConEmuMacro::PasteFile(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 		if ((ReadTextFile(pszFile, 0x100000, ptrBuf, nBufSize, nErrCode) == 0) && nBufSize)
 		{
 			// Need to drop lines with comment marks?
-			LPWSTR pszCommentMark = NULL;
+			LPWSTR pszCommentMark = nullptr;
 			if (p->GetStrArg(2, pszCommentMark) && *pszCommentMark)
 			{
 				StripLines(ptrBuf, pszCommentMark);
@@ -2390,7 +1622,7 @@ LPWSTR ConEmuMacro::Print(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	if (!apRCon)
 		return lstrdup(L"InvalidArg");
 
-	LPWSTR pszText = NULL;
+	LPWSTR pszText = nullptr;
 	if (p->GetRestStrArgs(0, pszText))
 	{
 		if (!*pszText)
@@ -2398,7 +1630,7 @@ LPWSTR ConEmuMacro::Print(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	}
 	else
 	{
-		pszText = NULL;
+		pszText = nullptr;
 	}
 
 	apRCon->Paste(pm_Standard, pszText, true);
@@ -2416,12 +1648,13 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	if (!apRCon)
 		return lstrdup(L"RConRequired");
 
-	LPWSTR pszKey;
+	LPWSTR pszKey = nullptr;
 	int iKeyNo = 0;
+	wchar_t szSeq[4];
 
 	while (p->GetStrArg(iKeyNo++, pszKey))
 	{
-		// GetStrArg never returns true & NULL
+		// GetStrArg never returns true & nullptr
 		_ASSERTE(pszKey);
 		// Modifiers (for Example RCtrl+Shift+LAlt)
 		DWORD dwControlState = 0, dwScan = 0;
@@ -2433,7 +1666,7 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 		// Parse modifiers
 		while (pszKey[0] && pszKey[1])
 		{
-			switch (*pszKey)
+			switch (pszKey[0])
 			{
 			case L'<':
 				bRight = false;
@@ -2457,18 +1690,16 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 				// Post {pszKey + dwControlState} to console
 				goto DoPost;
 			}
-			if (!pszKey)
-				break;
 			pszKey++;
 		}
 
 	DoPost:
-		if (*pszKey == L'{' && ((p = wcschr(pszKey+2,L'}')) != NULL))
+		if (*pszKey == L'{' && ((p = wcschr(pszKey+2,L'}')) != nullptr))
 		{
 			// Trim brackets from "{Enter}" for example
 			pszKey++; *p = 0;
 		}
-		VK = ConEmuHotKey::GetVkByKeyName(pszKey, &iScanCode, &dwControlState);
+		VK = ConEmuChord::GetVkByKeyName(pszKey, &iScanCode, &dwControlState);
 		switch (VK)
 		{
 		case VK_WHEEL_UP: case VK_WHEEL_DOWN: case VK_WHEEL_LEFT: case VK_WHEEL_RIGHT:
@@ -2476,9 +1707,8 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 		}
 		if (VK || (iScanCode != -1))
 		{
-			wchar_t szSeq[4];
 			if (pszKey[1] != 0)
-				pszKey = NULL;
+				pszKey = nullptr;
 
 			if (dwControlState & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED|RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
 			{
@@ -2497,7 +1727,7 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 				if (iMapRc == 1)
 					pszKey = szSeq;
 				else
-					pszKey = NULL;
+					pszKey = nullptr;
 			}
 
 			if (!(dwControlState & (SHIFT_PRESSED|RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED|RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
@@ -2640,9 +1870,9 @@ LPWSTR ConEmuMacro::Keys(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // Cmd=3 - change palette in current console, returns prev palette
 LPWSTR ConEmuMacro::Palette(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	wchar_t* pszRc = NULL;
+	wchar_t* pszRc = nullptr;
 	int nCmd = 0, iPal;
-	LPWSTR pszNewName = NULL;
+	LPWSTR pszNewName = nullptr;
 	const ColorPalette* pPal;
 
 	p->GetIntArg(0, nCmd);
@@ -2653,7 +1883,7 @@ LPWSTR ConEmuMacro::Palette(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 	case 1:
 		// Return current palette name
 		pPal = gpSet->PaletteFindCurrent(true);
-		_ASSERTE(pPal!=NULL); // If find failed - it returns "<Current color scheme>"
+		_ASSERTE(pPal!=nullptr); // If find failed - it returns "<Current color scheme>"
 		pszRc = lstrdup(pPal ? pPal->pszName : L"Unexpected");
 		// And change to new, if asked
 		if ((nCmd == 1) && (p->argc > 1))
@@ -2684,7 +1914,7 @@ LPWSTR ConEmuMacro::Palette(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 			pPal = (iPal >= 0)
 				? gpSet->PaletteGet(iPal)
 				: gpSet->PaletteFindCurrent(true);
-			_ASSERTE(pPal!=NULL); // At least "<Current color scheme>" must be returned
+			_ASSERTE(pPal!=nullptr); // At least "<Current color scheme>" must be returned
 			pszRc = lstrdup(pPal ? pPal->pszName : L"Unexpected");
 			// And change to new, if asked
 			if ((nCmd == 3) && (p->argc > 1))
@@ -2711,24 +1941,33 @@ LPWSTR ConEmuMacro::Palette(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 // Progress(<Type>[,<Value>])
 LPWSTR ConEmuMacro::Progress(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	int nType = 0, nValue = 0;
-	LPWSTR pszName = NULL;
+	int nState = 0, nValue = 0;
+	LPWSTR pszName = nullptr;
 	if (!apRCon)
 		return lstrdup(L"InvalidArg");
 
-	if (p->GetIntArg(0, nType))
+	if (p->GetIntArg(0, nState))
 	{
-		if (!(nType >= 0 && nType <= 5))
+		const auto state = static_cast<AnsiProgressStatus>(nState);
+		if (!(state >= AnsiProgressStatus::None && state <= AnsiProgressStatus::LongRunStop))
 		{
 			return lstrdup(L"InvalidArg");
 		}
 
-		if (nType <= 2)
+		if (state == AnsiProgressStatus::Running || state == AnsiProgressStatus::Error || state == AnsiProgressStatus::Paused)
+		{
 			p->GetIntArg(1, nValue);
-		else if (nType == 4 || nType == 5)
+			if (nValue < 0 || nValue > 100)
+				return lstrdup(L"InvalidArg");
+		}
+		else if (state == AnsiProgressStatus::LongRunStart || state == AnsiProgressStatus::LongRunStop)
+		{
 			p->GetStrArg(1, pszName);
+			if (!pszName || !*pszName)
+				return lstrdup(L"InvalidArg");
+		}
 
-		apRCon->SetProgress(nType, nValue, pszName);
+		apRCon->SetProgress(state, static_cast<short>(nValue), pszName);
 
 		return lstrdup(L"OK");
 	}
@@ -2764,7 +2003,7 @@ LPWSTR ConEmuMacro::Recreate(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugi
 LPWSTR ConEmuMacro::Rename(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int nType = 0;
-	LPWSTR pszTitle = NULL;
+	LPWSTR pszTitle = nullptr;
 
 	if (!apRCon)
 		return lstrdup(L"InvalidArg");
@@ -2778,7 +2017,7 @@ LPWSTR ConEmuMacro::Rename(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 		if (!p->GetStrArg(1, pszTitle) || !*pszTitle)
 		{
-			pszTitle = NULL;
+			pszTitle = nullptr;
 		}
 
 		switch (nType)
@@ -2882,7 +2121,7 @@ LPWSTR ConEmuMacro::Select(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	bool bText = (nType == 0);
 
 	COORD cr = {};
-	apRCon->GetConsoleCursorInfo(NULL, &cr);
+	apRCon->GetConsoleCursorInfo(nullptr, &cr);
 
 	#ifdef _DEBUG
 	CONSOLE_SCREEN_BUFFER_INFO csbi = {};
@@ -2973,8 +2212,8 @@ LPWSTR ConEmuMacro::Int2Str(UINT nValue, bool bSigned)
 // GetInfo("<Var1>"[,"<Var2>"[,...]])
 LPWSTR ConEmuMacro::GetInfo(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
-	LPWSTR pszName = NULL;
+	LPWSTR pszResult = nullptr;
+	LPWSTR pszName = nullptr;
 	CEStr szBuf;
 	int idx = 0;
 
@@ -3012,10 +2251,10 @@ LPWSTR ConEmuMacro::GetInfo(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 		else if (apRCon)
 			pszVal = apRCon->GetConsoleInfo(pszName, szBuf);
 		else if (lstrcmpi(pszName, L"Root") == 0 || lstrcmpi(pszName, L"RootInfo") == 0)
-			pszVal = CreateRootInfoXml(NULL/*asRootExeName*/, NULL, szBuf);
+			pszVal = CreateRootInfoXml(nullptr/*asRootExeName*/, nullptr, szBuf);
 
 		// Concat the string
-		lstrmerge(&pszResult, pszResult ? L"\n" : NULL, pszVal);
+		lstrmerge(&pszResult, pszResult ? L"\n" : nullptr, pszVal);
 	}
 
 	return pszResult ? pszResult : lstrdup(L"");
@@ -3024,8 +2263,8 @@ LPWSTR ConEmuMacro::GetInfo(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 // GetOption("<Name>")
 LPWSTR ConEmuMacro::GetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
-	LPWSTR pszName = NULL;
+	LPWSTR pszResult = nullptr;
+	LPWSTR pszName = nullptr;
 	int nID = 0;
 
 	if (p->GetIntArg(0, nID))
@@ -3062,9 +2301,9 @@ LPWSTR ConEmuMacro::GetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 // SetOption("<Name>",<Value>)
 LPWSTR ConEmuMacro::SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
-	LPWSTR pszName = NULL;
-	LPWSTR pszValue = NULL;
+	LPWSTR pszResult = nullptr;
+	LPWSTR pszName = nullptr;
+	LPWSTR pszValue = nullptr;
 	int nValue = 0;
 	int nRel = 0;
 	int CB = 0, uCheck = 0;
@@ -3160,21 +2399,21 @@ LPWSTR ConEmuMacro::SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 	else if (!lstrcmpi(pszName, L"CursorBlink"))
 	{
 		if (p->GetIntArg(1, nValue))
-			pszResult = gpSetCls->SetOption(pszName, nValue) ? lstrdup(L"OK") : NULL;
+			pszResult = gpSetCls->SetOption(pszName, nValue) ? lstrdup(L"OK") : nullptr;
 	}
 	else if (!lstrcmpi(pszName, L"FarGotoEditorPath")
 		|| !lstrcmpi(pszName, L"BackGround Image") || !lstrcmpi(pszName, L"bgImage")
 		|| !lstrcmpi(pszName, L"Scheme"))
 	{
 		if (p->GetStrArg(1, pszValue))
-			pszResult = gpSetCls->SetOption(pszName, pszValue) ? lstrdup(L"OK") : NULL;
+			pszResult = gpSetCls->SetOption(pszName, pszValue) ? lstrdup(L"OK") : nullptr;
 	}
 	else if (!lstrcmpi(pszName, L"VConScheme"))
 	{
 		if (apRCon && p->GetStrArg(1, pszValue))
 		{
-			CVConGuard VCon(apRCon ? apRCon->VCon() : NULL);
-			pszResult = VCon->ChangePalette(pszValue) ? lstrdup(L"OK") : NULL;
+			CVConGuard VCon(apRCon ? apRCon->VCon() : nullptr);
+			pszResult = VCon->ChangePalette(pszValue) ? lstrdup(L"OK") : nullptr;
 		}
 	}
 	else
@@ -3184,6 +2423,13 @@ LPWSTR ConEmuMacro::SetOption(GuiMacro* p, CRealConsole* apRCon, bool abFromPlug
 	}
 
 	return pszResult ? pszResult : lstrdup(L"UnknownOption");
+}
+
+// SetFocus
+LPWSTR ConEmuMacro::SetFocus(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
+{
+	gpConEmu->setFocus();
+	return lstrdup(L"OK");
 }
 
 // SetParentHWND(<NewParentHWND>)
@@ -3200,12 +2446,13 @@ LPWSTR ConEmuMacro::SetParentHWND(GuiMacro* p, CRealConsole* apRCon, bool abFrom
 		hNewParent.u = static_cast<DWORD>(hwnd_int);
 	}
 
-	// TODO: Call here smth. like gpConEmu->SetInsideParent((HWND)hNewParent);
+	gpConEmu->SetParent(hNewParent);
+	gpConEmu->mp_Inside->InitInside(false, false, nullptr, 0, hNewParent);
 
 	return lstrdup(L"OK");
 }
 
-// Диалог Settings
+// Settings Dialog
 LPWSTR ConEmuMacro::Settings(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
 	int IdShowPage = 0;
@@ -3221,9 +2468,9 @@ LPWSTR ConEmuMacro::Settings(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugi
 // <oper>,<app>[,<parm>[,<dir>[,<showcmd>]]]
 LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	wchar_t* pszRc = NULL;
-	LPWSTR pszOper = NULL, pszFile = NULL, pszParm = NULL, pszDir = NULL;
-	LPWSTR pszBuf = NULL;
+	wchar_t* pszRc = nullptr;
+	LPWSTR pszOper = nullptr, pszFile = nullptr, pszParm = nullptr, pszDir = nullptr;
+	LPWSTR pszBuf = nullptr;
 	CEStr szRConCD;
 	bool bDontQuote = false;
 	int nShowCmd = SW_SHOWNORMAL;
@@ -3233,14 +2480,14 @@ LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 	// And now, process the action
 	{
-		CVConGuard VCon(apRCon ? apRCon->VCon() : NULL);
+		CVConGuard VCon(apRCon ? apRCon->VCon() : nullptr);
 
 		if (p->GetStrArg(1, pszFile))
 		{
 			if (!p->GetStrArg(2, pszParm))
-				pszParm = NULL;
+				pszParm = nullptr;
 			else if (!p->GetStrArg(3, pszDir))
-				pszDir = NULL;
+				pszDir = nullptr;
 			else if (!p->GetIntArg(4, nShowCmd))
 				nShowCmd = SW_SHOWNORMAL;
 		}
@@ -3253,7 +2500,7 @@ LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			RConStartArgsEx args; args.pszSpecialCmd = lstrmerge(L"\"-", pszOper, L"\"");
 			args.ProcessNewConArg();
 			// new_console:I
-			bForceDuplicate = (args.ForceInherit == crb_On) && (apRCon != NULL);
+			bForceDuplicate = (args.ForceInherit == crb_On) && (apRCon != nullptr);
 			// RunAs - does not supported in "duplicate"
 			bDontDuplicate = ((args.RunAsAdministrator == crb_On) || (args.RunAsRestricted == crb_On) || args.pszUserName);
 			_ASSERTE(!(bForceDuplicate && bDontDuplicate));
@@ -3327,7 +2574,7 @@ LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			if (bNewOper || (pszParm && wcsstr(pszParm, L"-new_console")))
 			{
 				size_t nAllLen;
-				RConStartArgsEx *pArgs = new RConStartArgsEx;
+				RConStartArgsEx args;
 
 				// It's allowed now to append user arguments to named task contents
 				{
@@ -3342,38 +2589,38 @@ LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 							bNewOper = false;
 					}
 
-					pArgs->pszSpecialCmd = (wchar_t*)malloc(nAllLen*sizeof(wchar_t));
-					pArgs->pszSpecialCmd[0] = 0;
+					args.pszSpecialCmd = (wchar_t*)malloc(nAllLen*sizeof(wchar_t));
+					args.pszSpecialCmd[0] = 0;
 
 					if (*pszFile)
 					{
-						if (!bDontQuote && (*pszFile != L'"') && (wcschr(pszFile, L' ') != NULL))
+						if (!bDontQuote && (*pszFile != L'"') && (wcschr(pszFile, L' ') != nullptr))
 						{
-							pArgs->pszSpecialCmd[0] = L'"';
-							_wcscpy_c(pArgs->pszSpecialCmd+1, nAllLen-1, pszFile);
-							_wcscat_c(pArgs->pszSpecialCmd, nAllLen, (pszParm && *pszParm) ? L"\" " : L"\"");
+							args.pszSpecialCmd[0] = L'"';
+							_wcscpy_c(args.pszSpecialCmd+1, nAllLen-1, pszFile);
+							_wcscat_c(args.pszSpecialCmd, nAllLen, (pszParm && *pszParm) ? L"\" " : L"\"");
 						}
 						else
 						{
-							_wcscpy_c(pArgs->pszSpecialCmd, nAllLen, pszFile);
+							_wcscpy_c(args.pszSpecialCmd, nAllLen, pszFile);
 							if (pszParm && *pszParm)
 							{
-								_wcscat_c(pArgs->pszSpecialCmd, nAllLen, L" ");
+								_wcscat_c(args.pszSpecialCmd, nAllLen, L" ");
 							}
 						}
 					}
 
 					if (pszParm && *pszParm)
 					{
-						_wcscat_c(pArgs->pszSpecialCmd, nAllLen, pszParm);
+						_wcscat_c(args.pszSpecialCmd, nAllLen, pszParm);
 					}
 
 					// Параметры запуска консоли могли передать в первом аргуементе (например "new_console:b")
 					if (bNewOper)
 					{
-						_wcscat_c(pArgs->pszSpecialCmd, nAllLen, L" \"-");
-						_wcscat_c(pArgs->pszSpecialCmd, nAllLen, pszOper);
-						_wcscat_c(pArgs->pszSpecialCmd, nAllLen, L"\"");
+						_wcscat_c(args.pszSpecialCmd, nAllLen, L" \"-");
+						_wcscat_c(args.pszSpecialCmd, nAllLen, pszOper);
+						_wcscat_c(args.pszSpecialCmd, nAllLen, L"\"");
 					}
 				}
 
@@ -3387,10 +2634,10 @@ LPWSTR ConEmuMacro::Shell(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 					pszDir = szRConCD.ms_Val;
 				}
 				if (pszDir)
-					pArgs->pszStartupDir = lstrdup(pszDir);
+					args.pszStartupDir = lstrdup(pszDir);
 
 				// Don't use PostCreateCon here, otherwise Context function will fail
-				gpConEmu->CreateCon(pArgs, true);
+				gpConEmu->CreateCon(args, true);
 
 				pszRc = lstrdup(L"OK");
 				goto wrap;
@@ -3440,7 +2687,7 @@ wrap:
 
 LPWSTR ConEmuMacro::Sleep(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszRc = NULL;
+	LPWSTR pszRc = nullptr;
 	int ms = 0;
 	wchar_t szStatus[32];
 
@@ -3464,7 +2711,7 @@ LPWSTR ConEmuMacro::Sleep(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 				// Too long waiting may be noticed as "hangs"
 				if (dwDelta < (DWORD)ms)
 				{
-					while (PeekMessage(&Msg, NULL, 0, 0, PM_REMOVE))
+					while (PeekMessage(&Msg, nullptr, 0, 0, PM_REMOVE))
 					{
 						if (!ProcessMessage(Msg))
 						{
@@ -3480,7 +2727,7 @@ LPWSTR ConEmuMacro::Sleep(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 					break;
 			}
 		}
-		if (apRCon) apRCon->SetConStatus(NULL);
+		if (apRCon) apRCon->SetConStatus(nullptr);
 		pszRc = lstrdup(L"OK");
 	}
 
@@ -3489,7 +2736,7 @@ LPWSTR ConEmuMacro::Sleep(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 LPWSTR ConEmuMacro::Split(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	int nCmd = 0;
 	int nHorz = 0;
 	int nVert = 0;
@@ -3551,10 +2798,10 @@ LPWSTR ConEmuMacro::Split(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // Status(1[,"<Text>"]) - Set status bar text
 LPWSTR ConEmuMacro::Status(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 	int nStatusCmd = 0;
 	int nParm = 0;
-	LPWSTR pszText = NULL;
+	LPWSTR pszText = nullptr;
 
 	if (!p->GetIntArg(0, nStatusCmd))
 		nStatusCmd = 0;
@@ -3593,7 +2840,7 @@ LPWSTR ConEmuMacro::Status(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // Returns "OK" on success
 LPWSTR ConEmuMacro::Tab(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPWSTR pszResult = NULL;
+	LPWSTR pszResult = nullptr;
 
 	int nTabCmd = 0;
 	if (p->GetIntArg(0, nTabCmd))
@@ -3681,7 +2928,7 @@ LPWSTR ConEmuMacro::Tab(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 		case ctc_ActivateByName: // activate console by renamed title, console title, active process name, root process name
 			if (p->IsStrArg(1))
 			{
-				LPWSTR pszName = NULL;
+				LPWSTR pszName = nullptr;
 				if (p->GetStrArg(1, pszName))
 				{
 					if (gpConEmu->ConActivateByName(pszName))
@@ -3692,7 +2939,7 @@ LPWSTR ConEmuMacro::Tab(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 			}
 			break;
 		case ctc_ShowTabsList: //
-			CConEmuCtrl::key_ShowTabsList(NullChord, false, NULL, NULL/*чтобы не зависимо от фара показала меню*/);
+			CConEmuCtrl::key_ShowTabsList(NullChord, false, nullptr, nullptr/*чтобы не зависимо от фара показала меню*/);
 			break;
 		case ctc_CloseTab:
 			if (apRCon)
@@ -3711,6 +2958,19 @@ LPWSTR ConEmuMacro::Tab(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 				}
 			}
 			break;
+		case ctc_GetTabsList: // return list of tabs in format "1: name1\n2: name2\n..."
+			{
+				CEStrConcat data;
+				CVConGroup::EnumVCon(evf_All, [&data](CVirtualConsole* pVCon, LPARAM lParam){
+					data.Append(pVCon->IndexStr());
+					data.Append(L": ");
+					data.Append(pVCon->RCon()->GetTitle());
+					data.Append(L"\n");
+					return true;
+				}, 0);
+				return data.GetData().Detach();
+			}
+			break;
 		}
 	}
 
@@ -3721,9 +2981,9 @@ LPWSTR ConEmuMacro::Tab(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // Task("Name")
 LPWSTR ConEmuMacro::Task(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPCWSTR pszResult = NULL;
-	LPWSTR pszName = NULL;
-	wchar_t* pszBuf = NULL;
+	LPCWSTR pszResult = nullptr;
+	LPWSTR pszName = nullptr;
+	wchar_t* pszBuf = nullptr;
 	bool needToFreeName = false;
 	int nTaskIndex = 0;
 
@@ -3732,7 +2992,7 @@ LPWSTR ConEmuMacro::Task(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 	if (p->IsStrArg(0))
 	{
-		LPWSTR pszArg = NULL;
+		LPWSTR pszArg = nullptr;
 		if (p->GetStrArg(0, pszArg))
 		{
 			if (*pszArg && (*pszArg != TaskBracketLeft))
@@ -3767,15 +3027,15 @@ LPWSTR ConEmuMacro::Task(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 
 	if (pszName && *pszName)
 	{
-		RConStartArgsEx *pArgs = new RConStartArgsEx;
-		pArgs->pszSpecialCmd = lstrdup(pszName);
+		RConStartArgsEx args;
+		args.pszSpecialCmd = lstrdup(pszName);
 
-		LPWSTR pszDir = NULL;
+		LPWSTR pszDir = nullptr;
 		if (p->GetStrArg(1, pszDir) && pszDir && *pszDir)
-			pArgs->pszStartupDir = lstrdup(pszDir);
+			args.pszStartupDir = lstrdup(pszDir);
 
 		// Don't use PostCreateCon here, otherwise Context function will fail
-		gpConEmu->CreateCon(pArgs, true);
+		gpConEmu->CreateCon(args, true);
 
 		pszResult = L"OK";
 		if (needToFreeName)
@@ -3788,10 +3048,10 @@ LPWSTR ConEmuMacro::Task(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 // TaskAdd("Name","Commands"[,"GuiArgs"[,Flags]])
 LPWSTR ConEmuMacro::TaskAdd(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 {
-	LPCWSTR pszResult = NULL;
-	LPWSTR pszName = NULL;
-	LPWSTR pszCommands = NULL;
-	LPWSTR pszGuiArgs = NULL;
+	LPCWSTR pszResult = nullptr;
+	LPWSTR pszName = nullptr;
+	LPWSTR pszCommands = nullptr;
+	LPWSTR pszGuiArgs = nullptr;
 	CETASKFLAGS aFlags = CETF_DONT_CHANGE;
 	int iVal;
 
@@ -3814,7 +3074,7 @@ LPWSTR ConEmuMacro::TaskAdd(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin
 		// Save tasks, if it's not a `-basic` mode
 		if (!gpConEmu->IsResetBasicSettings())
 		{
-			gpSet->SaveCmdTasks(NULL);
+			gpSet->SaveCmdTasks(nullptr);
 		}
 
 		// Return created task name
@@ -3922,7 +3182,7 @@ LPWSTR ConEmuMacro::Write(GuiMacro* p, CRealConsole* apRCon, bool abFromPlugin)
 	if (!apRCon)
 		return lstrdup(L"FAILED:NO_RCON");
 
-	LPWSTR pszText = NULL;
+	LPWSTR pszText = nullptr;
 	if (!p->GetRestStrArgs(0, pszText))
 		return lstrdup(L"FAILED:NO_TEXT");
 

@@ -29,7 +29,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <mutex>
-#include "../common/ConsoleMixAttr.h"
 #include "../common/MPipe.h"
 #include "../common/WCodePage.h"
 #include "../common/WThreads.h"
@@ -91,6 +90,7 @@ private:
 protected:
 	// #condata Replace with MLogFile?
 	HANDLE ghAnsiLogFile = NULL;
+	bool   gbAnsiLogCodes = false;
 	LONG   gnEnterPressed = 0;
 	bool   gbAnsiLogNewLine = false;
 	bool   gbAnsiWasNewLine = false;
@@ -132,14 +132,14 @@ protected:
 		DP_PROP(bool, BrightOrBold)     // 1
 		DP_PROP(bool, Italic)           // 3
 		DP_PROP(bool, Underline)        // 4
+		DP_PROP(bool, Inverse)          // 7
+		DP_PROP(bool, Crossed)          // 9
 		DP_PROP(bool, BrightFore)       // 90-97
 		DP_PROP(bool, BrightBack)       // 100-107
 		DP_PROP(int,  TextColor)        // 30-37,38,39
 		DP_PROP(cbit, Text256)          // 38
 		DP_PROP(int,  BackColor)        // 40-47,48,49
 		DP_PROP(cbit, Back256)          // 48
-		// xterm
-		DP_PROP(bool, Inverse)
 
 		// set if there was a call of any PROP defined above
 		DP_PROP(bool, Dirty)
@@ -160,14 +160,15 @@ protected:
 
 	DisplayCursorPos gDisplayCursor = {};
 
+	// #condata replace or forward with m_Table calls, e.g. SetAutoCRLF instead of AutoLfNl
 	struct DisplayOpt
 	{
-		BOOL  WrapWasSet;
-		SHORT WrapAt; // Rightmost X coord (1-based)
+		BOOL  WrapWasSet = FALSE;
+		SHORT WrapAt = 0; // Rightmost X coord (1-based)
 		//
-		BOOL  AutoLfNl; // LF/NL (default off): Automatically follow echo of LF, VT or FF with CR.
+		BOOL  AutoLfNl = TRUE; // LF/NL (default on): Automatically follow echo of LF, VT or FF with CR.
 		//
-		BOOL  ShowRawAnsi; // \e[3h display ANSI control characters (TRUE), \e[3l process ANSI (FALSE, normal mode)
+		BOOL  ShowRawAnsi = FALSE; // \e[3h display ANSI control characters (TRUE), \e[3l process ANSI (FALSE, normal mode)
 	}; // gDisplayOpt;
 
 	DisplayOpt gDisplayOpt = {};
@@ -228,6 +229,8 @@ protected:
 	} gXTermAltBuffer = {};
 	/* ************ Globals for xTerm/ViM ************ */
 
+	DWORD last_write_tick_ = 0;
+
 protected:
 
 	/// Codepage set for OurWriteConsoleA
@@ -235,10 +238,11 @@ protected:
 
 	/// ANSI functions
 	void FirstAnsiCall(const BYTE* lpBuf, DWORD nNumberOfBytes);
-	void InitAnsiLog(LPCWSTR asFilePath);
+	void InitAnsiLog(LPCWSTR asFilePath, const bool LogAnsiCodes);
 	void DoneAnsiLog(bool bFinal);
 	void WriteAnsiLogW(LPCWSTR lpBuffer, DWORD nChars);
 	void WriteAnsiLogFormat(const char* format, ...);
+	void WriteAnsiLogTime();
 	bool WriteAnsiLogUtf8(const char* lpBuffer, DWORD nChars);
 	void DebugStringUtf8(LPCWSTR asMessage);
 	void DumpEscape(LPCWSTR buf, size_t cchLen, DumpEscapeCodes iUnknown);
@@ -253,6 +257,17 @@ protected:
 	condata::Attribute GetDefaultAttr() const;
 
 	void ChangeTermMode(TermModeCommand mode, DWORD value, DWORD nPID = 0);
+	/// <summary>
+	/// Turn on/off xterm mode for both output and input.
+	/// May be triggered by connector, official Vim builds, ENABLE_VIRTUAL_TERMINAL_INPUT, "ESC ] 9 ; 10 ; 1 ST", etc.
+	/// </summary>
+	/// <param name="bStart">true - start xterm mode, false - stop</param>
 	void StartXTermMode(bool bStart);
+	/// <summary>
+	/// Turn on/off xterm mode only for output (especially for line feeding mode).
+	/// Triggered by ENABLE_VIRTUAL_TERMINAL_PROCESSING.
+	/// </summary>
+	/// <param name="bStart">true - start xterm mode, false - stop</param>
+	void StartXTermOutput(bool bStart);
 	void RefreshXTermModes();
 };

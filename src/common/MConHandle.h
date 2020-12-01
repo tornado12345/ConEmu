@@ -30,21 +30,47 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include "defines.h"
-#include "MSection.h"
+#include "MSectionSimple.h"
 
 /* Console Handles */
 class MConHandle
 {
-	private:
-		wchar_t   ms_Name[10];
-		HANDLE    mh_Handle;
-		MSection  mcs_Handle;
-		BOOL      mb_OpenFailed;
-		DWORD     mn_LastError;
-		DWORD     mn_StdMode;
-		HANDLE*   mpp_OutBuffer; // Устанавливается при SetConsoleActiveScreenBuffer
+	public:
+		MConHandle(LPCWSTR asName);
+		~MConHandle();
 
-		SECURITY_ATTRIBUTES *mp_sec;
+		// non-copyable
+		MConHandle(const MConHandle&) = delete;
+		MConHandle& operator=(const MConHandle&) = delete;
+		MConHandle(MConHandle&&) = delete;
+		MConHandle& operator=(MConHandle&&) = delete;
+
+	public:
+		bool HasHandle() const;
+		operator const HANDLE();
+		HANDLE GetHandle();
+		HANDLE Release();
+
+	public:
+		void Close();
+
+		void SetHandlePtr(HANDLE* ppOutBuffer);
+		void SetHandlePtr(const MConHandle& out_buffer);
+
+		enum class StdMode { None, Input, Output };
+		bool SetHandle(HANDLE newHandle, StdMode stdMode);
+
+	private:
+		wchar_t   ms_Name[10] = L"";
+		HANDLE    mh_Handle = INVALID_HANDLE_VALUE;
+		BOOL      mb_OpenFailed = FALSE;
+		DWORD     mn_LastError = 0;
+		StdMode   mn_StdMode = StdMode::None;
+
+		const HANDLE*  mpp_OutBuffer = nullptr; // is set during SetConsoleActiveScreenBuffer
+		MSectionSimple mcs_Handle;
+
+		SECURITY_ATTRIBUTES m_sec{};
 
 		static const int HANDLE_BUFFER_SIZE = RELEASEDEBUGTEST(0x100,0x1000);   // Must be a power of 2
 		struct Event {
@@ -58,26 +84,11 @@ class MConHandle
 				e_CreateHandle,
 				e_CreateHandleStd,
 				e_GetHandlePtr,
+				e_ReleaseHandle,
 			} evt;
 			DEBUGTEST(DWORD time;)
 		};
-		Event m_log[HANDLE_BUFFER_SIZE];
-		LONG m_logidx;
+		Event m_log[HANDLE_BUFFER_SIZE]{};
+		LONG m_logIdx = -1;
 		void LogHandle(UINT evt, HANDLE h);
-
-	public:
-		operator const HANDLE();
-		HANDLE GetHandle();
-
-	public:
-		void Close();
-		void SetBufferPtr(HANDLE* ppOutBuffer);
-
-	public:
-		MConHandle(LPCWSTR asName, SECURITY_ATTRIBUTES *apSec = NULL);
-		~MConHandle();
-
-		// non-copyable
-		MConHandle(const MConHandle&) = delete;
-		MConHandle& operator=(const MConHandle&) = delete;
 };

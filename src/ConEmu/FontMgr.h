@@ -118,6 +118,8 @@ private:
 
 	BOOL mb_Name1Ok, mb_Name2Ok;
 
+	std::vector<CEStr> m_AddFontsDir;
+
 	// When font size is used as character size (negative LF.lfHeight)
 	// we need to evaluate real font size... Only for vector fonts!
 	MArray<FontHeightInfo> m_FontHeights;
@@ -127,12 +129,13 @@ private:
 	BOOL mb_StopRegisterFonts;
 
 public:
+	void    AddFontsDir(LPCWSTR asFromDir);
 	bool    AutoRecreateFont(int nFontW, int nFontH);
 	BYTE    BorderFontCharSet();
 	LPCWSTR BorderFontFaceName();
 	LONG    BorderFontHeight();
 	LONG    BorderFontWidth();
-	bool    Create(CLogFont inFont, CFontPtr& rpFont, CustomFontFamily** ppCustom = NULL);
+	bool    Create(CLogFont inFont, CFontPtr& rpFont, CustomFontFamily** ppCustom = nullptr);
 	bool    CreateOtherFont(const wchar_t* asFontName, CFontPtr& rpFont);
 	LONG    EvalFontHeight(LPCWSTR lfFaceName, LONG lfHeight, BYTE nFontCharSet);
 	void    EvalLogfontSizes(LOGFONT& LF, LONG lfHeight, LONG lfWidth);
@@ -153,18 +156,17 @@ public:
 	BOOL    GetFontNameFromFile_TTF(LPCTSTR lpszFilePath, wchar_t (&rsFontName)[LF_FACESIZE], wchar_t (&rsFullFontName)[LF_FACESIZE]);
 	void    GetMainLogFont(LOGFONT& lf);
 	LONG    GetZoom(bool bRaw = false); // в процентах (false) или mn_FontZoomValue (true)
-	void    InitFont(LPCWSTR asFontName=NULL, int anFontHeight=-1, int anQuality=-1);
+	void    InitFont(LPCWSTR asFontName=nullptr, int anFontHeight=-1, int anQuality=-1);
 	void    MacroFontSetName(LPCWSTR pszFontName, WORD anHeight /*= 0*/, WORD anWidth /*= 0*/);
 	bool    MacroFontSetSize(int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,... | 100%*/);
 	bool    QueryFont(CEFontStyles fontStyle, CVirtualConsole* pVCon, CFontPtr& rpFont);
-	bool    RecreateFontByDpi(int dpiX, int dpiY, LPRECT prcSuggested);
+	bool    RecreateFontByDpi(const DpiValue& dpi, LPRECT prcSuggested);
 	BOOL    RegisterFont(LPCWSTR asFontFile, BOOL abDefault);
 	void    RegisterFonts();
-	void    RegisterFontsDir(LPCWSTR asFromDir);
 	void    UnregisterFonts();
 
 public:
-	static bool IsAlmostMonospace(LPCWSTR asFaceName, LPTEXTMETRIC lptm, LPOUTLINETEXTMETRIC lpotm = NULL);
+	static bool IsAlmostMonospace(LPCWSTR asFaceName, LPTEXTMETRIC lptm, LPOUTLINETEXTMETRIC lpotm = nullptr);
 	static LPOUTLINETEXTMETRIC LoadOutline(HDC hDC, HFONT hFont);
 	static void DumpFontMetrics(LPCWSTR szType, CFontPtr& Font);
 
@@ -179,6 +181,7 @@ private:
 	bool    MacroFontSetSizeInt(LOGFONT& LF, int nRelative/*0/1/2/3*/, int nValue/*+-1,+-2,... | 100%*/);
 	void    RecreateAlternativeFont();
 	void    RecreateFont(bool abReset, bool abRecreateControls = false);
+	void    RegisterFontsDir(LPCWSTR asFromDir);
 	void    ResetFontWidth();
 	void    SaveFontSizes(bool bAuto, bool bSendChanges);
 };

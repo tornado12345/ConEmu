@@ -73,8 +73,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern MMap<HWND,CVirtualConsole*> gVConDcMap;
 extern MMap<HWND,CVirtualConsole*> gVConBkMap;
-static HWND ghDcInDestroing = NULL;
-static HWND ghBkInDestroing = NULL;
+static HWND ghDcInDestroing = nullptr;
+static HWND ghBkInDestroing = nullptr;
 
 static UINT gn_MsgVConTerminated = 0; // gpConEmu->GetRegisteredMessage("VConTerminated");
 
@@ -83,7 +83,7 @@ CConEmuChild::CConEmuChild(CVirtualConsole* pOwner)
 	, mn_AlreadyDestroyed(0)
 	, mn_VConTerminatedPosted(0) // Set when destroying pended
 	#ifdef _DEBUG
-	, hDlgTest(NULL)
+	, hDlgTest(nullptr)
 	#endif
 	, mb_RestoreChildFocusPending(false)
 	, mb_PostFullPaint(false)
@@ -94,11 +94,11 @@ CConEmuChild::CConEmuChild(CVirtualConsole* pOwner)
 	, mb_DisableRedraw(false)
 	, mn_WndDCStyle(0)
 	, mn_WndDCExStyle(0)
-	, mh_WndDC(NULL)
-	, mh_WndBack(NULL)
+	, mh_WndDC(nullptr)
+	, mh_WndBack(nullptr)
 	, mn_InvalidateViewPending(0)
 	, mn_WmPaintCounter(0)
-	, mh_LastGuiChild(NULL)
+	, mh_LastGuiChild(nullptr)
 	, mb_ScrollVisible(false)
 	, mb_Scroll2Visible(false)
 	, mb_ScrollAutoPopup(false)
@@ -151,16 +151,16 @@ void CConEmuChild::DoDestroyDcWindow()
 	{
 		gVConDcMap.Del(mh_WndDC);
 		DestroyWindow(mh_WndDC);
-		mh_WndDC = NULL;
+		mh_WndDC = nullptr;
 	}
 	if (mh_WndBack)
 	{
 		gVConBkMap.Del(mh_WndBack);
 		DestroyWindow(mh_WndBack);
-		mh_WndBack = NULL;
+		mh_WndBack = nullptr;
 	}
-	ghDcInDestroing = NULL;
-	ghBkInDestroing = NULL;
+	ghDcInDestroing = nullptr;
+	ghBkInDestroing = nullptr;
 }
 
 void CConEmuChild::PostOnVConClosed()
@@ -210,12 +210,12 @@ HWND CConEmuChild::CreateView()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
-		return NULL;
+		_ASSERTE(this!=nullptr);
+		return nullptr;
 	}
 	if (mh_WndDC || mh_WndBack)
 	{
-		_ASSERTE(mh_WndDC == NULL && mh_WndBack == NULL);
+		_ASSERTE(mh_WndDC == nullptr && mh_WndBack == nullptr);
 		return mh_WndDC;
 	}
 
@@ -228,7 +228,7 @@ HWND CConEmuChild::CreateView()
 	}
 
 	CVirtualConsole* pVCon = mp_VCon;
-	_ASSERTE(pVCon!=NULL);
+	_ASSERTE(pVCon!=nullptr);
 	//-- тут консоль только создается, guard не нужен
 	//CVConGuard guard(pVCon);
 
@@ -242,17 +242,17 @@ HWND CConEmuChild::CreateView()
 	RECT rc = gpConEmu->CalcRect(CER_DC, rcBack, CER_BACK, pVCon);
 
 	mh_WndBack = CreateWindowEx(styleEx, gsClassNameBack, L"BackWND", style,
-		rcBack.left, rcBack.top, rcBack.right - rcBack.left, rcBack.bottom - rcBack.top, hParent, NULL, (HINSTANCE)g_hInstance, pVCon);
+		rcBack.left, rcBack.top, rcBack.right - rcBack.left, rcBack.bottom - rcBack.top, hParent, nullptr, (HINSTANCE)g_hInstance, pVCon);
 
 	mn_WndDCStyle = style;
 	mn_WndDCExStyle = styleEx;
 	mh_WndDC = CreateWindowEx(styleEx, gsClassName, L"DrawWND", style,
-		rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, hParent, NULL, (HINSTANCE)g_hInstance, pVCon);
+		rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, hParent, nullptr, (HINSTANCE)g_hInstance, pVCon);
 
 	if (!mh_WndDC || !mh_WndBack)
 	{
 		WarnCreateWindowFail(L"DC window", hParent, GetLastError());
-		return NULL; //
+		return nullptr; //
 	}
 
 	SetWindowPos(mh_WndDC, HWND_TOP, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE);
@@ -267,8 +267,8 @@ HWND CConEmuChild::GetView()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
-		return NULL;
+		_ASSERTE(this!=nullptr);
+		return nullptr;
 	}
 	return mh_WndDC;
 }
@@ -277,8 +277,8 @@ HWND CConEmuChild::GetBack()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
-		return NULL;
+		_ASSERTE(this!=nullptr);
+		return nullptr;
 	}
 	return mh_WndBack;
 }
@@ -303,7 +303,7 @@ bool CConEmuChild::ShowView(int nShowCmd)
 
 	// Если это "GUI" режим - могут возникать блокировки из-за дочернего окна
 	CVirtualConsole* pVCon = mp_VCon;
-	_ASSERTE(pVCon!=NULL);
+	_ASSERTE(pVCon!=nullptr);
 	CVConGuard guard(pVCon);
 
 	HWND hChildGUI = pVCon->GuiWnd();
@@ -313,7 +313,7 @@ bool CConEmuChild::ShowView(int nShowCmd)
 
 	if (gpSet->isLogging())
 	{
-		if (hChildGUI != NULL)
+		if (hChildGUI != nullptr)
 			swprintf_c(sInfo, L"ShowView: Back=x%08X, DC=x%08X, ChildGUI=x%08X, ShowCMD=%u, ChildVisible=%u",
 				LODWORD(mh_WndBack), LODWORD(mh_WndDC), LODWORD(hChildGUI), nShowCmd, bGuiVisible);
 		else
@@ -368,7 +368,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 	}
 
 	CVConGuard guard;
-	CVirtualConsole* pVCon = NULL;
+	CVirtualConsole* pVCon = nullptr;
 	if (messg == WM_CREATE || messg == WM_NCCREATE)
 	{
 		LPCREATESTRUCT lp = (LPCREATESTRUCT)lParam;
@@ -387,7 +387,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 	else if (hWnd != ghDcInDestroing)
 	{
 		if (!gVConDcMap.Get(hWnd, &pVCon) || !guard.Attach(pVCon))
-			pVCon = NULL;
+			pVCon = nullptr;
 	}
 
 
@@ -401,7 +401,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 
 	if (!pVCon)
 	{
-		_ASSERTE(pVCon!=NULL || hWnd==ghDcInDestroing);
+		_ASSERTE(pVCon!=nullptr || hWnd==ghDcInDestroing);
 		result = DefWindowProc(hWnd, messg, wParam, lParam);
 		goto wrap;
 	}
@@ -468,7 +468,7 @@ LRESULT CConEmuChild::ChildWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM 
 					DEBUGSTRPAINTVCON(szPos);
 				}
 				#endif
-				pVCon->PrintClient((HDC)wParam, false, NULL);
+				pVCon->PrintClient((HDC)wParam, false, nullptr);
 			}
 			break;
 		case WM_SIZE:
@@ -786,7 +786,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 		gpConEmu->PreWndProc(messg);
 
 	CVConGuard guard;
-	CVirtualConsole* pVCon = NULL;
+	CVirtualConsole* pVCon = nullptr;
 	if (messg == WM_CREATE || messg == WM_NCCREATE)
 	{
 		LPCREATESTRUCT lp = (LPCREATESTRUCT)lParam;
@@ -794,11 +794,13 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 		pVCon = guard.VCon();
 		if (pVCon)
 			gVConBkMap.Set(hWnd, pVCon);
+		if (const auto theme = gpConEmu->opt.WindowTheme.GetStr())
+			gpConEmu->SetWindowTheme(hWnd, theme, nullptr);
 	}
 	else if (hWnd != ghBkInDestroing)
 	{
 		if (!gVConBkMap.Get(hWnd, &pVCon) || !guard.Attach(pVCon))
-			pVCon = NULL;
+			pVCon = nullptr;
 	}
 
 	if (messg == WM_SYSCHAR)
@@ -811,7 +813,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 
 	if (!pVCon)
 	{
-		_ASSERTE(pVCon!=NULL || hWnd==ghBkInDestroing);
+		_ASSERTE(pVCon!=nullptr || hWnd==ghBkInDestroing);
 		result = DefWindowProc(hWnd, messg, wParam, lParam);
 		goto wrap;
 	}
@@ -838,7 +840,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 			break;
 		case WM_PAINT:
 			_ASSERTE(hWnd == pVCon->mh_WndBack);
-			pVCon->OnPaintGaps(NULL/*use BeginPaint/EndPaint*/);
+			pVCon->OnPaintGaps(nullptr/*use BeginPaint/EndPaint*/);
 			break;
 		case WM_PRINTCLIENT:
 			if (wParam && (lParam & PRF_CLIENT))
@@ -992,7 +994,7 @@ LRESULT CConEmuChild::BackWndProc(HWND hWnd, UINT messg, WPARAM wParam, LPARAM l
 
 					if (pRCon->GuiWnd())
 					{
-						pRCon->StoreGuiChildRect(NULL);
+						pRCon->StoreGuiChildRect(nullptr);
 					}
 				}
 			}
@@ -1023,7 +1025,7 @@ void CConEmuChild::CreateDbgDlg()
 			hDlgTest = CreateDialog(g_hInstance, MAKEINTRESOURCE(IDD_SPG_FONTS), mh_WndDC, DbgChildDlgProc);
 			if (hDlgTest)
 			{
-				SetWindowPos(hDlgTest, NULL, 100,100, 0,0, SWP_NOSIZE|SWP_NOZORDER);
+				SetWindowPos(hDlgTest, nullptr, 100,100, 0,0, SWP_NOSIZE|SWP_NOZORDER);
 				ShowWindow(hDlgTest, SW_SHOW);
 			}
 		}
@@ -1042,17 +1044,12 @@ LRESULT CConEmuChild::OnPaintGaps(HDC hdc)
 	CVConGuard VCon(mp_VCon);
 	if (!VCon.VCon())
 	{
-		_ASSERTE(VCon.VCon()!=NULL);
+		_ASSERTE(VCon.VCon()!=nullptr);
 		return 0;
 	}
 
 	int nColorIdx = RELEASEDEBUGTEST(0/*Black*/,1/*Blue*/);
-	COLORREF* clrPalette = VCon->GetColors();
-	if (!clrPalette)
-	{
-		_ASSERTE(clrPalette!=NULL);
-		return 0;
-	}
+	const auto& clrPalette = VCon->GetColors();
 
 	CRealConsole* pRCon = VCon->RCon();
 	if (pRCon)
@@ -1066,7 +1063,7 @@ LRESULT CConEmuChild::OnPaintGaps(HDC hdc)
 	DEBUGSTRPAINTGAPS(szPos);
 
 	RECT rcMain = {}; GetWindowRect(ghWnd, &rcMain);
-	RECT rcMainClient = {}; GetClientRect(ghWnd, &rcMainClient); MapWindowPoints(ghWnd, NULL, (LPPOINT)&rcMainClient, 2);
+	RECT rcMainClient = {}; GetClientRect(ghWnd, &rcMainClient); MapWindowPoints(ghWnd, nullptr, (LPPOINT)&rcMainClient, 2);
 	RECT rcWork = {}; GetWindowRect(ghWndWork, &rcWork);
 	#endif
 
@@ -1147,7 +1144,7 @@ LRESULT CConEmuChild::OnPaint()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return 0;
 	}
 	LRESULT result = 0;
@@ -1177,16 +1174,16 @@ LRESULT CConEmuChild::OnPaint()
 		RECT rcPic, rcVRect, rcCommon;
 		GetWindowRect(gpConEmu->hPictureView, &rcPic);
 		GetWindowRect(mh_WndDC, &rcVRect); // Нам нужен ПОЛНЫЙ размер но ПОД тулбаром.
-		//MapWindowPoints(mh_WndDC, NULL, (LPPOINT)&rcClient, 2);
+		//MapWindowPoints(mh_WndDC, nullptr, (LPPOINT)&rcClient, 2);
 
 		BOOL lbIntersect = IntersectRect(&rcCommon, &rcVRect, &rcPic);
 		UNREFERENCED_PARAMETER(lbIntersect);
 
 		// Убрать из отрисовки прямоугольник PictureView
-		MapWindowPoints(NULL, mh_WndDC, (LPPOINT)&rcPic, 2);
+		MapWindowPoints(nullptr, mh_WndDC, (LPPOINT)&rcPic, 2);
 		ValidateRect(mh_WndDC, &rcPic);
 
-		MapWindowPoints(NULL, mh_WndDC, (LPPOINT)&rcVRect, 2);
+		MapWindowPoints(nullptr, mh_WndDC, (LPPOINT)&rcVRect, 2);
 
 		//Get ClientRect(gpConEmu->hPictureView, &rcPic);
 		//Get ClientRect(mh_WndDC, &rcClient);
@@ -1211,13 +1208,13 @@ LRESULT CConEmuChild::OnPaint()
 		{
 			if (!IsWindow(mh_LastGuiChild))
 			{
-				mh_LastGuiChild = NULL;
+				mh_LastGuiChild = nullptr;
 				Invalidate();
 			}
 		}
 		else
 		{
-			mh_LastGuiChild = VCon->RCon() ? VCon->RCon()->GuiWnd() : NULL;
+			mh_LastGuiChild = VCon->RCon() ? VCon->RCon()->GuiWnd() : nullptr;
 		}
 
 		bool bRightClickingPaint = gpConEmu->isRightClickingPaint() && VCon->isActive(false);
@@ -1256,7 +1253,7 @@ LRESULT CConEmuChild::OnSize(WPARAM wParam, LPARAM lParam)
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return 0;
 	}
 
@@ -1273,7 +1270,9 @@ LRESULT CConEmuChild::OnSize(WPARAM wParam, LPARAM lParam)
 		wchar_t szInfo[128];
 		swprintf_c(szInfo, L"VCon(0x%08X).OnSize(%u,%u)", LODWORD(mh_WndDC), (UINT)LOWORD(lParam), (UINT)HIWORD(lParam));
 		if (!gpConEmu->LogString(szInfo))
+		{
 			DEBUGSTRSIZE(szInfo);
+		}
 	}
 
 	// Вроде это и не нужно. Ни для Ansi ни для Unicode версии плагина
@@ -1286,7 +1285,7 @@ LRESULT CConEmuChild::OnSize(WPARAM wParam, LPARAM lParam)
 	//        RECT rcClient; Get ClientRect('ghWnd DC', &rcClient);
 	//        //TODO: а ведь PictureView может и в QuickView активироваться...
 	//        MoveWindow(gpConEmu->hPictureView, 0,0,rcClient.right,rcClient.bottom, 1);
-	//        //INVALIDATE(); //InvalidateRect(hWnd, NULL, FALSE);
+	//        //INVALIDATE(); //InvalidateRect(hWnd, nullptr, FALSE);
 	//		Invalidate();
 	//        //SetFocus(hPictureView); -- все равно на другой процесс фокус передать нельзя...
 	//    }
@@ -1298,7 +1297,7 @@ LRESULT CConEmuChild::OnMove(WPARAM wParam, LPARAM lParam)
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return 0;
 	}
 
@@ -1323,7 +1322,7 @@ void CConEmuChild::CheckPostRedraw()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return;
 	}
 	// Если был "Отмененный" Redraw, но
@@ -1339,7 +1338,7 @@ void CConEmuChild::Redraw(bool abRepaintNow /*= false*/)
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return;
 	}
 	if (mb_DisableRedraw)
@@ -1370,13 +1369,13 @@ void CConEmuChild::Redraw(bool abRepaintNow /*= false*/)
 	DEBUGSTRDRAW(L" +++ RedrawWindow on DC window called\n");
 	//RECT rcClient; Get ClientRect(mh_WndDC, &rcClient);
 	//MapWindowPoints(mh_WndDC, ghWnd, (LPPOINT)&rcClient, 2);
-	InvalidateRect(mh_WndDC, NULL, FALSE);
+	InvalidateRect(mh_WndDC, nullptr, FALSE);
 	// Из-за этого - возникает двойная перерисовка
 	//gpConEmu->OnPaint(0,0);
 	//#ifdef _DEBUG
 	//BOOL lbRc =
 	//#endif
-	//RedrawWindow(ghWnd, NULL, NULL,
+	//RedrawWindow(ghWnd, nullptr, nullptr,
 	//	RDW_INTERNALPAINT|RDW_NOERASE|RDW_UPDATENOW);
 	mb_RedrawPosted = FALSE; // Чтобы другие нити могли сделать еще пост
 
@@ -1385,7 +1384,7 @@ void CConEmuChild::Redraw(bool abRepaintNow /*= false*/)
 		RECT rcClient = {};
 		if (GetClientRect(mh_WndDC, &rcClient))
 		{
-			RedrawWindow(mh_WndDC, &rcClient, NULL, RDW_INTERNALPAINT|RDW_NOERASE|RDW_NOFRAME|RDW_UPDATENOW|RDW_VALIDATE);
+			RedrawWindow(mh_WndDC, &rcClient, nullptr, RDW_INTERNALPAINT|RDW_NOERASE|RDW_NOFRAME|RDW_UPDATENOW|RDW_VALIDATE);
 		}
 	}
 }
@@ -1411,7 +1410,7 @@ RECT CConEmuChild::CalcDCMargins(const RECT& arcBack)
 
 	// Actual gaps
 	if ((gpSet->isTryToCenter && (gpConEmu->isZoomed() || gpConEmu->isFullScreen() || gpSet->isQuakeStyle))
-		|| mp_VCon->RCon()->isNtvdm())
+		|| (mp_VCon->RCon() && mp_VCon->RCon()->isNtvdm()))
 	{
 		// Precise shifts calculation
 		if (nDeltaX > 0)
@@ -1427,7 +1426,7 @@ RECT CConEmuChild::CalcDCMargins(const RECT& arcBack)
 	}
 
 	if ((gpSet->isTryToCenter && (gpConEmu->isZoomed() || gpConEmu->isFullScreen()))
-		|| mp_VCon->RCon()->isNtvdm())
+		|| (mp_VCon->RCon() && mp_VCon->RCon()->isNtvdm()))
 	{
 		if (nDeltaY > 0)
 		{
@@ -1490,14 +1489,14 @@ void CConEmuChild::OnVConSizePosChanged()
 	if (!mp_VCon->isActive(false))
 		return;
 
-	mp_VCon->mp_ConEmu->mp_Status->OnWindowReposition(NULL);
+	mp_VCon->mp_ConEmu->mp_Status->OnWindowReposition(nullptr);
 }
 
 void CConEmuChild::SetRedraw(bool abRedrawEnabled)
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return;
 	}
 	mb_DisableRedraw = !abRedrawEnabled;
@@ -1507,7 +1506,7 @@ void CConEmuChild::Invalidate()
 {
 	if (!this)
 	{
-		_ASSERTE(this!=NULL);
+		_ASSERTE(this!=nullptr);
 		return;
 	}
 	if (mb_DisableRedraw)
@@ -1536,7 +1535,7 @@ void CConEmuChild::InvalidateView()
 
 		if (!m_LockDc.bLocked)
 		{
-			InvalidateRect(mh_WndDC, NULL, FALSE);
+			InvalidateRect(mh_WndDC, nullptr, FALSE);
 		}
 		else
 		{
@@ -1546,7 +1545,7 @@ void CConEmuChild::InvalidateView()
 			int iRc = CombineRgn(hRgn, hRgn, hLock, RGN_DIFF);
 
 			if (iRc == ERROR)
-				InvalidateRect(mh_WndDC, NULL, FALSE);
+				InvalidateRect(mh_WndDC, nullptr, FALSE);
 			else if (iRc != NULLREGION)
 				InvalidateRgn(mh_WndDC, hRgn, FALSE);
 
@@ -1563,7 +1562,7 @@ void CConEmuChild::InvalidateView()
 	}
 	else
 	{
-		_ASSERTE(mh_WndDC != NULL);
+		_ASSERTE(mh_WndDC != nullptr);
 	}
 }
 
@@ -1571,11 +1570,11 @@ void CConEmuChild::InvalidateBack()
 {
 	if (mh_WndBack)
 	{
-		InvalidateRect(mh_WndBack, NULL, FALSE);
+		InvalidateRect(mh_WndBack, nullptr, FALSE);
 	}
 	else
 	{
-		_ASSERTE(mh_WndBack!=NULL || (mp_VCon->RCon() && mp_VCon->RCon()->isConsoleClosing()));
+		_ASSERTE(mh_WndBack!=nullptr || (mp_VCon->RCon() && mp_VCon->RCon()->isConsoleClosing()));
 	}
 }
 
@@ -1583,7 +1582,7 @@ void CConEmuChild::InvalidateBack()
 //{
 //	//mb_Invalidated = FALSE;
 //	//DEBUGSTRDRAW(L" +++ Validate on DC window called\n");
-//	//if ('ghWnd DC') ValidateRect(ghWnd, NULL);
+//	//if ('ghWnd DC') ValidateRect(ghWnd, nullptr);
 //}
 
 void CConEmuChild::OnAlwaysShowScrollbar(bool abSync /*= true*/)
@@ -1614,7 +1613,7 @@ void CConEmuChild::OnAlwaysShowScrollbar(bool abSync /*= true*/)
 // Returns `true` if we must not bypass mouse events to console
 bool CConEmuChild::TrackMouse()
 {
-	_ASSERTE(this);
+	AssertThisRet(false);
 	bool lbCapture = false; // Don't capture mouse by default
 
 	CVirtualConsole* pVCon = mp_VCon;
@@ -1674,7 +1673,7 @@ bool CConEmuChild::CheckMouseOverScroll()
 
 	// Process active or this console?
 	CVConGuard VCon;
-	CRealConsole* pRCon = (gpConEmu->GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : NULL;
+	CRealConsole* pRCon = (gpConEmu->GetActiveVCon(&VCon) >= 0) ? VCon->RCon() : nullptr;
 
 	if (pRCon)
 	{
@@ -1863,13 +1862,17 @@ void CConEmuChild::UpdateScrollRgn(bool abForce /*= false*/)
 	if ((bNeedRgn == mb_ScrollRgnWasSet) && !abForce)
 		return;
 
-	HRGN hRgn = NULL;
+	HRGN hRgn = nullptr;
 	if (mb_ScrollVisible && (gpSet->isAlwaysShowScrollbar == 2))
 	{
 		RECT rcDc = {}; GetClientRect(mh_WndDC, &rcDc);
 		RECT rcScroll = {}; GetWindowRect(mh_WndBack, &rcScroll);
-		MapWindowPoints(NULL, mh_WndDC, (LPPOINT)&rcScroll, 2);
-		rcScroll.left = rcScroll.right - GetSystemMetrics(SM_CXVSCROLL);
+		RECT rcScrollClient = {}; GetClientRect(mh_WndBack, &rcScrollClient);
+		MapWindowPoints(nullptr, mh_WndDC, (LPPOINT)&rcScroll, 2);
+		const int vScrollWidth = RectWidth(rcScroll) - RectWidth(rcScrollClient);
+		const int vSysScrollWidth = GetSystemMetrics(SM_CXVSCROLL);
+		// When monitor's DPI is greater that primary's, SM_CXVSCROLL is smaller than expected
+		rcScroll.left = rcScroll.right - ((vScrollWidth > 0) ? vScrollWidth : vSysScrollWidth);
 		TODO("Horizontal scrolling");
 		hRgn = CreateRectRgn(rcDc.left, rcDc.top, rcDc.right, rcDc.bottom);
 		HRGN hScrlRgn = CreateRectRgn(rcScroll.left, rcScroll.top, rcScroll.right, rcScroll.bottom);
@@ -1880,11 +1883,11 @@ void CConEmuChild::UpdateScrollRgn(bool abForce /*= false*/)
 
 	SetWindowRgn(mh_WndDC, hRgn, TRUE);
 
-	mb_ScrollRgnWasSet = (hRgn != NULL);
+	mb_ScrollRgnWasSet = (hRgn != nullptr);
 
 	if (hRgn)
 	{
-		InvalidateRect(mh_WndBack, NULL, FALSE);
+		InvalidateRect(mh_WndBack, nullptr, FALSE);
 	}
 }
 
@@ -2010,7 +2013,7 @@ void CConEmuChild::HideScroll(bool abImmediate)
 		//	apiShowWindow(mh_WndScroll, SW_HIDE);
 		//RECT rcScroll; GetWindowRect(mh_WndScroll, &rcScroll);
 		//// вьюпорт невидимый, передернуть нужно основное окно
-		//MapWindowPoints(NULL, ghWnd, (LPPOINT)&rcScroll, 2);
+		//MapWindowPoints(nullptr, ghWnd, (LPPOINT)&rcScroll, 2);
 		//InvalidateRect(ghWnd, &rcScroll, FALSE);
 	}
 	else
@@ -2066,7 +2069,7 @@ void CConEmuChild::LockDcRect(bool bLock, RECT* Rect)
 	{
 		if (!Rect)
 		{
-			_ASSERTE(Rect!=NULL);
+			_ASSERTE(Rect!=nullptr);
 			return;
 		}
 

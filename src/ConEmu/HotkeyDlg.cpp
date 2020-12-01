@@ -75,7 +75,7 @@ DWORD CHotKeyDialog::dlgGetHotkey(HWND hDlg, UINT iEditCtrl /*= hkHotKeySelect*/
 	DWORD nCtrlMods = HIBYTE(LOWORD(nCtrlValue));
 
 	bool bList = false;
-	const ListBoxItem* pItems = NULL;
+	const ListBoxItem* pItems = nullptr;
 	unsigned nKeyCount = CSetDlgLists::GetListItems(CSetDlgLists::eKeysHot, pItems);
 	for (size_t i = 0; i < nKeyCount; i++)
 	{
@@ -125,7 +125,7 @@ void CHotKeyDialog::FillModifierBoxes(const ConEmuHotKey& HK, HWND hDlg)
 
 INT_PTR CHotKeyDialog::hkDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
-	CHotKeyDialog* pDlg = NULL;
+	CHotKeyDialog* pDlg = nullptr;
 	if (messg == WM_INITDIALOG)
 	{
 		pDlg = (CHotKeyDialog*)lParam;
@@ -241,7 +241,7 @@ INT_PTR CHotKeyDialog::hkDlgProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lP
 								BYTE vk = 0;
 								CSetDlgLists::GetListBoxItem(hDlg, lbHotKeyMod1+i, CSetDlgLists::eModifiers, vk);
 								if (vk)
-									nModifers = ConEmuHotKey::SetModifier(nModifers, vk, false);
+									nModifers = ConEmuChord::SetModifier(nModifers, vk, false);
 							}
 
 							_ASSERTE((nModifers & 0xFF) == 0); // Модификаторы должны быть строго в старших 3-х байтах

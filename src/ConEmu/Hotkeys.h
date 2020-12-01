@@ -31,115 +31,75 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "HotkeyChord.h"
 
-// Strings
-#define gsNoHotkey L"<None>"
-
 // Forward
 struct ConEmuHotKey;
 class CHotKeyDialog;
+class CRealConsole;
 
 // Некоторые комбинации нужно обрабатывать "на отпускание" во избежание глюков с интерфейсом
 extern const struct ConEmuHotKey* ConEmuSkipHotKey; // = ((ConEmuHotKey*)INVALID_HANDLE_VALUE)
 
-#define CEHOTKEY_MODMASK    0xFFFFFF00
-#define CEHOTKEY_NUMHOSTKEY 0xFFFFFF00
-#define CEHOTKEY_ARRHOSTKEY 0xFEFEFE00
-#define CEHOTKEY_NOMOD      0x80808000
-
-enum ConEmuHotKeyType
-{
-	chk_User = 0,  // обычный настраиваемый hotkey
-	chk_Modifier,  // для драга, например
-	chk_Modifier2, // для драга, например (когда нужно задать более одного модификатора)
-	chk_NumHost,   // system hotkey (<HostKey>-Number, и БЫЛ РАНЬШЕ <HostKey>-Arrows)
-	chk_ArrHost,   // system hotkey (<HostKey>-Number, и БЫЛ РАНЬШЕ <HostKey>-Arrows)
-	chk_System,    // predefined hotkeys, ненастраиваемые (пока?)
-	chk_Global,    // globally registered hotkey
-	chk_Local,     // locally registered hotkey
-	chk_Macro,     // GUI Macro
-	chk_Task,      // Task hotkey
-};
-
 // Check if enabled in current context
 typedef bool (*HotkeyEnabled_t)();
-// true-обработали, false-пропустить в консоль
-typedef bool (WINAPI *HotkeyFKey_t)(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon); // true-обработали, false-пропустить в консоль
+typedef bool (*WinHookEnabled_t)(const ConEmuHotKey* pHK);
+// true - processed, false - pass to console
+typedef bool (WINAPI *HotkeyFKey_t)(const ConEmuChord& VkState, bool TestOnly, const ConEmuHotKey* hk, CRealConsole* pRCon);
 
 struct ConEmuHotKey
 {
+public:
 	// >0 StringTable resource ID
 	// <0 TaskIdx, 1-based
-	int DescrLangID;
+	int DescrLangID{};
 
 	// 0 - hotkey, 1 - modifier (для драга, например), 2 - system hotkey (настройка nMultiHotkeyModifier)
-	ConEmuHotKeyType HkType;
+	ConEmuHotKeyType HkType{};
 
-	// May be NULL
-	HotkeyEnabled_t Enabled;
+	// May be nullptr
+	HotkeyEnabled_t Enabled{ nullptr };
 
-	wchar_t Name[64];
+	wchar_t Name[64] = L"";
 
-	ConEmuChord Key;
-	DWORD GetVkMod() const;
-	void  SetVkMod(DWORD VkMod);
+	ConEmuChord Key{};
 
-	HotkeyFKey_t fkey; // true-обработали, false-пропустить в консоль
-	bool OnKeyUp; // Некоторые комбинации нужно обрабатывать "на отпускание" (показ диалогов, меню, ...)
+	HotkeyFKey_t fkey{nullptr}; // true-обработали, false-пропустить в консоль
+	bool OnKeyUp{false}; // Некоторые комбинации нужно обрабатывать "на отпускание" (показ диалогов, меню, ...)
 
-	wchar_t* GuiMacro;
-
-	// May be NULL. if "true" - dont intercept this key with KeyboardHooks, try to pass it to Windows.
-	bool   (*DontWinHook)(const ConEmuHotKey* pHK);
+	wchar_t* GuiMacro{nullptr};
 
 	// Internal
-	size_t cchGuiMacroMax;
-	bool   NotChanged;
+	size_t cchGuiMacroMax{};
+	bool   NotChanged{};
 
+public:
+	DWORD GetVkMod() const;
 	bool CanChangeVK() const;
 	bool IsTaskHotKey() const;
 	int GetTaskIndex() const; // 0-based
 	void SetTaskIndex(int iTaskIdx); // 0-based
-	void SetHotKey(BYTE Vk, BYTE vkMod1=0, BYTE vkMod2=0, BYTE vkMod3=0);
-	bool Equal(BYTE Vk, BYTE vkMod1=0, BYTE vkMod2=0, BYTE vkMod3=0);
+	bool Equal(BYTE vk, BYTE vkMod1=0, BYTE vkMod2=0, BYTE vkMod3=0) const;
+
+	ConEmuHotKey& SetVkMod(DWORD VkMod);
+	ConEmuHotKey& SetHotKey(BYTE vk, BYTE vkMod1 = 0, BYTE vkMod2 = 0, BYTE vkMod3 = 0);
+	ConEmuHotKey& SetEnabled(HotkeyEnabled_t enabledFunc);
+	ConEmuHotKey& SetOnKeyUp();
+	ConEmuHotKey& SetMacro(const wchar_t* guiMacro);
+	
 
 	LPCWSTR GetDescription(wchar_t* pszDescr, int cchMaxLen, bool bAddMacroIndex = false) const;
 
 	void Free();
 
-	// *** Service functions ***
-	// Вернуть имя модификатора (типа "Apps+Space")
+	// Return user-friendly key name (e.g. "Apps+Space")
 	LPCWSTR GetHotkeyName(wchar_t (&szFull)[128], bool bShowNone = true) const;
-	static LPCWSTR GetHotkeyName(DWORD aVkMod, wchar_t (&szFull)[128], bool bShowNone = true);
 
 	// Duplicate hotkeys
 	static LPCWSTR CreateNotUniqueWarning(LPCWSTR asHotkey, LPCWSTR asDescr1, LPCWSTR asDescr2, CEStr& rsWarning);
 
-	#ifdef _DEBUG
-	static void HotkeyNameUnitTests();
-	#endif
-
-	// nHostMod в младших 3-х байтах может содержать VK (модификаторы).
-	// Функция проверяет, чтобы они не дублировались
-	static void TestHostkeyModifiers(DWORD& nHostMod);
-	// набор флагов MOD_xxx для RegisterHotKey
-	static DWORD GetHotKeyMod(DWORD VkMod);
-	// Сервисная функция для инициализации. Формирует готовый VkMod
-	static DWORD MakeHotKey(BYTE Vk, BYTE vkMod1=0, BYTE vkMod2=0, BYTE vkMod3=0);
-	// Извлечь сам VK
-	static DWORD GetHotkey(DWORD VkMod);
-	// Вернуть имя клавишы (Apps, Win, Pause, ...)
-	static void GetVkKeyName(BYTE vk, wchar_t (&szName)[32], bool bSingle = true);
-	// Вернуть VK по имени клавиши (Apps, Win, Pause, ...)
-	static UINT GetVkByKeyName(LPCWSTR asName, int* pnScanCode = NULL, DWORD* pnControlState = NULL);
-	// Есть ли в этом (VkMod) хоткее - модификатор Mod (VK)
-	static bool HasModifier(DWORD VkMod, BYTE Mod/*VK*/);
-	// Задать или сбросить модификатор в VkMod
-	static DWORD SetModifier(DWORD VkMod, BYTE Mod/*VK*/, bool Xor=true);
-	// Вернуть назначенные модификаторы (idx = 1..3). Возвращает 0 (нету) или VK
-	static DWORD GetModifier(DWORD VkMod, int idx/*1..3*/);
-
 	static bool UseWinNumber();
 	static bool UseWinArrows();
+	/// \brief Process hotkeys to tile window and move window accross monitors
+	static bool UseWinMove();
 	static bool UseCTSShiftArrow(); // { return gpSet->isUseWinArrows; }; // { return (OverrideClipboard || !AppNames) ? isCTSShiftArrowStart : gpSet->AppStd.isCTSShiftArrowStart; };
 	static bool UseCtrlTab();
 	static bool UseCtrlBS();
@@ -148,5 +108,4 @@ struct ConEmuHotKey
 	static bool UseDndRKey();
 	static bool UseWndDragKey();
 	static bool UsePromptFind();
-	//static bool DontHookJumps(const ConEmuHotKey* pHK);
 };

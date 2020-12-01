@@ -31,10 +31,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Header.h"
 #include "LngData.h"
-#include "MenuIds.h"
-#include "resource.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 struct LngPredefined
 {
@@ -74,7 +72,7 @@ LPCWSTR CLngPredefined::getHint(UINT id)
 	if (p)
 		return p->str;
 
-	return NULL;
+	return nullptr;
 }
 
 // Search in gsDataRsrcs for id
@@ -90,5 +88,5 @@ LPCWSTR CLngPredefined::getRsrc(UINT id)
 	if (p)
 		return p->str;
 
-	return NULL;
+	return nullptr;
 }

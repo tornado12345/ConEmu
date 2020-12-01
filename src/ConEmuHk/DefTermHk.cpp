@@ -595,7 +595,7 @@ DWORD CDefTermHk::StartConsoleServer(DWORD nAttachPID, bool bNewConWnd, PHANDLE 
 
 		msprintf(pszCmdLine, cchMax, L"\"%s\\%s\" /ATTACH %s/TRMPID=%u",
 			pOpt->pszConEmuBaseDir,
-			WIN3264TEST(L"ConEmuC.exe",L"ConEmuC64.exe"),
+			ConEmuC_EXE_3264,
 			bNewConWnd ? L"/CREATECON " : L"",
 			nAttachPID);
 
@@ -713,8 +713,8 @@ void CDefTermHk::OnAllocConsoleFinished(HWND hNewConWnd)
 
 size_t CDefTermHk::GetSrvAddArgs(bool bGuiArgs, CEStr& rsArgs, CEStr& rsNewCon)
 {
-	rsArgs.Empty();
-	rsNewCon.Empty();
+	rsArgs.Clear();
+	rsNewCon.Clear();
 
 	if (!this)
 		return 0;

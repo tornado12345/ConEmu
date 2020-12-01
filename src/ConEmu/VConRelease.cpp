@@ -33,7 +33,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "VConRelease.h"
 #include "VirtualConsole.h"
 
-//#define REF_FINALIZE 0x7FFFFFFF
 
 CVConRelease::CVConRelease(CVirtualConsole* pOwner)
 {
@@ -57,51 +56,6 @@ void CVConRelease::DeleteFromMainThread()
 	delete pVCon;
 }
 
-//CVConRelease::CVConRelease()
-//{
-//	mn_RefCount = 1;
-//
-//	#ifdef _DEBUG
-//	CVirtualConsole* pVCon = (CVirtualConsole*)this;
-//	_ASSERTE((void*)pVCon == (void*)this);
-//	#endif
-//}
-//
-//CVConRelease::~CVConRelease()
-//{
-//	_ASSERTE(mn_RefCount==REF_FINALIZE);
-//}
-//
-//void CVConRelease::AddRef()
-//{
-//	if (!this)
-//	{
-//		_ASSERTE(this!=NULL);
-//		return;
-//	}
-//
-//	InterlockedIncrement(&mn_RefCount);
-//}
-//
-//int CVConRelease::Release()
-//{
-//	if (!this)
-//		return 0;
-//
-//	InterlockedDecrement(&mn_RefCount);
-//
-//	_ASSERTE(mn_RefCount>=0);
-//	if (mn_RefCount <= 0)
-//	{
-//		mn_RefCount = REF_FINALIZE; // принудительно, чтобы не было повторных срабатываний delete при вызове деструкторов
-//		CVirtualConsole* pVCon = (CVirtualConsole*)this;
-//		delete pVCon;
-//		return 0;
-//	}
-//
-//	return mn_RefCount;
-//}
-
 
 CVConGuard::CVConGuard()
 	: CRefGuard<CVirtualConsole>()
@@ -120,13 +74,13 @@ bool CVConGuard::Attach(CVirtualConsole* apRef)
 {
 	if (!CVConGroup::setRef(mp_Ref, apRef))
 	{
-		_ASSERTE(mp_Ref == NULL);
+		_ASSERTE(mp_Ref == nullptr);
 	}
 
 	mi_Valid = mp_Ref ? CVConGroup::isValid(mp_Ref) ? 1 : -1 : 0;
 	Assert(mi_Valid >= 0);
 
-	return (mp_Ref != NULL);
+	return (mp_Ref != nullptr);
 }
 
 CVConGuard::~CVConGuard()

@@ -120,7 +120,7 @@ void CSetPgBase::ProcessDpiChange(const CDpiForDialog* apDpi)
 
 	HWND hPlace = GetDlgItem(mh_Parent, tSetupPagePlace);
 	RECT rcClient; GetWindowRect(hPlace, &rcClient);
-	MapWindowPoints(NULL, mh_Parent, (LPPOINT)&rcClient, 2);
+	MapWindowPoints(nullptr, mh_Parent, (LPPOINT)&rcClient, 2);
 
 	mb_DpiChanged = false;
 	mp_DpiAware->SetDialogDPI(apDpi->GetCurDpi(), &rcClient);
@@ -141,7 +141,7 @@ INT_PTR CSetPgBase::OnCtlColorStatic(HWND hDlg, HDC hdc, HWND hCtrl, WORD nCtrlI
 	}
 	else if (CDlgItemHelper::isHyperlinkCtrl(nCtrlId))
 	{
-		_ASSERTE(hCtrl!=NULL);
+		_ASSERTE(hCtrl!=nullptr);
 		// Check appropriate flags
 		DWORD nStyle = GetWindowLong(hCtrl, GWL_STYLE);
 		if (!(nStyle & SS_NOTIFY))
@@ -173,7 +173,7 @@ INT_PTR CSetPgBase::OnSetCursor(HWND hDlg, HWND hCtrl, WORD nCtrlId, WORD nHitTe
 	#endif
 	if (CDlgItemHelper::isHyperlinkCtrl(nCtrlId))
 	{
-		SetCursor(LoadCursor(NULL, IDC_HAND));
+		SetCursor(LoadCursor(nullptr, IDC_HAND));
 		SetWindowLongPtr(hDlg, DWLP_MSGRESULT, TRUE);
 		return TRUE;
 	}
@@ -190,11 +190,11 @@ INT_PTR CSetPgBase::OnButtonClicked(HWND hDlg, HWND hBtn, WORD nCtrlId)
 INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam)
 {
 	TabHwndIndex pgId = thi_Last;
-	CSetPgBase* pObj = NULL;
+	CSetPgBase* pObj = nullptr;
 
 	if (messg != WM_INITDIALOG)
 	{
-		ConEmuSetupPages* pPage = NULL;
+		ConEmuSetupPages* pPage = nullptr;
 		pgId = gpSetCls->GetPageId(hDlg, &pPage);
 
 		if ((pgId == thi_Last) || !pPage || !pPage->pPage)
@@ -235,21 +235,21 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 			_ASSERTE(pObj && (pObj->GetPageType() >= thi_General && pObj->GetPageType() < thi_Last));
 			return 0;
 		}
-		_ASSERTE(pObj->Dlg() == NULL || pObj->Dlg() == hDlg);
+		_ASSERTE(pObj->Dlg() == nullptr || pObj->Dlg() == hDlg);
 
 		pgId = pObj->GetPageType();
 
 		if (bInitial)
 		{
-			_ASSERTE(pObj->mp_InfoPtr && pObj->mp_InfoPtr->PageIndex >= 0 && pObj->mp_InfoPtr->hPage == NULL);
+			_ASSERTE(pObj->mp_InfoPtr && pObj->mp_InfoPtr->PageIndex >= 0 && pObj->mp_InfoPtr->hPage == nullptr);
 			pObj->mp_InfoPtr->hPage = hDlg;
 			pObj->mh_Dlg = hDlg;
 
 			CDynDialog* pDynDialog = CDynDialog::GetDlgClass(hDlg);
-			_ASSERTE(pObj->mp_DynDialog==NULL || pObj->mp_DynDialog==pDynDialog);
+			_ASSERTE(pObj->mp_DynDialog==nullptr || pObj->mp_DynDialog==pDynDialog);
 
 			#ifdef _DEBUG
-			// pObj->mp_DynDialog is NULL on first WM_INIT
+			// pObj->mp_DynDialog is nullptr on first WM_INIT
 			if (pObj->mp_DynDialog)
 			{
 				_ASSERTE(pObj->mp_DynDialog->mh_Dlg == hDlg);
@@ -258,7 +258,7 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 
 			HWND hPlace = GetDlgItem(pObj->mh_Parent, tSetupPagePlace);
 			RECT rcClient; GetWindowRect(hPlace, &rcClient);
-			MapWindowPoints(NULL, pObj->mh_Parent, (LPPOINT)&rcClient, 2);
+			MapWindowPoints(nullptr, pObj->mh_Parent, (LPPOINT)&rcClient, 2);
 			if (pObj->mp_DpiAware)
 				pObj->mp_DpiAware->Attach(hDlg, pObj->mh_Parent, pDynDialog);
 			MoveWindowRect(hDlg, rcClient);
@@ -306,7 +306,7 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 		}
 		else
 		{
-			_ASSERTE(pAppsPg!=NULL);
+			_ASSERTE(pAppsPg!=nullptr);
 			return 0;
 		}
 	}
@@ -472,7 +472,7 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 			}
 			else if (messg == gpSetCls->mn_MsgLoadFontFromMain)
 			{
-				CSetPgFonts* pFonts = NULL;
+				CSetPgFonts* pFonts = nullptr;
 				if (gpSetCls->GetPageObj(pFonts))
 				{
 					if (pgId == thi_Views)
@@ -502,50 +502,10 @@ INT_PTR CSetPgBase::pageOpProc(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lPar
 	return 0;
 }
 
-void CSetPgBase::setHotkeyCheckbox(HWND hDlg, WORD nCtrlId, int iHotkeyId, LPCWSTR pszFrom, LPCWSTR pszTo, UINT uChecked)
+void CSetPgBase::setCtrlTitleByHotkey(HWND hDlg, const WORD nCtrlId, const int iHotkeyId,
+	const LPCWSTR pszFrom, const LPCWSTR pszTo, const LPCWSTR pszGroup)
 {
-	wchar_t szKeyFull[128] = L"";
-	gpSet->GetHotkeyNameById(iHotkeyId, szKeyFull, false);
-	if (szKeyFull[0] == 0)
-	{
-		EnableWindow(GetDlgItem(hDlg, nCtrlId), FALSE);
-		checkDlgButton(hDlg, nCtrlId, BST_UNCHECKED);
-	}
-	else
-	{
-		if (pszFrom)
-		{
-			wchar_t* ptr = (wchar_t*)wcsstr(szKeyFull, pszFrom);
-			if (ptr)
-			{
-				*ptr = 0;
-				if (pszTo)
-				{
-					wcscat_c(szKeyFull, pszTo);
-				}
-			}
-		}
-
-		CEStr lsText(GetDlgItemTextPtr(hDlg, nCtrlId));
-		LPCWSTR pszTail = lsText.IsEmpty() ? NULL : wcsstr(lsText, L" - ");
-		if (pszTail)
-		{
-			CEStr lsNew(szKeyFull, pszTail);
-			SetDlgItemText(hDlg, nCtrlId, lsNew);
-		}
-
-		checkDlgButton(hDlg, nCtrlId, uChecked);
-	}
-}
-
-/// Update GroupBox title, replacing text *between* pszFrom and pszTo with current HotKey
-/// Examples:
-///    gbPasteM1 has title "Paste mode #1 (Shift+Ins)", pszFrom=L"(", pszTo=L")"
-///    cbMouseDragWindow has title "Ctrl+Alt - drag ConEmu window", pszFrom=NULL, pszTo=L" - "
-/// Than `Shift+Ins` would be replaced with current user defined hotkey value
-void CSetPgBase::setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LPCWSTR pszFrom, LPCWSTR pszTo)
-{
-	if (!hDlg || !nCtrlId || (nCtrlId == (WORD)IDC_STATIC) || (iHotkeyId <= 0))
+	if (!hDlg || !nCtrlId || (nCtrlId == static_cast<WORD>(IDC_STATIC)) || (iHotkeyId <= 0))
 	{
 		_ASSERTE(FALSE && "Invalid identifiers");
 		return;
@@ -556,7 +516,14 @@ void CSetPgBase::setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LP
 	if (szKeyFull[0] == 0)
 	{
 		_ASSERTE(FALSE && "Failed to acquire HotKey");
-		wcscpy_c(szKeyFull, L"???");
+		wcscpy_c(szKeyFull, CLngRc::getRsrc(lng_KeyNone/*"<None>"*/));
+
+		EnableWindow(GetDlgItem(hDlg, nCtrlId), FALSE);
+	}
+	else if (pszGroup)
+	{
+		// "Ctrl+1" -> "Ctrl+Numbers"
+		ApplyHotkeyGroupName(szKeyFull, pszGroup);
 	}
 
 	CEStr lsLoc;
@@ -569,15 +536,47 @@ void CSetPgBase::setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LP
 		}
 	}
 
+	auto newLabel = ApplyHotkeyToTitle(lsLoc, pszFrom, pszTo, szKeyFull);
+	// Update control text
+	SetDlgItemText(hDlg, nCtrlId, newLabel);
+}
+
+void CSetPgBase::ApplyHotkeyGroupName(wchar_t(& szFull)[128], LPCWSTR pszGroup)
+{
+	if (szFull[0] == L'\0')
+	{
+		wcscpy_c(szFull, CLngRc::getRsrc(lng_KeyNone/*"<None>"*/));
+		return;
+	}
+
+	_ASSERTE(szFull[wcslen(szFull) - 1] != L'+');
+	_ASSERTE(pszGroup != nullptr);
+
+	// Find the key ("Left") in "Ctrl+Alt+Left"
+	auto* ptr = static_cast<wchar_t*>(wcsrchr(szFull, L'+'));
+
+	if (ptr)
+		*(ptr + 1) = L'\0';
+	else
+		szFull[0] = L'\0';
+
+	if (pszGroup)
+	{
+		wcscat_c(szFull, pszGroup);
+	}
+}
+
+CEStr CSetPgBase::ApplyHotkeyToTitle(CEStr& label, LPCWSTR pszFrom, LPCWSTR pszTo, LPCWSTR pszHotkey)
+{
 	if (pszFrom && *pszFrom)
 	{
 		// "Paste mode #1 (Shift+Ins)"
-		LPCWSTR ptr1, ptr2 = NULL;
-		ptr1 = wcsstr(lsLoc, pszFrom);
+		LPCWSTR ptr2 = nullptr;
+		const auto* ptr1 = wcsstr(label, pszFrom);
 		if (!ptr1)
 		{
 			_ASSERTE(ptr1 && "pszFrom not found");
-			return;
+			return std::move(label);
 		}
 		ptr1 += wcslen(pszFrom);
 		if (pszTo && *pszTo)
@@ -587,34 +586,31 @@ void CSetPgBase::setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LP
 		if (!ptr2 || (ptr2 == ptr1))
 		{
 			_ASSERTE(ptr2 && (ptr2 != ptr1) && "Invalid source string");
-			return;
+			return std::move(label);
 		}
 
 		// Trim to hotkey beginning
-		lsLoc.ms_Val[(ptr1 - lsLoc.ms_Val)] = 0;
+		label.ms_Val[(ptr1 - label.ms_Val)] = 0;
 		// And create new title
-		CEStr lsNew(lsLoc.ms_Val, szKeyFull, ptr2);
-		// Update control text
-		SetDlgItemText(hDlg, nCtrlId, lsNew);
+		return CEStr(label.ms_Val, pszHotkey, ptr2);
 	}
+	// ReSharper disable once CppRedundantElseKeywordInsideCompoundStatement
 	else if (pszTo && *pszTo)
 	{
-		// "Ctrl+Alt - drag ConEmu window"
-		LPCWSTR ptr;
-		ptr = wcsstr(lsLoc, pszTo);
+		const auto* ptr = wcsstr(label, pszTo);
 		if (!ptr)
 		{
 			_ASSERTE(ptr && "pszTo not found");
-			return;
+			return std::move(label);
 		}
 
 		// Create new title
-		CEStr lsNew(szKeyFull, ptr);
-		// Update control text
-		SetDlgItemText(hDlg, nCtrlId, lsNew);
+		return CEStr(pszHotkey, ptr);
 	}
+	// ReSharper disable once CppRedundantElseKeyword
 	else
 	{
 		_ASSERTE(FALSE && "Invalid anchors");
+		return std::move(label);
 	}
 }

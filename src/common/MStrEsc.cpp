@@ -32,15 +32,21 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// Set escapes: wchar(13) --> "\\r", etc.
 /// pszSrc and pszDst must point to different memory blocks
-/// pszDst must have at least 5 bytes available (four "\\xFF" and final "\0")
-void EscapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
+/// pszDst must have at least 5 wchars available (four "\\xFF" and final "\0")
+bool EscapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
 {
-	_ASSERTE(pszSrc && pszDst);
-	_ASSERTE(pszSrc != pszDst);
+	if (!pszSrc || !pszDst)
+	{
+		_ASSERTE(pszSrc && pszDst);
+		return false;
+	}
+	if (pszSrc == pszDst)
+	{
+		_ASSERTE(pszSrc != pszDst);
+		return false;
+	}
 
-	LPCWSTR  pszCtrl = L"rntae\\\"";
-
-	wchar_t wc = *pszSrc;
+	const wchar_t wc = *pszSrc;
 	switch (wc)
 	{
 	case L'"': // 34
@@ -50,9 +56,8 @@ void EscapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
 		break;
 	case L'\\': // 92
 		*(pszDst++) = L'\\';
+		*(pszDst++) = L'\\';
 		pszSrc++;
-		if (!*pszSrc || !wcschr(pszCtrl, *pszSrc))
-			*(pszDst++) = L'\\';
 		break;
 	case L'\r': // 13
 		*(pszDst++) = L'\\';
@@ -102,12 +107,18 @@ void EscapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
 		}
 		*(pszDst++) = *(pszSrc++);
 	}
+
+	return true;
 }
 
 /// Remove escapes: "\\r" --> wchar(13), etc.
-void UnescapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
+bool UnescapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
 {
-	_ASSERTE(pszSrc && pszDst);
+	if (!pszSrc || !pszDst)
+	{
+		_ASSERTE(pszSrc && pszDst);
+		return false;
+	}
 
 	if (*pszSrc == L'\\')
 	{
@@ -171,16 +182,60 @@ void UnescapeChar(LPCWSTR& pszSrc, LPWSTR& pszDst)
 	{
 		*(pszDst++) = *(pszSrc++);
 	}
+
+	return true;
 }
 
+/// Set escapes: wchar(13) --> "\\r", etc.
+/// pszSrc and pszDst must point to different memory blocks
+/// pszDst must have at least 1+4*len(pszSrc) wchars available (four "\\xFF" and final "\0")
+bool EscapeString(LPCWSTR& pszSrc, LPWSTR& pszDst)
+{
+	if (!pszSrc || !pszDst)
+	{
+		_ASSERTE(pszSrc && pszDst);
+		return false;
+	}
+	if (pszSrc == pszDst)
+	{
+		_ASSERTE(pszSrc != pszDst);
+		return false;
+	}
+
+	while (*pszSrc)
+	{
+		EscapeChar(pszSrc, pszDst);
+	}
+
+	*pszDst = 0;
+
+	return true;
+}
+
+bool UnescapeString(LPCWSTR& pszSrc, LPWSTR& pszDst)
+{
+	if (!pszSrc || !pszDst)
+	{
+		_ASSERTE(pszSrc && pszDst);
+		return false;
+	}
+
+	while (*pszSrc)
+	{
+		UnescapeChar(pszSrc, pszDst);
+	}
+
+	*pszDst = 0;
+
+	return true;
+}
+
+/// Intended for GuiMacro representation
+/// If *pszStr* doesn't contain special symbols with ONLY exception of "\" (paths)
+/// it's more convenient to represent it as *Verbatim* string, otherwise - *C-String*.
+/// Always show as *C-String* those strings, which contain CRLF, Esc, tabs etc.
 bool CheckStrForSpecials(LPCWSTR pszStr, bool* pbSlash /*= NULL*/, bool* pbOthers /*= NULL*/)
 {
-	// Intended for GuiMacro representation
-	// Если строка содержит из спец-символов ТОЛЬКО "\" (пути)
-	// то ее удобнее показывать как "Verbatim", иначе - C-String
-	// Однозначно показывать как C-String нужно те строки, которые
-	// содержат переводы строк, Esc, табуляции и пр.
-
 	bool bSlash = false, bOthers = false;
 
 	if (pszStr && *pszStr)
@@ -196,4 +251,83 @@ bool CheckStrForSpecials(LPCWSTR pszStr, bool* pbSlash /*= NULL*/, bool* pbOther
 	if (pbOthers)
 		*pbOthers = bOthers;
 	return (bSlash || bOthers);
+}
+
+MakeOneLinerFlags operator|(const MakeOneLinerFlags e1, const MakeOneLinerFlags e2)
+{
+	return static_cast<MakeOneLinerFlags>(static_cast<int>(e1) | static_cast<int>(e2));
+}
+
+MakeOneLinerFlags operator&(const MakeOneLinerFlags e1, const MakeOneLinerFlags e2)
+{
+	return static_cast<MakeOneLinerFlags>(static_cast<int>(e1) & static_cast<int>(e2));
+}
+
+/// The function replaces all \r\n\t with spaces to paste the string safely in command prompt
+CEStr MakeOneLinerString(const CEStr& source, const MakeOneLinerFlags flags)
+{
+	CEStr result(source.c_str(L""));
+
+	const wchar_t* const pszEnd = result.c_str() + result.GetLen();
+	const bool bTrimTailing = (flags & MakeOneLinerFlags::TrimTailing) == MakeOneLinerFlags::TrimTailing;
+
+	wchar_t* pszBuf = result.data();
+	if (!pszBuf)
+	{
+		_ASSERTE(FALSE && "failed to allocated buffer");
+		return CEStr();
+	}
+
+	wchar_t* pszDst = pszBuf;
+	wchar_t* pszSrc = pszBuf;
+	while (pszSrc && pszSrc < pszEnd)
+	{
+		// Find LineFeed
+		wchar_t* pszRN = wcspbrk(pszSrc, L"\r\n\t");
+		if (pszRN && *pszRN == L'\t')
+		{
+			*pszRN = L' ';
+			continue;
+		}
+		if (!pszRN)
+		{
+			pszRN = pszSrc + wcslen(pszSrc);
+		}
+
+		// Advance to next line
+		wchar_t* pszNext = pszRN;
+		if (*pszNext == L'\r') pszNext++;
+		if (*pszNext == L'\n') pszNext++;
+		// Find end of line, trim trailing spaces
+		wchar_t* pszEol = pszRN;
+		if (bTrimTailing)
+		{
+			while ((pszEol > pszSrc) && (*(pszEol - 1) == L' ')) pszEol--;
+		}
+		// If line was not empty and there was already some changes
+		const size_t cchLine = pszEol - pszSrc;
+		if ((pszEol > pszSrc) && (pszSrc != pszDst))
+		{
+			memmove(pszDst, pszSrc, cchLine * sizeof(*pszSrc));
+		}
+		// Move src pointer to next line
+		pszSrc = pszNext;
+		// Move dst pointer and add one trailing space (line delimiter)
+		pszDst += cchLine;
+		// No need to check ptr, memory for space-termination was reserved
+		if (pszSrc < pszEnd)
+		{
+			// Delimit lines with space
+			*(pszDst++) = L' ';
+		}
+	}
+	// Z-terminate our string
+	*pszDst = 0;
+	// Done, it is ready for pasting
+	
+	_ASSERTE(result.GetLen() == (pszDst - pszBuf));
+	// Buffer must not contain any line-feeds now! Safe for paste in command line!
+	_ASSERTE(wcspbrk(pszBuf, L"\r\n\t") == nullptr);
+
+	return result;
 }

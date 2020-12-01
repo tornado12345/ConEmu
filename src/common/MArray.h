@@ -44,6 +44,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #include <vector>
+#include <type_traits>
 
 #ifndef NOMARRAYSORT
 #include <algorithm>
@@ -59,24 +60,28 @@ public:
 	MArrayAllocator()
 	{
 		HeapInitialize();
-	};
+	}
 	template<class U> MArrayAllocator(const MArrayAllocator<U>& other)
 	{
 		HeapInitialize();
-	};
-	template<class U> MArrayAllocator(MArrayAllocator<U>&& other) = delete;
+	}
+	template<class U, std::enable_if_t<!std::is_same_v<T, U>>> MArrayAllocator(MArrayAllocator<U>&& other) = delete;
 	template<class U> MArrayAllocator<T>& operator=(const MArrayAllocator<U>& other) = delete;
 	template<class U> bool operator==(const MArrayAllocator<U>& other) const { return true; };
 	template<class U> bool operator!=(const MArrayAllocator<U>& other) const { return false; };
 
+	// ReSharper disable once CppInconsistentNaming
+	// ReSharper disable once CppMemberFunctionMayBeStatic
 	T* allocate(std::size_t n)
 	{
-		T* ptr = (T*)malloc(n * sizeof(T));
+		T* ptr = static_cast<T*>(malloc(n * sizeof(T)));
 		if (!ptr)
 			throw std::bad_alloc();
 		return ptr;
 	};
 
+	// ReSharper disable once CppInconsistentNaming
+	// ReSharper disable once CppMemberFunctionMayBeStatic
 	void deallocate( T* p, std::size_t n )
 	{
 		if (p) free(p);
@@ -108,6 +113,14 @@ class MArray
 		iterator end()
 		{
 			return data.end();
+		};
+		const_iterator begin() const
+		{
+			return data.cbegin();
+		};
+		const_iterator end() const
+		{
+			return data.cend();
 		};
 		const_iterator cbegin() const
 		{
@@ -184,8 +197,10 @@ class MArray
 			ssize_t inserted;
 			if ((nPosBefore < 0) || (nPosBefore >= size()))
 			{
+				#ifdef _DEBUG
 				inserted = data.size();
-				inserted = push_back(std::move(_Item));
+				#endif
+				inserted = push_back(std::move(_Item));  // -V519
 			}
 			else
 			{
@@ -199,7 +214,7 @@ class MArray
 		{
 			if (_Index < 0)
 			{
-				_ARRAY_ASSERTE(_Index>=0);
+				_ARRAY_ASSERTE(_Index>=0);  // -V547
 				return -1;
 			}
 
@@ -209,7 +224,8 @@ class MArray
 					return -1;
 			}
 
-			data[_Index] = _Item;;
+			data[_Index] = _Item;
+			return _Index;
 		};
 
 		bool pop_back(_Ty& _Item)
@@ -244,10 +260,10 @@ class MArray
 		{
 			if (nNewCount < 0)
 			{
-				_ARRAY_ASSERTE(nNewCount>0);
+				_ARRAY_ASSERTE(nNewCount>0);  // -V547
 				return false;
 			}
-			data.resize(nNewCount > 0 ? nNewCount : 0);
+			data.resize(nNewCount);
 			return true;
 		}
 
@@ -255,10 +271,10 @@ class MArray
 		{
 			if (nNewCount < 0)
 			{
-				_ARRAY_ASSERTE(nNewCount>0);
+				_ARRAY_ASSERTE(nNewCount>0);  // -V547
 				return false;
 			}
-			data.reserve(nNewCount > 0 ? nNewCount : 0);
+			data.reserve(nNewCount);
 			return true;
 		}
 

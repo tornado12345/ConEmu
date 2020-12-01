@@ -28,6 +28,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include "MenuIds.h"
+
 static LngPredefined gsDataHints[] = {
 	{ IDM_DETACH,              L"Show RealConsole and detach it from ConEmu" },
 	{ IDM_DONATE_LINK,         L"Visit https://conemu.github.io/donate.html" },
@@ -55,7 +57,8 @@ static LngPredefined gsDataHints[] = {
 	{ cbAdminSuffix,           L"When this is checked - specified suffix will be appended in tabs titles, started ‘As administrator’.\r\nYou may choose insertion place with ‘%a’ var, otherwise suffix will be at the tab end." },
 	{ cbAlwaysOnTop,           L"Places the ConEmu window above all non-topmost windows. The window maintains its topmost position even when it is deactivated" },
 	{ cbAlwaysShowTrayIcon,    L"Always show ConEmu icon in the Taskbar Status Area (TSA)" },
-	{ cbAnsiLog,               L"Log console output to text files\r\nConEmu-YYYY-MM-DD-pNNNN.log\r\n(affect new consoles only)" },
+	{ cbAnsiLog,               L"Log console output to text files\r\nConEmu-YYYY-MM-DD-pNNNN.log\r\n(affects new consoles only)" },
+	{ cbAnsiLogCodes,          L"Write to console log ANSI sequences\r\n(affects new consoles only)" },
 	{ cbAutoRegFonts,          L"Use in ConEmu fonts, located in ConEmu folder.\r\n*.ttf, *.otf and *.bdf files are supported." },
 	{ cbBgAllowPlugin,         L"Enable background Far plugins (e.g. Panel Colorer),\r\n3rd-state - don't draw in viewer/editor" },
 	{ cbBgImage,               L"Show background image instead standard\r\ncolors #0 and #1 (black and blue)\r\n3rd-state - don't draw in viewer/editor" },
@@ -377,6 +380,8 @@ static LngPredefined gsDataHints[] = {
 	{ vkDumpTree,              L"Active process tree memory dump" },
 	{ vkDuplicateRoot,         L"Duplicate tab with current state of root process" },
 	{ vkDuplicateRootAs,       L"Duplicate tab with current state of root process, run ‘As Administrator’" },
+	{ vkEditMenu,              L"Show Edit context menu" },
+	{ vkEditMenu2,             L"Show Edit context menu" },
 	{ vkEscNoConsoles,         L"Minimize ConEmu by Esc when no open consoles left (see option ‘Don't close ConEmu on last console close’)" },
 	{ vkFarGotoEditorVk,       L"Highlighting: hyperlinks and compiler errors (FarGotoEditor modifier)" },
 	{ vkFindTextDlg,           L"Find text in active console" },
@@ -453,8 +458,8 @@ static LngPredefined gsDataHints[] = {
 	{ vkSplitSwapLeft,         L"Split: Exchange (swap) with nearest pane leftward" },
 	{ vkSplitSwapRight,        L"Split: Exchange (swap) with nearest pane rightward" },
 	{ vkSplitSwapUp,           L"Split: Exchange (swap) with nearest pane upward" },
-	{ vkSystemMenu,            L"Show ConEmu System menu" },
-	{ vkSystemMenu2,           L"Show ConEmu System menu" },
+	{ vkSystemMenu,            L"Show ConEmu System menu (fires on key down)" },
+	{ vkSystemMenu2,           L"Show ConEmu System menu (fires on key release)" },
 	{ vkTabMenu,               L"Show Tab context menu" },
 	{ vkTabMenu2,              L"Show Tab context menu" },
 	{ vkTabPane,               L"Split: Put focus to next visible pane" },

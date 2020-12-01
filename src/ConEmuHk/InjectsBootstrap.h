@@ -38,10 +38,10 @@ int InjectHookDLL(PROCESS_INFORMATION pi, InjectHookFunctions* pfn /*UINT_PTR fn
 	DWORD 		dwErrCode = 0;
 #ifndef _WIN64
 	// starting a 32-bit process
-	LPCWSTR		pszDllName = L"\\ConEmuHk.dll";
+	LPCWSTR		pszDllName = L"\\" ConEmuHk_32_DLL;
 #else
 	// starting a 64-bit process
-	LPCWSTR		pszDllName = L"\\ConEmuHk64.dll";
+	LPCWSTR		pszDllName = L"\\" ConEmuHk_64_DLL;
 	DWORD_PTR   nLoadLibraryProcShift;
 #endif
 
@@ -60,13 +60,14 @@ int InjectHookDLL(PROCESS_INFORMATION pi, InjectHookFunctions* pfn /*UINT_PTR fn
 
 	_ASSERTE(pfn->szKernelName && *pfn->szKernelName);
 	size_t pnKernelNameLen = lstrlen(pfn->szKernelName);
-	size_t pstrSize = sizeof(USTR) + 8/*alignment*/ + sizeof(wchar_t)*(pnKernelNameLen+1); // UNICODE_STRING ( "kernel32.dll" | "kernelbase.dll" )
+	size_t pstrSize = sizeof(USTR) + 8/*alignment*/ + sizeof(wchar_t) * (pnKernelNameLen + 1); // UNICODE_STRING ( "kernel32.dll" | "kernelbase.dll" )
 
 
 	//OSVERSIONINFO osv = {sizeof(osv)};
 	//GetVersionEx(&osv);
 	//DWORD nOsVer = (osv.dwMajorVersion << 8) | (osv.dwMinorVersion & 0xFF);
 
+	PBYTE ptr_jne = nullptr;
 
 	if (ptrAllocated)
 		*ptrAllocated = 0;
@@ -153,7 +154,7 @@ int InjectHookDLL(PROCESS_INFORMATION pi, InjectHookFunctions* pfn /*UINT_PTR fn
 	memmove(code + codeSize, strHookDllPath, memLen);
 
 	pStr = (PUSTR)((((DWORD_PTR)(code + codeSize + memLen + 7))>>3)<<3);
-	pStr->Length = pnKernelNameLen*sizeof(wchar_t);
+	pStr->Length = pnKernelNameLen * sizeof(wchar_t);
 	pStr->MaximumLength = (pnKernelNameLen+1)*sizeof(wchar_t);
 	#ifdef _WIN64
 	pStr->Pad = 0;
@@ -301,8 +302,6 @@ int InjectHookDLL(PROCESS_INFORMATION pi, InjectHookFunctions* pfn /*UINT_PTR fn
 	*ip.pB++ = 0x15;
 	*ip.pI   = -(int)(ip.pB + 4 - code - 16);  ip.pI++; // -- pointer to procedure address // GCC do the INC before rvalue eval
 	#endif
-
-	PBYTE ptr_jne = nullptr;
 
 	// Due to ASLR of Kernel32.dll in Windows 8 RC x64 we need this workaround
 	// JIC expanded to Windows 7 too.

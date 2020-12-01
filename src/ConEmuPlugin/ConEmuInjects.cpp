@@ -37,11 +37,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _WIN32_WINNT 0x0501
 
 #include "../common/defines.h"
-#include <TCHAR.h>
-#include <Tlhelp32.h>
+#include <tchar.h>
 #include <shlwapi.h>
 #include "../common/Common.h"
-#include "../common/ConEmuCheck.h"
 #include "../ConEmuHk/ConEmuHooks.h"
 #include "../ConEmuDW/ConEmuDw.h"
 #include "PluginHeader.h"
@@ -83,12 +81,7 @@ bool StartupHooks(HMODULE ahOurDll)
 
 	if (ghHooksModule == NULL)
 	{
-		wchar_t szHkModule[64];
-		#ifdef WIN64
-			wcscpy_c(szHkModule, L"ConEmuHk64.dll");
-		#else
-			wcscpy_c(szHkModule, L"ConEmuHk.dll");
-		#endif
+		LPCWSTR szHkModule = ConEmuHk_DLL_3264;
 		ghHooksModule = GetModuleHandle(szHkModule);
 
 		if ((ghHooksModule == NULL) && (ghConEmuWndDC != NULL))

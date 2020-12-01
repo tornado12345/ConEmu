@@ -51,46 +51,7 @@ const wchar_t gszAnalogues[32] =
 //	return (inChar <= 31) ? gszAnalogues[inChar] : (wchar_t)inChar;
 //}
 
-
-// Это символы рамок и др. спец. символы
-//#define isCharBorder(inChar) (inChar>=0x2013 && inChar<=0x266B)
-bool isCharAltFont(ucs32 inChar)
-{
-	// Низя - нужно учитывать gpSet->isFixFarBorders там где это требуется, иначе пролетает gpSet->isEnhanceGraphics
-	//if (!gpSet->isFixFarBorders)
-	//	return false;
-	return gpSet->CheckCharAltFont(inChar);
-	//Settings::CharRanges *pcr = gpSet->icFixFarBorderRanges;
-	//for (int i = 10; --i && pcr->bUsed; pcr++) {
-	//	Settings::CharRanges cr = *pcr;
-	//	if (inChar>=cr.cBegin && inChar<=cr.cEnd)
-	//		return true;
-	//}
-	//return false;
-	//if (inChar>=0x2013 && inChar<=0x266B)
-	//    return true;
-	//else
-	//    return false;
-	//if (gpSet->isFixFarBorders)
-	//{
-	//  //if (! (inChar > 0x2500 && inChar < 0x251F))
-	//  if ( !(inChar > 0x2013/*En dash*/ && inChar < 0x266B/*Beamed Eighth Notes*/) /*&& inChar!=L'}'*/ )
-	//      /*if (inChar != 0x2550 && inChar != 0x2502 && inChar != 0x2551 && inChar != 0x007D &&
-	//      inChar != 0x25BC && inChar != 0x2593 && inChar != 0x2591 && inChar != 0x25B2 &&
-	//      inChar != 0x2562 && inChar != 0x255F && inChar != 0x255A && inChar != 0x255D &&
-	//      inChar != 0x2554 && inChar != 0x2557 && inChar != 0x2500 && inChar != 0x2534 && inChar != 0x2564) // 0x2520*/
-	//      return false;
-	//  else
-	//      return true;
-	//}
-	//else
-	//{
-	//  if (inChar < 0x01F1 || inChar > 0x0400 && inChar < 0x045F || inChar > 0x2012 && inChar < 0x203D || /*? - not sure that optimal*/ inChar > 0x2019 && inChar < 0x2303 || inChar > 0x24FF && inChar < 0x266C)
-	//      return false;
-	//  else
-	//      return true;
-	//}
-}
+// bool isCharAltFont(ucs32 inChar) - app defined
 
 bool isCharPseudographics(ucs32 inChar)
 {
@@ -404,11 +365,10 @@ void VConTextPart::Done()
 }
 
 
-CVConLine::CVConLine(CRealConsole* apRCon)
-	: mp_RCon(apRCon)
-	, mn_DialogsCount(0)
-	, mrc_Dialogs(NULL)
-	, mn_DialogFlags(NULL)
+CVConLine::CVConLine(const bool isFar)
+	: mn_DialogsCount(0)
+	, mrc_Dialogs(nullptr)
+	, mn_DialogFlags(nullptr)
 	, mn_DialogAllFlags(0)
 	, mrc_UCharMap()
 	, isFilePanel(false)
@@ -416,15 +376,15 @@ CVConLine::CVConLine(CRealConsole* apRCon)
 	, FontWidth(0)
 	, isForce(true)
 	, row(0)
-	, ConCharLine(NULL)
-	, ConAttrLine(NULL)
+	, ConCharLine(nullptr)
+	, ConAttrLine(nullptr)
 	, MaxBufferSize(0)
 	, PartsCount(0)
-	, TextParts(NULL)
-	, TempCharFlags(NULL)
-	, TempCharWidth(NULL)
+	, TextParts(nullptr)
+	, TempCharFlags(nullptr)
+	, TempCharWidth(nullptr)
 	, TotalLineWidth(0)
-	, isFixFrameCoord(true)
+	, isFixFrameCoord(isFar)
 	, NextDialog(true)
 	, NextDialogX(0)
 	, CurDialogX1(0)
@@ -464,9 +424,6 @@ bool CVConLine::ParseLine(bool abForce, unsigned anTextWidth, unsigned anFontWid
 	CurDialogFlags = 0;
 
 	isFilePanel = (mn_DialogAllFlags & (FR_LEFTPANEL|FR_RIGHTPANEL|FR_FULLPANEL)) != 0;
-
-	//TODO: Extend to other old-scool managers?
-	isFixFrameCoord = mp_RCon->isFar();
 
 	if (bNeedAlloc && !AllocateMemory())
 		return false;
@@ -881,7 +838,7 @@ struct Shrinker
 
 	Shrinker()
 	{
-		data = NULL;
+		data = nullptr;
 
 		// Default values;
 		indent_elast = 100;
@@ -904,7 +861,7 @@ struct Shrinker
 
 	void init(VConTextPart* parts, unsigned l, unsigned r, unsigned a_font_width)
 	{
-		if (data == NULL)
+		if (data == nullptr)
 		{
 			data_count = (r-l+1);
 			data = new part_data[data_count];
@@ -927,7 +884,7 @@ struct Shrinker
 
 	void get_total(VConTextPart* parts, unsigned l, unsigned r, float& total_k, int& total_l)
 	{
-		_ASSERTE(data!=NULL);
+		_ASSERTE(data!=nullptr);
 
 		total_l = 0;
 		double k_den = 0.0;
@@ -980,7 +937,7 @@ struct Shrinker
 
 		if (l == r)
 		{
-			_ASSERTE(data!=NULL);
+			_ASSERTE(data!=nullptr);
 			data[0].old_width = parts[l].TotalWidth;
 			data[0].new_width = a_req_len;
 			return ((data[0].new_width * 2) < data[0].old_width);
@@ -1215,7 +1172,7 @@ bool CVConLine::GetNextPart(unsigned& partIndex, VConTextPart*& part, VConTextPa
 	// No more parts?
 	if (partIndex >= PartsCount)
 	{
-		nextPart = NULL;
+		nextPart = nullptr;
 		return false;
 	}
 
@@ -1225,7 +1182,7 @@ bool CVConLine::GetNextPart(unsigned& partIndex, VConTextPart*& part, VConTextPa
 	// Skip all next ‘combined’ parts
 	while ((partIndex < PartsCount) && (TextParts[partIndex].Flags == TRF_None))
 		partIndex++;
-	nextPart = (partIndex < PartsCount) ? (TextParts+partIndex) : NULL;
+	nextPart = (partIndex < PartsCount) ? (TextParts+partIndex) : nullptr;
 	return true;
 }
 

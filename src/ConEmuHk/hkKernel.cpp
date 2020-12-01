@@ -45,7 +45,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "../common/Common.h"
 
-#include <Tlhelp32.h>
+#include <tlhelp32.h>
 
 #include "hkKernel.h"
 
@@ -54,7 +54,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Helper function
 bool LocalToSystemTime(LPFILETIME lpLocal, LPSYSTEMTIME lpSystem)
 {
-	false;
 	FILETIME ftSystem;
 	bool bOk = LocalFileTimeToFileTime(lpLocal, &ftSystem)
 		&& FileTimeToSystemTime(&ftSystem, lpSystem);

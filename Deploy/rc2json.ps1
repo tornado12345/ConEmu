@@ -1,4 +1,4 @@
-param([string]$mode="auto",[string]$id="",[string]$str="",[switch]$force)
+ï»¿param([string]$mode="auto",[string]$id="",[string]$str="",[switch]$force)
 
 $path = split-path -parent $MyInvocation.MyCommand.Definition
 
@@ -20,11 +20,12 @@ $conemu_hotkeys_file = Join-Path $path "..\src\ConEmu\HotkeyList.cpp"
 $conemu_status_file = Join-Path $path "..\src\ConEmu\Status.cpp"
 
 $target_l10n = ($path + "\..\Release\ConEmu\ConEmu.l10n")
+$target_yaml_path = ($path + "\..\src\l10n\")
 
 $conemu_page_automsg = "*This page was generated automatically from ConEmu sources*"
 $conemu_page_hotkeymark = "{% comment %} LIST OF HOTKEYS {% endcomment %}"
 
-$dest_md = ($path + "\..\..\ConEmu-GitHub-io\ConEmu.github.io\en\")
+$dest_md = ($path + "\..\..\ConEmu.github.io\en\")
 
 $conemu_hotkeys_md = Join-Path $dest_md "KeyboardShortcuts.md"
 
@@ -35,8 +36,13 @@ $linedelta = 7
 $script:ignore_ctrls = @(
   "tAppDistinctHolder", "tDefTermWikiLink", "stPalettePreviewFast",
   "stConEmuUrl", "tvSetupCategories", "stSetCommands2", "stHomePage", "stDisableConImeFast3", "stDisableConImeFast2",
-  "lbActivityLog", "lbConEmuHotKeys", "IDI_ICON1", "IDI_ICON2", "IDI_ICON3", "stConEmuAbout", "IDD_RESTART"
+  "lbActivityLog", "lbConEmuHotKeys", "stConEmuAbout", "IDD_RESTART"
 )
+
+$script:default_ctrls = @{
+  'IDOK'='OK'; 'IDCANCEL'='Cancel'; 'IDYES'='Yes'; 'IDNO'='No'; 'IDABORT'='Abort'; 'IDRETRY'='Retry';
+  'IDIGNORE'='Ignore'; 'IDTRYAGAIN'='Try'; 'IDCONTINUE'='Continue';
+}
 
 $last_gen_ids_note = "// last auto-gen identifier"
 $last_gen_str_note = "{ /* empty trailing item for patch convenience */ }"
@@ -47,7 +53,7 @@ $script:dlg_not_found = $FALSE
 
 function AppendExistingLanguages()
 {
-  $json.languages | ? { $_.id -ne "en" } | % {
+  $script:json.languages | ? { $_.id -ne "en" } | % {
     $script:l10n += "    ,"
     $script:l10n += "    {`"id`": `"$($_.id)`", `"name`": `"$($_.name)`" }"
   }
@@ -343,7 +349,7 @@ function ParseResIds($resh)
     $ln = $resh[$l].Trim()
     if ($ln -match "#define\s+(\w+)\s+(\-?\d+)") {
       $id = [int]$matches[2]
-      if ($script:ignore_ctrls.Contains($matches[1])) {
+      if ($script:ignore_ctrls.Contains($matches[1]) -Or $matches[1].StartsWith("IDI_ICON")) {
         ## Just skip this resource ID
       } elseif ($script:res_id.ContainsValue($id)) {
         $dup = ""; $script:res_id.Keys | % { if ($script:res_id[$_] -eq $id) { $dup = $_ } }
@@ -425,7 +431,7 @@ function ParseLngData($LngData)
   return $hints
 }
 
-# If string comes from ConvertFrom-JSON - it is â€˜de-escapedâ€™
+# If string comes from ConvertFrom-JSON - it is Ã¢â‚¬Ëœde-escapedÃ¢â‚¬â„¢
 function EscapeJson($str)
 {
   if ($str -eq $null) {
@@ -475,7 +481,7 @@ function AppendExistingTranslations([string]$section,[string]$name,[string]$en_v
       }
 
       # Append existing translations"
-      $json.languages | ? { $_.id -ne "en" } | % {
+      $script:json.languages | ? { $_.id -ne "en" } | % {
         $depr = $depr_en
         $jlng = EscapeJson $jres."$($_.id)"
         # Perhaps resource was already deprecated?
@@ -531,6 +537,12 @@ function WriteControls([string]$section,$ctrls,$ids)
   $script:l10n += "  `"$section`": {"
   $script:first = $TRUE
 
+  $script:default_ctrls.Keys | % {
+    if (-Not $ctrls.containskey($_)) {
+      $ctrls.Add($_, $script:default_ctrls[$_])
+    }
+  }
+
   $ctrls.Keys | sort | % {
     $name = $_
     $value = $ctrls[$_]
@@ -566,8 +578,8 @@ function InitDialogList()
   $script:dialogs += @{ id = "IDD_HOTKEY";          name = "Choose hotkey"; file = $null; }
   $script:dialogs += @{ id = "IDD_AFFINITY";        name = "Set active console processes affinity and priority"; file = $null; }
 
-  $script:dialogs += @{ id = "IDD_SPG_GENERAL";     name = "General"; file = "Settings-Fast"; }
-  $script:dialogs += @{ id = "IDD_SPG_FONTS";       name = " Fonts"; file = "Settings-Main"; }
+  $script:dialogs += @{ id = "IDD_SPG_GENERAL";     name = "General"; file = "Settings-General"; }
+  $script:dialogs += @{ id = "IDD_SPG_FONTS";       name = " Fonts"; file = "Settings-Fonts"; }
   $script:dialogs += @{ id = "IDD_SPG_SIZEPOS";     name = " Size & Pos"; file = "Settings-SizePos"; }
   $script:dialogs += @{ id = "IDD_SPG_APPEAR";      name = " Appearance"; file = "Settings-Appearance"; }
   $script:dialogs += @{ id = "IDD_SPG_QUAKE";       name = " Quake style"; file = "Settings-Quake"; } # NEW
@@ -603,6 +615,7 @@ function InitDialogList()
   $script:dialogs += @{ id = "IDD_SPG_DEBUG";       name = " Debug"; file = "Settings-Debug"; }
   $script:dialogs += @{ id = "IDD_SPG_APPDISTINCT2";name = " <App distinct>"; file = $null; } # ONLY rc2json
 }
+
 
 
 function UpdateConEmuL10N()
@@ -683,6 +696,7 @@ function UpdateConEmuL10N()
 
   Write-Host "Updating: $target_l10n"
   Set-Content $target_l10n $script:l10n -Encoding UTF8
+
 }
 
 # $loop is $TRUE when called from NewLngResourceLoop
@@ -985,7 +999,7 @@ function InitKeyNames()
   $script:KeysFriendly += @{ Key = "VK_LSHIFT" ; Name = "RShift" }
   $script:KeysFriendly += @{ Key = "VK_RSHIFT" ; Name = "LShift" }
   $script:KeysFriendly += @{ Key = "VK_OEM_3/*~*/" ; Name = "'~'" }
-  $script:KeysFriendly += @{ Key = "192/*VK_ªøû¹ôð*/" ; Name = "'~'" }
+  $script:KeysFriendly += @{ Key = "192/*VK_tilde*/" ; Name = "'~'" }
   $script:KeysFriendly += @{ Key = "VK_UP" ; Name = "UpArrow" }
   $script:KeysFriendly += @{ Key = "VK_DOWN" ; Name = "DownArrow" }
   $script:KeysFriendly += @{ Key = "VK_LEFT" ; Name = "LeftArrow" }
@@ -1047,7 +1061,7 @@ function FriendlyKeys($token)
     if ($key.Length -eq 3) {
       $key = $key.SubString(1,1)
     } else {
-      $key = "‘"+$key.Trim("'")+"’"
+      $key = "â€˜"+$key.Trim("'")+"â€™"
     }
   }
   # ready

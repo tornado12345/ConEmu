@@ -49,6 +49,7 @@ enum CEStatusItems
 	csi_NumLock,
 	csi_ScrollLock,
 	csi_ViewLock,
+	csi_InputGrouping,
 	csi_InputLocale,
 	csi_KeyHooks,
 	csi_TermModes,
@@ -174,6 +175,7 @@ private:
 	bool LoadActiveProcess(CRealConsole* pRCon, wchar_t* pszText, int cchMax);
 
 	bool mb_Caps, mb_Num, mb_Scroll;
+	bool mb_InputGrouping;
 	bool mb_KeyHooks;
 	DWORD_PTR mhk_Locale; // CConEmuMain::GetActiveKeyboardLayout()
 	bool IsKeyboardChanged();
@@ -208,14 +210,14 @@ public:
 	static size_t GetAllStatusCols(StatusColInfo** ppColumns);
 
 public:
-	void PaintStatus(HDC hPaint, LPRECT prcStatus = NULL);
+	void PaintStatus(HDC hPaint, LPRECT prcStatus = nullptr);
 	void UpdateStatusBar(bool abForce = false, bool abRepaintNow = false);
-	void InvalidateStatusBar(LPRECT rcInvalidated = NULL);
+	void InvalidateStatusBar(LPRECT rcInvalidated = nullptr);
 
 	void SetStatus(LPCWSTR asStatus);
 
 	void OnTimer();
-	void OnWindowReposition(const RECT* prcNew = NULL);
+	void OnWindowReposition(const RECT* prcNew = nullptr);
 	void OnConsoleChanged(const CONSOLE_SCREEN_BUFFER_INFO* psbi, const CONSOLE_CURSOR_INFO* pci, const TOPLEFTCOORD* pTopLeft, bool bForceUpdate);
 	void OnCursorChanged(const COORD* pcr, const CONSOLE_CURSOR_INFO* pci, int nMaxX = 0, int nMaxY = 0);
 	void OnConsoleBufferChanged(CRealConsole* pRCon);

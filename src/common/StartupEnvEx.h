@@ -34,7 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "WSession.h"
 #include "WUser.h"
 #include "../ConEmu/version.h"
-#include <TlHelp32.h>
+#include <tlhelp32.h>
 
 class LoadStartupEnvEx : public LoadStartupEnv
 {
@@ -57,7 +57,9 @@ protected:
 			p->Monitors[i].dwFlags = mi.dwFlags;
 			wcscpy_c(p->Monitors[i].szDevice, mi.szDevice);
 
-			HDC hdc = CreateDC(mi.szDevice, mi.szDevice, NULL, NULL);
+			// If lpszDriver is ... the device name of a specific display device,
+			// then lpszDevice must be ... that same device name.
+			HDC hdc = CreateDC(mi.szDevice, mi.szDevice, NULL, NULL);  // -V549
 			if (hdc)
 			{
 				p->Monitors[i].dpis[0].x = GetDeviceCaps(hdc, LOGPIXELSX);
@@ -116,10 +118,12 @@ protected:
 
 					if ((cp != -1) && (nLen < nLenMax))
 					{
+						const wchar_t* from = psz;
 						if (*pszFonts) *(psz++) = L'\t';
-						lstrcpy(psz, szName); psz+= nNameLen;
+						lstrcpy(psz, szName); psz += nNameLen;
 						*(psz++) = L'\t';
-						lstrcpy(psz, szValue); psz+= nValLen;
+						lstrcpy(psz, szValue); psz += nValLen;
+						nLenMax -= static_cast<int>(psz - from);
 					}
 
 					cchName = countof(szName); cchValue = sizeof(szValue)-2;
@@ -285,10 +289,11 @@ public:
 
 		BOOL bWin64 = IsWindows64();
 
+		#pragma warning(push)
 		#pragma warning(disable: 4996)
 		OSVERSIONINFOEXW osv = {sizeof(osv)};
 		GetVersionEx((OSVERSIONINFOW*)&osv);
-		#pragma warning(default: 4996)
+		#pragma warning(pop)
 
 		// if you're running on ReactOS, Version.szCSDVersion will contain two strings.
 		// The first string is the Windows compatible service pack number, "Service Pack 6".

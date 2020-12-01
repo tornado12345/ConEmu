@@ -36,17 +36,16 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define USEDEBUGSTRDEFTERM
 #endif
 
-#include <Windows.h>
+#include <windows.h>
 #include "Common.h"
 #include "MArray.h"
 #include "MSectionSimple.h"
 #include "ConEmuCheck.h"
 #include "MProcess.h"
 #include "MProcessBits.h"
-#include "WObjects.h"
 #include "WThreads.h"
 #include "../ConEmuCD/ExitCodes.h"
-#include <TlHelp32.h>
+
 
 #define DEF_TERM_ALIVE_CHECK_TIMEOUT 750
 #define DEF_TERM_ALIVE_RECHECK_TIMEOUT 1500
@@ -571,7 +570,7 @@ public:
 			ThreadArg* pArg = (ThreadArg*)malloc(sizeof(ThreadArg));
 			if (!pArg)
 			{
-				_ASSERTE(pArg);
+				_ASSERTE(pArg);  // -V571
 				goto wrap;
 			}
 			pArg->pTerm = GetInterface();
@@ -1071,13 +1070,10 @@ protected:
 			}
 			else if (hProcess)
 			{
-				if (!bTerm)
+				DWORD nWait = WaitForSingleObject(hProcess, 0);
+				if (nWait == WAIT_OBJECT_0)
 				{
-					DWORD nWait = WaitForSingleObject(hProcess, 0);
-					if (nWait == WAIT_OBJECT_0)
-					{
-						bTerm = true;
-					}
+					bTerm = true;
 				}
 			}
 
@@ -1116,7 +1112,7 @@ protected:
 				if (bForceTerminate)
 				{
 					#ifdef _DEBUG
-					SuspendThread(hThread);
+					SuspendThread(hThread);  // -V720
 					_ASSERTE(FALSE && "Terminating DefTermBase hooker thread");
 					ResumeThread(hThread); // superfluous?
 					#endif

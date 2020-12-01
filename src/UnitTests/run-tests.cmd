@@ -1,12 +1,13 @@
 @echo off
 
 setlocal
+chcp 65001
 cd /d "%~dp0"
 if exist "%~dp0*.log" del /Q "%~dp0*.log" > nul
 if exist "%~dp0*.obj" del /Q "%~dp0*.obj" > nul
 if exist "%~dp0tests.fail" del /Q "%~dp0tests.fail" > nul
 
-set commons=../common/CEStr.cpp ../common/Memory.cpp ../common/WObjects.cpp ../common/WUser.cpp ../common/CmdLine.cpp ^
+set commons=../common/CEStr.cpp ../common/Memory.cpp ../common/WObjects.cpp ../common/WUser.cpp ../common/CmdLine.cpp ../common/CmdArg.cpp ^
             ../common/MStrSafe.cpp ../common/MStrDup.cpp ../common/MAssert.cpp ../common/WThreads.cpp ../common/EnvVar.cpp ^
             ../common/MProcess.cpp ../common/RConStartArgs.cpp ../common/RConStartArgsEx.cpp ../common/MModule.cpp
 
@@ -31,6 +32,8 @@ rem call :fail5
 call cecho /blue "Following files must BE compiled/executed without errors"
 call :test1
 
+call cecho /blue "UnitTests should be executed without failures"
+call :gtests
 
 
 :end_of_tests
@@ -49,6 +52,25 @@ call cecho /blue "*** All tests passed ***"
 rem *** End Of Script ***
 goto :EOF
 
+
+:gtests
+call cecho /yellow "  Tests_Release_Win32.exe"
+..\..\Release\Tests_Release_Win32.exe 1>> unittests.log
+if errorlevel 1 (
+  echo/  Tests_Release_Win32.exe exitcode=%errorlevel%
+  echo Tests_Release_Win32.exe failed > tests.fail
+) else (
+  call cecho /green "  Tests_Release_Win32.exe succeeded as expected"
+)
+call cecho /yellow "  Tests_Release_x64.exe"
+..\..\Release\Tests_Release_x64.exe 1>> unittests.log
+if errorlevel 1 (
+  echo/  Tests_Release_x64.exe exitcode=%errorlevel%
+  echo Tests_Release_x64.exe failed > tests.fail
+) else (
+  call cecho /green "  Tests_Release_x64.exe succeeded as expected"
+)
+goto :EOF
 
 
 :fail1

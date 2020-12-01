@@ -120,7 +120,7 @@ public:
 	void Release();
 	LPCWSTR Ptr() const;
 	int Length() const;
-	bool Empty() const;
+	bool IsEmpty() const;
 };
 
 /* Internal information for Tab drawing */
@@ -133,7 +133,7 @@ public:
 	HRGN     rgnTab;  // точный регион таба, для реакции на мышку
 	bool     Clipped; // текст был обрезан при отрисовке, показывать тултип
 public:
-	TabDrawInfo() {memset(&rcTab, 0, sizeof(rcTab)); rgnTab = NULL; Clipped=false;};
+	TabDrawInfo() {memset(&rcTab, 0, sizeof(rcTab)); rgnTab = nullptr; Clipped=false;};
 };
 
 struct TabInfo
@@ -158,8 +158,8 @@ struct TabRefPlace
 	// Usage: SetPlace(__FILE__,__LINE__)
 	void SetPlace(LPCSTR asFile, int anLine)
 	{
-		LPCSTR pszSlash = asFile ? strrchr(asFile, '\\') : NULL;
-		lstrcpynA(filename, pszSlash ? (pszSlash+1) : asFile ? asFile : "<NULL>", countof(filename));
+		LPCSTR pszSlash = asFile ? strrchr(asFile, '\\') : nullptr;
+		lstrcpynA(filename, pszSlash ? (pszSlash+1) : asFile ? asFile : "<nullptr>", countof(filename));
 		fileline = anLine;
 	}
 };

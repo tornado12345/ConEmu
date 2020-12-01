@@ -48,6 +48,10 @@ public:
 	SizeInfo(const SizeInfo& src);
 	virtual ~SizeInfo();
 
+	SizeInfo& operator=(const SizeInfo&) = delete;
+	SizeInfo& operator=(SizeInfo&&) = delete;
+	SizeInfo(SizeInfo&&) = delete;
+
 public:
 	// *** Relative to the upper-left corner of the screen or the parent (if Inside mode) ***
 
@@ -130,7 +134,7 @@ protected:
 		} m_calc_source = CalcSource::eWindowRect;
 		*/
 
-		int dpi = 96;
+		int dpi = 96;  // #DPI replace with DpiValue
 		int tabbar_font = 0;
 		int statusbar_font = 0;
 	} m_opt;

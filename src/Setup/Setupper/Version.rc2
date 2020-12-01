@@ -1,16 +1,18 @@
 
 // Manifest
+#ifndef VSBUILD
 1 24 "Setupper.manifest"
+#endif
 
 //#define MSI86 "../ConEmu." CONEMUVERS ".x86.msi"
 //#define MSI64 "../ConEmu." CONEMUVERS ".x64.msi"
 #include "VersionI.h"
 
 // Installer files
-Ver86 "DATA" MSI86
-Ver64 "DATA" MSI64
-CABFILE "DATA" "../ConEmu.cab"
-EXEFILE "DATA" "Executor.exe"
+Ver86 DATA MSI86
+Ver64 DATA MSI64
+CABFILE DATA "../ConEmu.cab"
+EXEFILE DATA "Executor.exe"
 
 /////////////////////////////////////////////////////////////////////////////
 //

@@ -31,7 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "../common/defines.h"
 
-#include <CommCtrl.h>
+#include <commctrl.h>
 #include "LngDataEnum.h"
 #include "Options.h"
 #include "DlgItemHelper.h"
@@ -143,8 +143,8 @@ class CSetPgBase
 	: public CSetDlgButtons
 {
 protected:
-	HWND mh_Dlg = NULL;
-	HWND mh_Parent = NULL;
+	HWND mh_Dlg = nullptr;
+	HWND mh_Parent = nullptr;
 	bool mb_SkipSelChange = false;
 	bool mb_DpiChanged = false;
 	UINT mn_ActivateTabMsg = WM_APP;
@@ -186,7 +186,18 @@ public:
 	virtual bool SelectNextItem(bool bNext, bool bProcess) { return false; };
 
 public:
-	// Members
-	static void setHotkeyCheckbox(HWND hDlg, WORD nCtrlId, int iHotkeyId, LPCWSTR pszFrom, LPCWSTR pszTo, UINT uChecked);
-	static void setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LPCWSTR pszFrom, LPCWSTR pszTo);
+	/// Update string like "Win+Numbers - activate console" or "Paste mode #1 (Shift+Ins)" with actual hotkey
+	/// Examples:
+	///    gbPasteM1 has title "Paste mode #1 (Shift+Ins)", pszFrom=L"(", pszTo=L")"
+	///      `Shift+Ins` is replaced replaced with current user defined hotkey value
+	///    cbMouseDragWindow has title "Ctrl+Alt - drag ConEmu window", pszFrom=nullptr, pszTo=L" - "
+	///      `Ctrl+Alt` is replaced
+	/// If pszGroup is specified, the key is replaced with pszGroup before processing the control label
+	/// e.g. pszGroup="Numbers" than replace szFull="Ctrl+1" with "Ctrl+Numbers"
+	static void setCtrlTitleByHotkey(HWND hDlg, WORD nCtrlId, int iHotkeyId, LPCWSTR pszFrom, LPCWSTR pszTo, LPCWSTR pszGroup);
+	/// Helper function for setCtrlTitleByHotkey
+	/// e.g. pszGroup="Numbers" than replace szFull="Ctrl+1" with "Ctrl+Numbers"
+	static void ApplyHotkeyGroupName(wchar_t (&szFull)[128], LPCWSTR pszGroup);
+	/// Helper function for setCtrlTitleByHotkey
+	static CEStr ApplyHotkeyToTitle(CEStr& label, LPCWSTR pszFrom, LPCWSTR pszTo, LPCWSTR pszHotkey);
 };

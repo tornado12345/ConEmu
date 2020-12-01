@@ -47,7 +47,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	L"-Config <configname> - Use alternative named configuration.\r\n" \
 	L"-Dir <workdir> - Set startup directory for ConEmu and consoles.\r\n" \
 	L"-Here - Force using of ‘inherited’ startup directory. An alternative to ‘-Dir’ switch.\r\n" \
-	L"-FS | -Max | -Min - (Full screen), (Maximized) or (Minimized) mode.\r\n" \
+	L"-FS | -Max | -Nor | -Min - (Full screen), (Maximized), (Normal) or (Minimized) mode.\r\n" \
 	L"-TSA - Override (enable) minimize to taskbar status area.\r\n" \
 	L"-MinTSA - start minimized in taskbar status area, hide to TSA after console close.\r\n" \
 	L"-StartTSA - start minimized in taskbar status area, exit after console close.\r\n" \
@@ -59,8 +59,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	L"-Single - New console will be started in new tab of existing ConEmu.\r\n" \
 	L"-NoSingle - Force new ConEmu window even if single mode is selected in the Settings.\r\n" \
 	L"-ShowHide | -ShowHideTSA - Works like \"Minimize/Restore\" global hotkey.\r\n" \
+	L"-NoAutoEnvReload - Disable auto reload of environment variables from registry.\r\n" \
 	L"-NoCascade - Disable ‘Cascade’ option may be set in the Settings.\r\n" \
 	L"-NoDefTerm - Don't start initialization procedure for setting up ConEmu as default terminal.\r\n" \
+	L"-NoHooksWarn - Don't show ‘hooks are detected’ warning in console.\r\n" \
 	L"-NoKeyHooks - Disable SetWindowsHookEx and global hotkeys.\r\n" \
 	L"-NoMacro - Disable GuiMacro hotkeys.\r\n" \
 	L"-NoHotkey - Disable all hotkeys.\r\n" \
@@ -78,11 +80,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	L"-Frame <value> - Set custom ‘Frame width’.\r\n" \
 	L"-Monitor <1 | x10001 | \"\\\\.\\DISPLAY1\"> - Place window on the specified monitor.\r\n" \
 	L"-Palette <name> - Choose named color palette.\r\n" \
+	L"-Theme [<name>] - Use specified Windows theme or ‘DarkMode_Explorer’.\r\n" \
 	L"-Log[1|2] - Used to create debug log files.\r\n" \
 	L"-Demote -run <command> - Run command de-elevated.\r\n" \
 	L"-Bypass -run <command> - Just execute the command detached.\r\n" \
 	L"-Reset - Don't load settings from registry/xml.\r\n" \
 	L"-UpdateJumpList - Update Windows 7 taskbar jump list.\r\n" \
+	L"-LngFile <file> - Use specified l10n file as localization storage.\r\n" \
+	L"-Lng <en|ru|de|...> - Use specified language id.\r\n" \
 	L"-LoadCfgFile <file> - Use specified xml file as configuration storage.\r\n" \
 	L"-SaveCfgFile <file> - Save configuration to the specified xml file.\r\n" \
 	L"-LoadRegistry - Use Windows registry as configuration storage.\r\n" \
@@ -257,6 +262,11 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"Detach([<Flags>])\r\n" \
 	L"  - Detach active RealConsole from ConEmu\r\n" \
 	L"    Flags=1: don't show confirm message\r\n" \
+	L"EnvironmentReload\r\n" \
+	L"  - Reload environment variables from system registry\r\n" \
+	L"EnvironmentList\r\n" \
+	L"  - Print actual `name=value` environment pairs\r\n" \
+	L"    Variables from ConEmu settings go after system ones\r\n" \
 	L"FindEditor(\"<FullEditFileName>\")\r\n" \
 	L"FindViewer(\"<FullViewerFileName>\")\r\n" \
 	L"FindFarWindow(<WindowType>,\"<WindowTitle>\")\r\n" \
@@ -363,8 +373,9 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"  - Set progress state on taskbar and ConEmu title\r\n" \
 	L"     Type=0: remove progress\r\n" \
 	L"     Type=1: set progress value to <Value> (0-100)\r\n" \
-	L"     Type=2: set error state in progress\r\n" \
+	L"     Type=2: set error state in progress with <Value>\r\n" \
 	L"     Type=3: set indeterminate state in progress\r\n" \
+	L"     Type=4: set paused state in progress with <Value>\r\n" \
 	L"Recreate(<Action>[,<Confirm>[,<AsAdmin>]]), alias \"Create\"\r\n" \
 	L"  - Create new tab or restart existing one\r\n" \
 	L"     Action: 0 - create tab, 1 - restart tab, 2 - create window\r\n" \
@@ -390,6 +401,8 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"  - Use to stop selection\r\n" \
 	L"SetDpi(<DPI>)\r\n" \
 	L"  - Change effective dpi for ConEmu window: 96, 120, 144, 192\r\n" \
+	L"SetFocus()\r\n" \
+	L"  - Try to set focus in ConEmu window\r\n" \
 	L"SetOption('\"Check\",<ID>,<Value>)\r\n" \
 	L"  - Set one of checkbox/radio ConEmu's options\r\n" \
 	L"    ID: numeric identifier of checkbox (ConEmu.rc, resource.h)\r\n" \
@@ -416,6 +429,8 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"    \"Scheme\": switch color scheme for the whole ConEmu window\r\n" \
 	L"    \"VConScheme\": switch color scheme for the active console\r\n" \
 	L"      Value: color palette name, e.g. \"<Solarized>\"\r\n" \
+	L"SetParentHWND(<HWND>)\r\n" \
+	L"  - Change ConEmu parent window during Inside mode\r\n" \
 	L"Settings([<PageResourceId>])\r\n" \
 	L"  - Show ‘Settings’ dialog with specified page activated (optionally)\r\n" \
 	L"      PageResourceId: integer DialogID from ‘resource.h’\r\n" \
@@ -453,6 +468,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"     Cmd==9: close active tab, same as Close(3)\r\n" \
 	L"     Cmd==10: switches visible split-panes, Parm=(1,-1)\r\n" \
 	L"     Cmd==11: activates tab by name, title or process name\r\n" \
+	L"     Cmd==12: return tabs list \"1: tab1\\n2: tab2\\n...\"\r\n" \
 	L"Task(Index[,\"Dir\"])\r\n" \
 	L"  - start task with 1-based index\r\n" \
 	L"Task(\"Name\"[,\"Dir\"])\r\n" \
@@ -491,7 +507,7 @@ _DBGHLP(L"-ZoneId - Try to drop :Zone.Identifier without confirmation.\r\n") \
 	L"WindowMode([\"<Mode>\"])\r\n" \
 	L"  - Returns or set current window mode\r\n" \
 	L"     \"NOR\", \"MAX\", \"FS\" (fullscreen), \"MIN\", \"TSA\",\r\n" \
-	L"     \"TLEFT\", \"TRIGHT\" (tile to left/right), \"THEIGHT\",\r\n" \
+	L"     \"TLEFT\", \"TRIGHT\" (tile to left/right), \"THEIGHT\", \"TWIDTH\"\r\n" \
 	L"     \"MPREV\", \"MNEXT\" (move ConEmu to prev/next monitor)\r\n" \
 	L"     \"HERE\" (move ConEmu to monitor with mouse cursor)\r\n" \
 	L"WindowPosSize(\"<X>\",\"<Y>\",\"<W>\",\"<H>\")\r\n" \

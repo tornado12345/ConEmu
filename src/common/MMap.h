@@ -44,10 +44,10 @@ protected:
 		size_t    nCount;
 		MapItems *pNextBlock;
 	};
-	MapItems *mp_FirstBlock;
-	MapItems *mp_LastBlock;
-	size_t mn_ItemsInBlock; // max number of items in one block
-	size_t mn_MaxCount;     // informational
+	MapItems *mp_FirstBlock = nullptr;
+	MapItems *mp_LastBlock = nullptr;
+	size_t mn_ItemsInBlock = 0; // max number of items in one block
+	size_t mn_MaxCount = 0;     // informational
 
 	MapItems* AllocateBlock()
 	{
@@ -110,14 +110,12 @@ protected:
 public:
 	MMap()
 	{
-		mp_FirstBlock = NULL;
-		mn_MaxCount = 0;
 	};
 	~MMap()
 	{
 		// Don't use ‘Release()’ if heap is already deinitialized
 		// That may happen because MMap is used for global static variables
-		if (ghHeap)
+		if (IsHeapInitialized())
 		{
 			Release();
 		}
@@ -203,8 +201,8 @@ public:
 
 			if (Remove)
 			{
-				memset(&(pItem->key), 0, sizeof(pItem->key));
-				memset(&(pItem->val), 0, sizeof(pItem->val));
+				memset(&(pItem->key), 0, sizeof(pItem->key));  // -V568
+				memset(&(pItem->val), 0, sizeof(pItem->val));  // -V568
 				InterlockedCompareExchange(&pItem->used, 0, hash);
 			}
 
@@ -375,7 +373,7 @@ public:
 		{
 			MapItem* pEnd = pBlock->pItems + pBlock->nCount;
 
-			for (; pItem < pEnd; pItem++)
+			for (; pItem && pItem < pEnd; pItem++)
 			{
 				if (pItem->used)
 				{
@@ -455,7 +453,7 @@ public:
 		pBlock = AllocateBlock();
 		if (!pBlock)
 		{
-			_ASSERTE(pBlock!=NULL);
+			_ASSERTE(pBlock!=NULL);  // -V547
 			return false;
 		}
 
